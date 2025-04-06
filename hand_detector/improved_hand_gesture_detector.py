@@ -100,6 +100,92 @@ class EnhancedHandGestureDetector:
                 'direction': 0.0
             }, frame
     
+    def _detect_stop_sign_gesture(self, landmark_points, frame):
+        """
+        זיהוי מחוות STOP (יד פתוחה כמו תמרור עצור).
+        מחזיר True אם המחווה זוהתה, False אחרת.
+        """
+        h, w, _ = frame.shape
+        
+        # נקודות מפתח
+        wrist = landmark_points[0]
+        thumb_tip = landmark_points[4]
+        index_tip = landmark_points[8]
+        middle_tip = landmark_points[12]
+        ring_tip = landmark_points[16]
+        pinky_tip = landmark_points[20]
+        
+        # בסיסי האצבעות (מפרקים)
+        thumb_mcp = landmark_points[2]
+        index_mcp = landmark_points[5]
+        middle_mcp = landmark_points[9]
+        ring_mcp = landmark_points[13]
+        pinky_mcp = landmark_points[17]
+        
+        # 1. בדיקה שכל האצבעות פרושות (לא מכופפות)
+        # האצבע נחשבת פרושה אם קצה האצבע נמצא רחוק יותר מהמפרק ביחס לשורש כף היד
+        # נחשב וקטורים מהשורש למפרק ומהשורש לקצה האצבע
+        
+        # 1.1 עבור האצבע המורה, האמצעית, הטבעת והזרת
+        finger_extended = []
+        
+        for tip, mcp in [(index_tip, index_mcp), 
+                         (middle_tip, middle_mcp), 
+                         (ring_tip, ring_mcp), 
+                         (pinky_tip, pinky_mcp)]:
+            # מרחק מהשורש לקצה האצבע
+            dist_tip = np.sqrt((tip[0] - wrist[0])**2 + (tip[1] - wrist[1])**2)
+            # מרחק מהשורש למפרק
+            dist_mcp = np.sqrt((mcp[0] - wrist[0])**2 + (mcp[1] - wrist[1])**2)
+            # האצבע פרושה אם הקצה רחוק יותר מהמפרק
+            finger_extended.append(dist_tip > dist_mcp * 1.2)  # דורש שהאצבע תהיה מורחקת לפחות ב-20% יותר מהמפרק
+        
+        # 1.2 עבור האגודל (מקרה מיוחד)
+        thumb_dist_tip = np.sqrt((thumb_tip[0] - wrist[0])**2 + (thumb_tip[1] - wrist[1])**2)
+        thumb_dist_mcp = np.sqrt((thumb_mcp[0] - wrist[0])**2 + (thumb_mcp[1] - wrist[1])**2)
+        thumb_extended = thumb_dist_tip > thumb_dist_mcp
+        
+        # 2. בדיקה שהיד פתוחה ומורמת
+        all_fingers_extended = all(finger_extended) and thumb_extended
+        
+        # 3. בדיקה שהאצבעות פרושות במרחק סביר אחת מהשנייה
+        # מחשב מרחקים בין האצבעות הסמוכות
+        finger_tips = [index_tip, middle_tip, ring_tip, pinky_tip]
+        finger_spacings = []
+        
+        for i in range(len(finger_tips) - 1):
+            spacing = np.sqrt((finger_tips[i][0] - finger_tips[i+1][0])**2 + 
+                             (finger_tips[i][1] - finger_tips[i+1][1])**2)
+            finger_spacings.append(spacing)
+        
+        # האצבעות צריכות להיות במרחק דומה זו מזו
+        if len(finger_spacings) > 1:
+            min_spacing = min(finger_spacings)
+            max_spacing = max(finger_spacings)
+            fingers_evenly_spaced = (max_spacing < min_spacing * 2.0)  # רווחים פחות או יותר שווים
+        else:
+            fingers_evenly_spaced = True
+        
+        # הוספת מידע דיבאג אם נדרש
+        if self.debug_mode:
+            cv2.putText(frame, f"All Fingers Extended: {all_fingers_extended}", 
+                       (10, 240), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+            cv2.putText(frame, f"Fingers Spaced: {fingers_evenly_spaced}", 
+                       (10, 260), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+            
+            # הוספת מידע על פרישת כל אצבע
+            fingers = ["Index", "Middle", "Ring", "Pinky", "Thumb"]
+            extensions = finger_extended + [thumb_extended]
+            for i, (finger, extended) in enumerate(zip(fingers, extensions)):
+                color = (0, 255, 0) if extended else (0, 0, 255)
+                cv2.putText(frame, f"{finger}: {extended}", 
+                           (w - 150, 30 + i*20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+        
+        # מחוות STOP זוהתה אם כל האצבעות פרושות ובמרווחים סבירים
+        stop_gesture_detected = all_fingers_extended and fingers_evenly_spaced
+        
+        return stop_gesture_detected
+
     def _extract_controls_from_landmarks(self, landmarks, frame, controls):
         """
         Extract control values from hand landmarks with improved detection.
@@ -127,43 +213,44 @@ class EnhancedHandGestureDetector:
         pinky_mcp = landmark_points[17]
         
         # ==================== STEERING DETECTION ====================
-        # Calculate hand rotation for steering
-        # Using index and pinky base for more stable steering detection
-        dx = landmark_points[17][0] - landmark_points[5][0]  # Pinky MCP - Index MCP x-distance
-        dy = landmark_points[17][1] - landmark_points[5][1]  # Pinky MCP - Index MCP y-distance
-        
-        # Calculate angle of hand rotation
-        hand_angle = np.degrees(np.arctan2(dy, dx))
-        
-        # Map angle to steering value
-        # Neutral hand orientation (fingers pointing up) is around -90 degrees
-        # We'll map -135° to -45° (90° range) to our full steering range
-        if -135 <= hand_angle <= -45:
-            # Normalize to -1 to 1 steering range
-            # -135° maps to -1 (full left), -90° to 0 (center), -45° to 1 (full right)
-            raw_steering = (hand_angle + 90) / 45
+        # מדידת זווית האגודל ביחס למרכז כף היד
+        thumb_tip = landmark_points[4]  # קצה האגודל
+        wrist = landmark_points[0]      # שורש כף היד
+
+        # חישוב הזווית של האגודל ביחס לציר האנכי
+        dx_thumb = thumb_tip[0] - wrist[0]
+        dy_thumb = thumb_tip[1] - wrist[1]
+        thumb_angle = np.degrees(np.arctan2(dx_thumb, -dy_thumb))  # שימוש בהיפוך הציר האנכי
+
+        # מיפוי הזווית לערך היגוי
+        # אגודל ישר למעלה (0 מעלות) = היגוי במרכז (0)
+        # אגודל מוטה ימינה (90 מעלות) = היגוי מלא ימינה (1.0)
+        # אגודל מוטה שמאלה (-90 מעלות) = היגוי מלא שמאלה (-1.0)
+
+        if -90 <= thumb_angle <= 90:
+            # נירמול לטווח של -1 עד 1
+            raw_steering = thumb_angle / 90.0
         else:
-            # If hand is rotated extremely, use max values
-            raw_steering = -1 if hand_angle < -135 else 1
-        
-        # Apply smoothing for more stable steering
+            # אם האגודל מוטה יותר מדי, השתמש בערכים מקסימליים
+            raw_steering = -1.0 if thumb_angle < -90 else 1.0
+
+        # יישום החלקה לקבלת היגוי יציב יותר
         steering = self.prev_steering * self.steering_smoothing + raw_steering * (1 - self.steering_smoothing)
-        steering = max(-1.0, min(1.0, steering))  # Clamp to valid range
+        steering = max(-1.0, min(1.0, steering))  # הגבלת הטווח
         self.prev_steering = steering
         controls['steering'] = steering
-        
-        # Draw steering indicator line on frame if in debug mode
+
+        # הוספת קווי חיווי עבור זווית האגודל אם מצב דיבאג מופעל
         if self.debug_mode:
-            steer_start = wrist
-            steer_length = 100
-            steer_angle_rad = np.radians(hand_angle)
-            steer_end = (
-                int(steer_start[0] + steer_length * np.cos(steer_angle_rad)),
-                int(steer_start[1] + steer_length * np.sin(steer_angle_rad))
+            thumb_line_length = 100
+            thumb_angle_rad = np.radians(thumb_angle)
+            thumb_line_end = (
+                int(wrist[0] + thumb_line_length * np.sin(thumb_angle_rad)),
+                int(wrist[1] - thumb_line_length * np.cos(thumb_angle_rad))
             )
-            cv2.line(frame, steer_start, steer_end, (0, 255, 255), 2)
-            cv2.putText(frame, f"Angle: {hand_angle:.1f}", (10, 30), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+            cv2.line(frame, wrist, thumb_line_end, (255, 0, 255), 2)
+            cv2.putText(frame, f"Thumb Angle: {thumb_angle:.1f}", (10, 30), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 255), 2)
             cv2.putText(frame, f"Steering: {steering:.2f}", (10, 60), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
         
@@ -183,49 +270,76 @@ class EnhancedHandGestureDetector:
         controls['throttle'] = throttle
         
         # ==================== GESTURE DETECTION ====================
-        # Detect gesture based on finger positions
-        # First check if fingers are curled (thumb tip closer to wrist than knuckle)
+        # בדיקה אם האצבעות מכופפות
         index_curled = index_tip[1] > index_mcp[1]
         middle_curled = middle_tip[1] > middle_mcp[1]
         ring_curled = ring_tip[1] > ring_mcp[1]
         pinky_curled = pinky_tip[1] > pinky_mcp[1]
-        
-        # Detect thumb extended (y-coordinate higher than wrist)
-        thumb_extended = thumb_tip[1] < wrist[1] - h*0.1  # Thumb must be significantly higher
-        
-        # Detect fist (all fingers curled)
-        fist_detected = index_curled and middle_curled and ring_curled and pinky_curled
-        
-        # Detect stop gesture (all fingers extended and spread)
-        # We use open palm = stop
-        all_fingers_extended = not (index_curled or middle_curled or ring_curled or pinky_curled)
-        
-        # Detect specialized gestures
-        # Detect boost gesture (thumb up, all other fingers curled)
-        boost_gesture = thumb_extended and index_curled and middle_curled and ring_curled and pinky_curled
-        
-        # Detect braking gesture (fist)
-        brake_gesture = fist_detected and not thumb_extended
-        
-        # Set control commands based on detected gestures
-        if boost_gesture:
+        thumb_curled = thumb_tip[0] > thumb_mcp[0] if wrist[0] > thumb_mcp[0] else thumb_tip[0] < thumb_mcp[0]
+
+        # זיהוי אגרוף (כל האצבעות מכופפות, כולל האגודל)
+        fist_detected = index_curled and middle_curled and ring_curled and pinky_curled and thumb_curled
+
+        # בדיקה אם האצבעות מורמות (לא מכופפות)
+        fingers_extended = (
+            not index_curled and
+            not middle_curled and
+            not ring_curled and
+            not pinky_curled
+        )
+
+        # קריאה לפונקציה החדשה לזיהוי מחוות עצור
+        stop_sign_gesture = self._detect_stop_sign_gesture(landmark_points, frame)
+
+        # הוספת ויזואליזציה של נתוני הזיהוי במצב דיבוג
+        if self.debug_mode:
+            cv2.putText(frame, f"Fingers Extended: {fingers_extended}", (10, 120), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+            cv2.putText(frame, f"Fist Detected: {fist_detected}", (10, 150), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+
+        # שינוי: BOOST רק במצב אגרוף וכאשר מיקום היד גבוה
+        boost_gesture = fist_detected and wrist[1] < h/2
+
+        # זיהוי מחוות בלימה (אגרוף רגיל)
+        brake_gesture = fist_detected and wrist[1] >= h/2
+
+        # קביעת פקודות בהתאם למחוות שזוהו
+        if stop_sign_gesture:
+            controls['gesture_name'] = 'Stop (Traffic Sign)'
+            controls['braking'] = True  # עצירת חירום עם מחוות עצור
+            controls['throttle'] = 0.0
+            controls['boost'] = False
+            self._update_command_stability("STOP")
+            
+            # הוספת ויזואליזציה בולטת של מצב עצור
+            cv2.putText(
+                frame,
+                "STOP SIGN DETECTED",
+                (frame.shape[1]//2 - 150, 80),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1,
+                (0, 0, 255),
+                2
+            )
+        elif boost_gesture:
             controls['gesture_name'] = 'Boost'
             controls['boost'] = True
-            controls['throttle'] = 1.0  # Full throttle when boosting
+            controls['braking'] = False
+            controls['throttle'] = 1.0  # גז מלא במצב BOOST
             self._update_command_stability("FORWARD_BOOST")
         elif brake_gesture:
             controls['gesture_name'] = 'Brake'
             controls['braking'] = True
-            controls['throttle'] = 0.0  # No throttle when braking
-            self._update_command_stability("STOP")
-        elif all_fingers_extended:
-            controls['gesture_name'] = 'Stop'
-            controls['braking'] = True  # Emergency stop with open palm
-            controls['throttle'] = 0.0
+            controls['boost'] = False
+            controls['throttle'] = 0.0  # אין גז במצב בלימה
             self._update_command_stability("STOP")
         else:
-            # Regular driving with steering and throttle
-            if abs(steering) > 0.3:  # Significant steering
+            # נהיגה רגילה עם היגוי וגז
+            controls['braking'] = False
+            controls['boost'] = False
+            
+            if abs(steering) > 0.3:  # היגוי משמעותי
                 if steering < -0.3:
                     controls['gesture_name'] = 'Turning Left'
                     self._update_command_stability("LEFT")
