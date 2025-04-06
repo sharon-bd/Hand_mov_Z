@@ -105,86 +105,107 @@ class EnhancedHandGestureDetector:
         זיהוי מחוות STOP (יד פתוחה כמו תמרור עצור).
         מחזיר True אם המחווה זוהתה, False אחרת.
         """
-        h, w, _ = frame.shape
-        
-        # נקודות מפתח
-        wrist = landmark_points[0]
-        thumb_tip = landmark_points[4]
-        index_tip = landmark_points[8]
-        middle_tip = landmark_points[12]
-        ring_tip = landmark_points[16]
-        pinky_tip = landmark_points[20]
-        
-        # בסיסי האצבעות (מפרקים)
-        thumb_mcp = landmark_points[2]
-        index_mcp = landmark_points[5]
-        middle_mcp = landmark_points[9]
-        ring_mcp = landmark_points[13]
-        pinky_mcp = landmark_points[17]
-        
-        # 1. בדיקה שכל האצבעות פרושות (לא מכופפות)
-        # האצבע נחשבת פרושה אם קצה האצבע נמצא רחוק יותר מהמפרק ביחס לשורש כף היד
-        # נחשב וקטורים מהשורש למפרק ומהשורש לקצה האצבע
-        
-        # 1.1 עבור האצבע המורה, האמצעית, הטבעת והזרת
-        finger_extended = []
-        
-        for tip, mcp in [(index_tip, index_mcp), 
-                         (middle_tip, middle_mcp), 
-                         (ring_tip, ring_mcp), 
-                         (pinky_tip, pinky_mcp)]:
-            # מרחק מהשורש לקצה האצבע
-            dist_tip = np.sqrt((tip[0] - wrist[0])**2 + (tip[1] - wrist[1])**2)
-            # מרחק מהשורש למפרק
-            dist_mcp = np.sqrt((mcp[0] - wrist[0])**2 + (mcp[1] - wrist[1])**2)
-            # האצבע פרושה אם הקצה רחוק יותר מהמפרק
-            finger_extended.append(dist_tip > dist_mcp * 1.2)  # דורש שהאצבע תהיה מורחקת לפחות ב-20% יותר מהמפרק
-        
-        # 1.2 עבור האגודל (מקרה מיוחד)
-        thumb_dist_tip = np.sqrt((thumb_tip[0] - wrist[0])**2 + (thumb_tip[1] - wrist[1])**2)
-        thumb_dist_mcp = np.sqrt((thumb_mcp[0] - wrist[0])**2 + (thumb_mcp[1] - wrist[1])**2)
-        thumb_extended = thumb_dist_tip > thumb_dist_mcp
-        
-        # 2. בדיקה שהיד פתוחה ומורמת
-        all_fingers_extended = all(finger_extended) and thumb_extended
-        
-        # 3. בדיקה שהאצבעות פרושות במרחק סביר אחת מהשנייה
-        # מחשב מרחקים בין האצבעות הסמוכות
-        finger_tips = [index_tip, middle_tip, ring_tip, pinky_tip]
-        finger_spacings = []
-        
-        for i in range(len(finger_tips) - 1):
-            spacing = np.sqrt((finger_tips[i][0] - finger_tips[i+1][0])**2 + 
-                             (finger_tips[i][1] - finger_tips[i+1][1])**2)
-            finger_spacings.append(spacing)
-        
-        # האצבעות צריכות להיות במרחק דומה זו מזו
-        if len(finger_spacings) > 1:
-            min_spacing = min(finger_spacings)
-            max_spacing = max(finger_spacings)
-            fingers_evenly_spaced = (max_spacing < min_spacing * 2.0)  # רווחים פחות או יותר שווים
-        else:
-            fingers_evenly_spaced = True
-        
-        # הוספת מידע דיבאג אם נדרש
-        if self.debug_mode:
-            cv2.putText(frame, f"All Fingers Extended: {all_fingers_extended}", 
-                       (10, 240), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
-            cv2.putText(frame, f"Fingers Spaced: {fingers_evenly_spaced}", 
-                       (10, 260), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+        try:
+            h, w, _ = frame.shape
             
-            # הוספת מידע על פרישת כל אצבע
-            fingers = ["Index", "Middle", "Ring", "Pinky", "Thumb"]
-            extensions = finger_extended + [thumb_extended]
-            for i, (finger, extended) in enumerate(zip(fingers, extensions)):
-                color = (0, 255, 0) if extended else (0, 0, 255)
-                cv2.putText(frame, f"{finger}: {extended}", 
-                           (w - 150, 30 + i*20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+            # נקודות מפתח
+            wrist = landmark_points[0]
+            thumb_tip = landmark_points[4]
+            index_tip = landmark_points[8]
+            middle_tip = landmark_points[12]
+            ring_tip = landmark_points[16]
+            pinky_tip = landmark_points[20]
+            
+            # בסיסי האצבעות (מפרקים)
+            thumb_mcp = landmark_points[2]
+            index_mcp = landmark_points[5]
+            middle_mcp = landmark_points[9]
+            ring_mcp = landmark_points[13]
+            pinky_mcp = landmark_points[17]
+            
+            # 1. בדיקה שכל האצבעות פרושות (לא מכופפות)
+            # האצבע נחשבת פרושה אם קצה האצבע נמצא רחוק יותר מהמפרק ביחס לשורש כף היד
+            
+            # 1.1 עבור האצבע המורה, האמצעית, הטבעת והזרת
+            finger_extended = []
+            
+            for tip, mcp in [(index_tip, index_mcp), 
+                             (middle_tip, middle_mcp), 
+                             (ring_tip, ring_mcp), 
+                             (pinky_tip, pinky_mcp)]:
+                # חישוב בטוח של מרחק
+                dx_tip = float(tip[0] - wrist[0])
+                dy_tip = float(tip[1] - wrist[1])
+                dx_mcp = float(mcp[0] - wrist[0])
+                dy_mcp = float(mcp[1] - wrist[1])
+                
+                # Using math.hypot to safely calculate Euclidean distance
+                dist_tip = (dx_tip**2 + dy_tip**2)**0.5
+                dist_mcp = (dx_mcp**2 + dy_mcp**2)**0.5
+                
+                # האצבע פרושה אם הקצה רחוק יותר מהמפרק
+                if dist_mcp > 0:  # מניעת חלוקה באפס
+                    finger_extended.append(dist_tip > dist_mcp * 1.2)
+                else:
+                    finger_extended.append(False)
+            
+            # 1.2 עבור האגודל (מקרה מיוחד)
+            dx_thumb = float(thumb_tip[0] - wrist[0])
+            dy_thumb = float(thumb_tip[1] - wrist[1])
+            dx_thumb_mcp = float(thumb_mcp[0] - wrist[0])
+            dy_thumb_mcp = float(thumb_mcp[1] - wrist[1])
+            
+            # Using the safer Euclidean distance calculation
+            thumb_dist_tip = (dx_thumb**2 + dy_thumb**2)**0.5
+            thumb_dist_mcp = (dx_thumb_mcp**2 + dy_thumb_mcp**2)**0.5
+            
+            thumb_extended = thumb_dist_tip > thumb_dist_mcp if thumb_dist_mcp > 0 else False
+            
+            # 2. בדיקה שהיד פתוחה ומורמת
+            all_fingers_extended = all(finger_extended) and thumb_extended
+            
+            # 3. בדיקה שהאצבעות פרושות במרחק סביר אחת מהשנייה
+            # מחשב מרחקים בין האצבעות הסמוכות
+            finger_tips = [index_tip, middle_tip, ring_tip, pinky_tip]
+            finger_spacings = []
+            
+            for i in range(len(finger_tips) - 1):
+                dx = float(finger_tips[i][0] - finger_tips[i+1][0])
+                dy = float(finger_tips[i][1] - finger_tips[i+1][1])
+                spacing = (dx**2 + dy**2)**0.5  # Safe distance calculation
+                finger_spacings.append(spacing)
+            
+            # האצבעות צריכות להיות במרחק דומה זו מזו
+            fingers_evenly_spaced = True
+            if len(finger_spacings) > 1:
+                min_spacing = min(finger_spacings)
+                max_spacing = max(finger_spacings)
+                if min_spacing > 0:  # מניעת חלוקה באפס
+                    fingers_evenly_spaced = (max_spacing < min_spacing * 2.0)  # רווחים פחות או יותר שווים
+            
+            # הוספת מידע דיבאג אם נדרש
+            if self.debug_mode:
+                cv2.putText(frame, f"All Fingers Extended: {all_fingers_extended}", 
+                           (10, 240), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+                cv2.putText(frame, f"Fingers Spaced: {fingers_evenly_spaced}", 
+                           (10, 260), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+                
+                # הוספת מידע על פרישת כל אצבע
+                fingers = ["Index", "Middle", "Ring", "Pinky", "Thumb"]
+                extensions = finger_extended + [thumb_extended]
+                for i, (finger, extended) in enumerate(zip(fingers, extensions)):
+                    color = (0, 255, 0) if extended else (0, 0, 255)
+                    cv2.putText(frame, f"{finger}: {extended}", 
+                               (w - 150, 30 + i*20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+            
+            # מחוות STOP זוהתה אם כל האצבעות פרושות ובמרווחים סבירים
+            stop_gesture_detected = all_fingers_extended and fingers_evenly_spaced
+            
+            return stop_gesture_detected
         
-        # מחוות STOP זוהתה אם כל האצבעות פרושות ובמרווחים סבירים
-        stop_gesture_detected = all_fingers_extended and fingers_evenly_spaced
-        
-        return stop_gesture_detected
+        except Exception as e:
+            print(f"Error in _detect_stop_sign_gesture: {e}")
+            return False  # במקרה של שגיאה, לא מזהים את המחווה
 
     def _extract_controls_from_landmarks(self, landmarks, frame, controls):
         """
