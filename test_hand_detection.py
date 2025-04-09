@@ -17,7 +17,7 @@ import numpy as np
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import our enhanced hand detector
-from hand_detector.improved_hand_gesture_detector import EnhancedHandGestureDetector
+from hand_detector.improved_hand_gesture_detector_fixed import EnhancedHandGestureDetector
 
 def find_available_cameras():
     """Check available camera devices and their indices."""

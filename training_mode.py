@@ -23,7 +23,8 @@ import cv2
 from pygame.locals import *
 
 # Import our hand detection module
-from hand_detector.improved_hand_gesture_detector import EnhancedHandGestureDetector
+# Use the simplified hand detector instead of the original one
+from simple_detector import SimpleHandGestureDetector
 
 # Import game configuration
 from config import GAME_MODES
@@ -377,7 +378,8 @@ class TrainingMode:
                     
                     # Initialize the hand detector with the new camera
                     try:
-                        self.detector = EnhancedHandGestureDetector()
+                        # Use SimpleHandGestureDetector instead of EnhancedHandGestureDetector
+                        self.detector = SimpleHandGestureDetector()
                     except Exception as e:
                         print(f"Error initializing hand detector: {e}")
                         self.camera_enabled = False
