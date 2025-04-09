@@ -1,21 +1,22 @@
 #!/usr/bin/env python
 """
-Hand Gesture Detection Test Script
+Hand Gesture Detection Test Script with External Data Display
 
 This script tests the hand gesture detection functionality in isolation.
 It captures video from a webcam, processes frames to detect hand gestures,
-and displays the results in real-time.
+and displays the results with all numerical data shown outside the camera feed.
 """
 
 import cv2
 import time
 import sys
 import os
+import numpy as np
 
 # Add parent directory to path so we can import our modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Import our hand detector
+# Import our enhanced hand detector
 from hand_detector.improved_hand_gesture_detector import EnhancedHandGestureDetector
 
 def find_available_cameras():
@@ -61,10 +62,42 @@ def select_camera(available_cameras):
     
     return available_cameras[selection-1]
 
+def create_display_layout(camera_frame, data_panel):
+    """
+    Create a combined display layout with camera frame and data panel side by side.
+    
+    Args:
+        camera_frame: The processed camera frame
+        data_panel: The numerical data panel
+        
+    Returns:
+        layout: Combined image for display
+    """
+    # Get dimensions
+    cam_h, cam_w = camera_frame.shape[:2]
+    panel_h, panel_w = data_panel.shape[:2]
+    
+    # Create a black canvas with enough space for both
+    # Put camera frame on left, data panel on right
+    layout_w = cam_w + panel_w
+    layout_h = max(cam_h, panel_h)
+    layout = np.zeros((layout_h, layout_w, 3), dtype=np.uint8)
+    
+    # Place camera frame on the left
+    layout[0:cam_h, 0:cam_w] = camera_frame
+    
+    # Place data panel on the right
+    layout[0:panel_h, cam_w:cam_w+panel_w] = data_panel
+    
+    # Add a separation line
+    cv2.line(layout, (cam_w, 0), (cam_w, layout_h), (200, 200, 200), 2)
+    
+    return layout
+
 def main():
-    """Main test function."""
-    print("Hand Gesture Detection Test")
-    print("==========================\n")
+    """Main test function with external data display."""
+    print("Hand Gesture Detection Test with External Data Display")
+    print("====================================================\n")
     
     # Find available cameras
     print("Scanning for available cameras...")
@@ -118,45 +151,23 @@ def main():
         
         # Process the frame to detect hand gestures
         try:
-            controls, processed_frame = detector.detect_gestures(frame)
+            # With our updated detector, we get controls, frame, and data_panel
+            controls, processed_frame, data_panel = detector.detect_gestures(frame)
             
             # Get a stable command (helps reduce jitter)
             stable_command = detector.get_stable_command()
             
-            # Display the command on the frame
-            if stable_command:
-                cv2.putText(
-                    processed_frame,
-                    f"Command: {stable_command}",
-                    (20, processed_frame.shape[0] - 40),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    1,
-                    (0, 255, 0),
-                    2
-                )
-                
-                # Record data if recording is enabled
-                if recording:
-                    elapsed_time = time.time() - start_time
-                    recording_data.append({
-                        'time': elapsed_time,
-                        'command': stable_command,
-                        'steering': controls.get('steering', 0),
-                        'throttle': controls.get('throttle', 0),
-                        'boost': controls.get('boost', False),
-                        'braking': controls.get('braking', False)
-                    })
-            
-            # Add debug information to frame
-            cv2.putText(
-                processed_frame,
-                "Press 'q' or ESC to exit",
-                (20, 30),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.6,
-                (255, 255, 255),
-                1
-            )
+            # Record data if recording is enabled
+            if recording and stable_command:
+                elapsed_time = time.time() - start_time
+                recording_data.append({
+                    'time': elapsed_time,
+                    'command': stable_command,
+                    'steering': controls.get('steering', 0),
+                    'throttle': controls.get('throttle', 0),
+                    'boost': controls.get('boost', False),
+                    'braking': controls.get('braking', False)
+                })
             
             # Add recording indicator if recording
             if recording:
@@ -170,11 +181,15 @@ def main():
                     2
                 )
             
-            # Show the frame with hand tracking visualization
-            cv2.imshow('Hand Gesture Detection Test', processed_frame)
+            # Create combined display
+            display = create_display_layout(processed_frame, data_panel)
+            
+            # Show the combined display
+            cv2.imshow('Hand Gesture Detection Test', display)
             
         except Exception as e:
             print(f"Error processing frame: {e}")
+            # Show just the raw frame if there's an error
             cv2.imshow('Hand Gesture Detection Test', frame)
         
         # Check for key presses
