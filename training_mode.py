@@ -53,6 +53,42 @@ OBSTACLE_TYPES = [
     {"name": "rock", "width": 40, "height": 40, "color": (120, 120, 120)}
 ]
 
+def get_available_cameras():
+    """Get a list of available camera devices on the system."""
+    available_cameras = []
+    camera_index = 0
+    
+    # Try to open cameras until we find one that doesn't work
+    while True:
+        cap = cv2.VideoCapture(camera_index)
+        if not cap.isOpened():
+            break
+            
+        # Test if the camera is working by trying to read a frame
+        ret, _ = cap.read()
+        if ret:
+            # Camera works, add to list
+            name = f"Camera {camera_index}"
+            try:
+                # Try to get camera name (works on some systems)
+                backend = cap.getBackendName()
+                if backend:
+                    name = f"Camera {camera_index} ({backend})"
+            except:
+                pass
+            
+            available_cameras.append({"index": camera_index, "name": name})
+        
+        # Release the camera and try next index
+        cap.release()
+        camera_index += 1
+        
+        # Safety check to avoid infinite loop
+        if camera_index > 10:  # Assume max 10 cameras
+            break
+    
+    return available_cameras
+
 class Car:
     """Represents the player's car in the game."""
     
@@ -297,23 +333,16 @@ class TrainingMode:
             "Ready to begin? Press SPACE to start."
         ]
         
-        # Set up the hand gesture detector
-        try:
-            self.detector = EnhancedHandGestureDetector()
-            self.camera_enabled = True
-            self.cap = cv2.VideoCapture(0)  # Use default camera
-            
-            # Check if camera opened successfully
-            if not self.cap.isOpened():
-                print("Error: Could not open camera.")
-                self.camera_enabled = False
-            else:
-                # Set camera resolution
-                self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-                self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-        except Exception as e:
-            print(f"Error initializing hand detector: {e}")
-            self.camera_enabled = False
+        # Set up camera selection
+        self.available_cameras = get_available_cameras()
+        self.current_camera_index = 0 if self.available_cameras else -1
+        self.show_camera_selection = len(self.available_cameras) > 1
+        self.camera_enabled = self.current_camera_index >= 0
+        self.cap = None
+        
+        # Initialize camera if available
+        if self.camera_enabled:
+            self.select_camera(self.current_camera_index)
         
         # Camera display settings
         self.camera_display_size = (320, 240)
@@ -321,6 +350,50 @@ class TrainingMode:
         self.camera_frame = None
         self.data_panel = None
         
+    def select_camera(self, camera_index):
+        """Select and initialize a camera by index."""
+        # Release current camera if any
+        if self.cap is not None:
+            self.cap.release()
+            self.cap = None
+            
+        # Try to initialize the selected camera
+        try:
+            if 0 <= camera_index < len(self.available_cameras):
+                index = self.available_cameras[camera_index]["index"]
+                self.cap = cv2.VideoCapture(index)
+                
+                # Check if camera opened successfully
+                if not self.cap.isOpened():
+                    print(f"Error: Could not open camera {index}.")
+                    self.camera_enabled = False
+                    return False
+                else:
+                    # Set camera resolution
+                    self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+                    self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+                    self.current_camera_index = camera_index
+                    self.camera_enabled = True
+                    
+                    # Initialize the hand detector with the new camera
+                    try:
+                        self.detector = EnhancedHandGestureDetector()
+                    except Exception as e:
+                        print(f"Error initializing hand detector: {e}")
+                        self.camera_enabled = False
+                        return False
+                        
+                    return True
+            else:
+                print(f"Invalid camera index: {camera_index}")
+                self.camera_enabled = False
+                return False
+                
+        except Exception as e:
+            print(f"Error selecting camera: {e}")
+            self.camera_enabled = False
+            return False
+            
     def create_training_obstacles(self):
         """Create a fixed pattern of obstacles for training purposes."""
         obstacles = []
@@ -374,7 +447,7 @@ class TrainingMode:
         
     def process_hand_gestures(self):
         """Process hand gestures from the camera for car control."""
-        if not self.camera_enabled:
+        if not self.camera_enabled or self.cap is None:
             return {
                 'steering': 0.0,
                 'throttle': 0.0,
@@ -426,7 +499,10 @@ class TrainingMode:
                 if event.key == pygame.K_ESCAPE:
                     return False
                 if event.key == pygame.K_SPACE:
-                    if self.show_tutorial:
+                    if self.show_camera_selection:
+                        # Confirm camera selection
+                        self.show_camera_selection = False
+                    elif self.show_tutorial:
                         # Advance tutorial or start game
                         self.tutorial_step += 1
                         if self.tutorial_step >= len(self.tutorial_steps):
@@ -446,6 +522,14 @@ class TrainingMode:
                 # Restart with 'r' key
                 elif event.key == pygame.K_r:
                     self.__init__()
+                    
+                # Camera switching with left/right arrow keys
+                elif event.key in (pygame.K_LEFT, pygame.K_RIGHT) and len(self.available_cameras) > 1:
+                    if self.show_camera_selection or pygame.key.get_mods() & pygame.KMOD_SHIFT:
+                        # Only allow camera switching in selection screen or with Shift key
+                        direction = -1 if event.key == pygame.K_LEFT else 1
+                        new_index = (self.current_camera_index + direction) % len(self.available_cameras)
+                        self.select_camera(new_index)
                     
         return True
         
@@ -483,6 +567,12 @@ class TrainingMode:
         """Draw the game on the screen."""
         # Fill background
         self.screen.fill(BLACK)
+        
+        # If we're showing the camera selection screen
+        if self.show_camera_selection:
+            self.draw_camera_selection()
+            pygame.display.flip()
+            return
         
         # Draw road
         self.draw_road()
@@ -612,6 +702,12 @@ class TrainingMode:
             self.screen.blit(score_text, (20, 20))
             self.screen.blit(time_text, (20, 60))
             
+            # Draw current camera info if multiple cameras available
+            if len(self.available_cameras) > 1:
+                camera_name = self.available_cameras[self.current_camera_index]["name"]
+                camera_text = self.font_small.render(f"Camera: {camera_name} (Shift+←/→ to switch)", True, WHITE)
+                self.screen.blit(camera_text, (20, 100))
+            
             # Draw controls guide
             control_text = self.font_small.render("Hand Left/Right: Steer | Hand Up/Down: Speed | Fist: Brake | Fist Up: Boost | Open Palm: Stop", True, WHITE)
             self.screen.blit(control_text, (SCREEN_WIDTH // 2 - control_text.get_width() // 2, SCREEN_HEIGHT - 30))
@@ -642,8 +738,89 @@ class TrainingMode:
             self.screen.blit(panel_surface, (SCREEN_WIDTH - w_panel, h + 10))
             
             # Add label
-            label_text = self.font_small.render("Hand Detection", True, WHITE)
+            camera_name = self.available_cameras[self.current_camera_index]["name"] if self.available_cameras else "Unknown"
+            label_text = self.font_small.render(f"Hand Detection - {camera_name}", True, WHITE)
             self.screen.blit(label_text, (SCREEN_WIDTH - w + 10, 10))
+            
+    def draw_camera_selection(self):
+        """Draw the camera selection screen."""
+        # Create a background
+        self.screen.fill((30, 30, 50))
+        
+        # Draw title
+        title_text = self.font_large.render("Select a Camera", True, WHITE)
+        self.screen.blit(title_text, (SCREEN_WIDTH // 2 - title_text.get_width() // 2, 100))
+        
+        if not self.available_cameras:
+            # No cameras available
+            no_cam_text = self.font_medium.render("No cameras detected", True, RED)
+            self.screen.blit(no_cam_text, (SCREEN_WIDTH // 2 - no_cam_text.get_width() // 2, 250))
+            
+            instructions = self.font_small.render("Press SPACE to continue without camera", True, WHITE)
+            self.screen.blit(instructions, (SCREEN_WIDTH // 2 - instructions.get_width() // 2, 300))
+        else:
+            # Show available cameras
+            y_pos = 200
+            for i, camera in enumerate(self.available_cameras):
+                # Highlight current selection
+                color = GREEN if i == self.current_camera_index else WHITE
+                
+                camera_text = self.font_medium.render(camera["name"], True, color)
+                text_rect = camera_text.get_rect(center=(SCREEN_WIDTH // 2, y_pos))
+                
+                # Draw selection indicator
+                if i == self.current_camera_index:
+                    pygame.draw.rect(
+                        self.screen,
+                        GREEN,
+                        (text_rect.x - 20, text_rect.y - 5, text_rect.width + 40, text_rect.height + 10),
+                        2,
+                        5
+                    )
+                
+                self.screen.blit(camera_text, text_rect)
+                y_pos += 50
+            
+            # Preview selected camera
+            if self.camera_enabled and self.cap is not None:
+                try:
+                    # Read a frame from the camera
+                    ret, frame = self.cap.read()
+                    if ret:
+                        # Flip and resize frame for display
+                        frame = cv2.flip(frame, 1)
+                        frame = cv2.resize(frame, (320, 240))
+                        
+                        # Convert to pygame surface
+                        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                        preview_surface = pygame.Surface((320, 240))
+                        preview_frame = pygame.image.frombuffer(frame_rgb.tobytes(), (320, 240), "RGB")
+                        preview_surface.blit(preview_frame, (0, 0))
+                        
+                        # Draw preview
+                        preview_x = SCREEN_WIDTH // 2 - 160
+                        preview_y = 350
+                        self.screen.blit(preview_surface, (preview_x, preview_y))
+                        
+                        # Draw border around preview
+                        pygame.draw.rect(
+                            self.screen,
+                            GREEN,
+                            (preview_x - 2, preview_y - 2, 324, 244),
+                            2
+                        )
+                        
+                        # Draw preview label
+                        preview_label = self.font_small.render("Camera Preview", True, WHITE)
+                        self.screen.blit(preview_label, (SCREEN_WIDTH // 2 - preview_label.get_width() // 2, preview_y - 30))
+                except:
+                    # Handle any errors with camera preview
+                    error_text = self.font_small.render("Error displaying camera preview", True, RED)
+                    self.screen.blit(error_text, (SCREEN_WIDTH // 2 - error_text.get_width() // 2, 400))
+            
+            # Instructions
+            instructions = self.font_small.render("Use LEFT/RIGHT arrow keys to select, SPACE to confirm", True, WHITE)
+            self.screen.blit(instructions, (SCREEN_WIDTH // 2 - instructions.get_width() // 2, SCREEN_HEIGHT - 50))
     
     def draw_tutorial(self):
         """Draw the tutorial overlay."""
