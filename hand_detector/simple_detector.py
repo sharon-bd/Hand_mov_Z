@@ -30,6 +30,9 @@ class SimpleHandGestureDetector:
         
         # Debug mode
         self.debug_mode = True
+        
+        # New: Maximum steering angle (degrees from vertical)
+        self.max_steering_angle = 90
     
     def detect_gestures(self, frame):
         """
@@ -133,11 +136,16 @@ class SimpleHandGestureDetector:
         dy_thumb = float(thumb_tip[1] - wrist[1])
         thumb_angle = float(np.degrees(np.arctan2(dx_thumb, -dy_thumb)))
         
-        # Map angle to steering
-        if -90 <= thumb_angle <= 90:
-            raw_steering = float(thumb_angle / 90.0)
-        else:
-            raw_steering = -1.0 if thumb_angle < -90 else 1.0
+        # Modified: Map angle to steering - horizontal thumb (0° angle) is maximum turn
+        # Convert angle to absolute deviation from vertical (which is 0°)
+        angle_deviation = abs(thumb_angle)
+        
+        # Map deviation to steering strength: horizontal (90°) = max steering, vertical (0°) = no steering
+        steering_strength = angle_deviation / self.max_steering_angle
+        steering_strength = min(1.0, steering_strength)  # Cap at 1.0
+        
+        # Apply direction: negative angle = right, positive angle = left (reversed from before)
+        raw_steering = -steering_strength if thumb_angle > 0 else steering_strength
             
         # Apply smoothing
         steering = float(self.prev_steering * self.steering_smoothing + raw_steering * (1 - self.steering_smoothing))
@@ -237,11 +245,11 @@ class SimpleHandGestureDetector:
             
             if abs(steering) > 0.3:  # Significant steering
                 if steering < -0.3:
-                    controls['gesture_name'] = 'Turning Left'
-                    self._update_command_stability("LEFT")
+                    controls['gesture_name'] = 'Turning Left'  # Inverted: negative is now Left 
+                    self._update_command_stability("LEFT")  # Inverted: negative is now LEFT
                 else:
-                    controls['gesture_name'] = 'Turning Right'
-                    self._update_command_stability("RIGHT")
+                    controls['gesture_name'] = 'Turning Right'  # Inverted: positive is now Right
+                    self._update_command_stability("RIGHT")  # Inverted: positive is now RIGHT
             else:
                 controls['gesture_name'] = 'Forward'
                 self._update_command_stability("FORWARD")
