@@ -135,41 +135,32 @@ class SimpleHandGestureDetector:
         dx_thumb = float(thumb_tip[0] - wrist[0])
         dy_thumb = float(thumb_tip[1] - wrist[1])
         
-        # Calculate angle in degrees (0° is up, 90° is right, 180° is down, 270° is left)
+        # Calculate angle in degrees (0° is up, 90° is right, 270° is left)
         thumb_angle = float(np.degrees(np.arctan2(dx_thumb, -dy_thumb)))
         # Convert to 0-360 range
         if thumb_angle < 0:
             thumb_angle += 360
         
-        # Determine steering based on horizontal alignment
-        # Maximum steering right when thumb is at 90°
-        # Maximum steering left when thumb is at 270°
-        # No steering when thumb is vertical (0° or 180°)
+        # Modified steering calculation based on thumb angle:
+        # - 0 is vertical up
+        # - 90 is right
+        # - 270 is left
+        # - We only use a 180-degree range for steering
         
-        if 0 <= thumb_angle < 180:
-            # Right half (0° to 180°)
-            # Maximum at 90°
-            if thumb_angle <= 90:
-                # 0° to 90° maps to 0 to 1
-                steering_strength = thumb_angle / 90.0
+        # Determine if the angle is in the valid range (between 270° and 90°)
+        if 270 <= thumb_angle <= 360 or 0 <= thumb_angle <= 90:
+            # Convert 270-360° to -90-0°
+            if thumb_angle > 270:
+                normalized_angle = thumb_angle - 360  # Maps 270-360° to -90-0°
             else:
-                # 90° to 180° maps to 1 to 0
-                steering_strength = (180 - thumb_angle) / 90.0
+                normalized_angle = thumb_angle  # 0-90° remains the same
             
-            # Apply positive steering (right)
-            raw_steering = steering_strength
+            # Now normalized_angle is between -90° and 90°
+            # Map -90° to -1.0 (full left) and 90° to 1.0 (full right)
+            raw_steering = normalized_angle / 90.0
         else:
-            # Left half (180° to 360°)
-            # Maximum at 270°
-            if thumb_angle <= 270:
-                # 180° to 270° maps to 0 to -1
-                steering_strength = (thumb_angle - 180) / 90.0
-            else:
-                # 270° to 360° maps to -1 to 0
-                steering_strength = (360 - thumb_angle) / 90.0
-            
-            # Apply negative steering (left)
-            raw_steering = -steering_strength
+            # Thumb is pointing down or in invalid range, set steering to 0
+            raw_steering = 0.0
         
         # Apply smoothing
         steering = float(self.prev_steering * self.steering_smoothing + raw_steering * (1 - self.steering_smoothing))
@@ -191,6 +182,19 @@ class SimpleHandGestureDetector:
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 255), 2)
             cv2.putText(frame, f"Steering: {steering:.2f}", (10, 60), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+            
+            # Draw steering range indicator (270° to 90°)
+            cv2.putText(frame, "Valid steering range:", (10, 90),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 255), 2)
+            cv2.putText(frame, "270° (left) to 90° (right)", (10, 120),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 255), 2)
+            
+            # Indicate if current angle is in valid range
+            in_range = (270 <= thumb_angle <= 360 or 0 <= thumb_angle <= 90)
+            range_status = "In valid range" if in_range else "OUT OF RANGE"
+            range_color = (0, 255, 0) if in_range else (0, 0, 255)
+            cv2.putText(frame, range_status, (10, 150),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, range_color, 2)
             
         # ==================== THROTTLE DETECTION ====================
         # Throttle based on hand height (y-position)
