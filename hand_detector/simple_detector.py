@@ -134,24 +134,49 @@ class SimpleHandGestureDetector:
         # Calculate thumb angle
         dx_thumb = float(thumb_tip[0] - wrist[0])
         dy_thumb = float(thumb_tip[1] - wrist[1])
+        
+        # Calculate angle in degrees (0° is up, 90° is right, 180° is down, 270° is left)
         thumb_angle = float(np.degrees(np.arctan2(dx_thumb, -dy_thumb)))
+        # Convert to 0-360 range
+        if thumb_angle < 0:
+            thumb_angle += 360
         
-        # Modified: Map angle to steering - horizontal thumb (0° angle) is maximum turn
-        # Convert angle to absolute deviation from vertical (which is 0°)
-        angle_deviation = abs(thumb_angle)
+        # Determine steering based on horizontal alignment
+        # Maximum steering right when thumb is at 90°
+        # Maximum steering left when thumb is at 270°
+        # No steering when thumb is vertical (0° or 180°)
         
-        # Map deviation to steering strength: horizontal (90°) = max steering, vertical (0°) = no steering
-        steering_strength = angle_deviation / self.max_steering_angle
-        steering_strength = min(1.0, steering_strength)  # Cap at 1.0
-        
-        # Apply direction: negative angle = right, positive angle = left (reversed from before)
-        raw_steering = -steering_strength if thumb_angle > 0 else steering_strength
+        if 0 <= thumb_angle < 180:
+            # Right half (0° to 180°)
+            # Maximum at 90°
+            if thumb_angle <= 90:
+                # 0° to 90° maps to 0 to 1
+                steering_strength = thumb_angle / 90.0
+            else:
+                # 90° to 180° maps to 1 to 0
+                steering_strength = (180 - thumb_angle) / 90.0
             
+            # Apply positive steering (right)
+            raw_steering = steering_strength
+        else:
+            # Left half (180° to 360°)
+            # Maximum at 270°
+            if thumb_angle <= 270:
+                # 180° to 270° maps to 0 to -1
+                steering_strength = (thumb_angle - 180) / 90.0
+            else:
+                # 270° to 360° maps to -1 to 0
+                steering_strength = (360 - thumb_angle) / 90.0
+            
+            # Apply negative steering (left)
+            raw_steering = -steering_strength
+        
         # Apply smoothing
         steering = float(self.prev_steering * self.steering_smoothing + raw_steering * (1 - self.steering_smoothing))
         steering = float(max(-1.0, min(1.0, steering)))
         self.prev_steering = steering
         controls['steering'] = steering
+        controls['thumb_angle'] = thumb_angle  # Add thumb angle to controls
         
         # Draw indicator for thumb angle in debug mode
         if self.debug_mode:
@@ -162,7 +187,7 @@ class SimpleHandGestureDetector:
                 int(wrist[1] - thumb_line_length * np.cos(thumb_angle_rad))
             )
             cv2.line(frame, wrist, thumb_line_end, (255, 0, 255), 2)
-            cv2.putText(frame, f"Thumb Angle: {thumb_angle:.1f}", (10, 30), 
+            cv2.putText(frame, f"Thumb Angle: {thumb_angle:.1f}°", (10, 30), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 255), 2)
             cv2.putText(frame, f"Steering: {steering:.2f}", (10, 60), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
@@ -245,16 +270,19 @@ class SimpleHandGestureDetector:
             
             if abs(steering) > 0.3:  # Significant steering
                 if steering < -0.3:
-                    controls['gesture_name'] = 'Turning Left'  # Inverted: negative is now Left 
-                    self._update_command_stability("LEFT")  # Inverted: negative is now LEFT
+                    controls['gesture_name'] = 'Turning Left'
+                    self._update_command_stability("LEFT")
                 else:
-                    controls['gesture_name'] = 'Turning Right'  # Inverted: positive is now Right
-                    self._update_command_stability("RIGHT")  # Inverted: positive is now RIGHT
+                    controls['gesture_name'] = 'Turning Right'
+                    self._update_command_stability("RIGHT")
             else:
                 controls['gesture_name'] = 'Forward'
                 self._update_command_stability("FORWARD")
+                
+        # Add thumb angle to controls for display in data panel
+        controls['thumb_angle'] = thumb_angle
         
-        # Draw current gesture
+        # Draw current gesture regardless of gesture
         cv2.putText(
             frame,
             f"Gesture: {controls['gesture_name']}",
@@ -262,6 +290,17 @@ class SimpleHandGestureDetector:
             cv2.FONT_HERSHEY_SIMPLEX,
             0.7,
             (0, 255, 0),
+            2
+        )
+        
+        # Display thumb angle on frame
+        cv2.putText(
+            frame,
+            f"Thumb Angle: {thumb_angle:.1f}°",
+            (10, 60),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            (0, 0, 255),
             2
         )
                 
@@ -292,8 +331,14 @@ class SimpleHandGestureDetector:
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 2)
         cv2.line(panel, (20, 40), (panel_width - 20, 40), (0, 0, 0), 1)
         
+        # Add thumb angle display prominently
+        if 'thumb_angle' in controls:
+            thumb_angle = controls['thumb_angle']
+            cv2.putText(panel, f"THUMB ANGLE: {thumb_angle:.1f}°", (20, 70), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 0, 255), 2)
+        
         # Add current gesture info
-        y_pos = 80
+        y_pos = 100
         cv2.putText(panel, "GESTURE:", (20, y_pos), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2)
         cv2.putText(panel, f"{controls['gesture_name']}", (150, y_pos), 
@@ -308,19 +353,13 @@ class SimpleHandGestureDetector:
         # Add steering info
         cv2.putText(panel, f"Steering: {controls['steering']:.2f}", (20, y_pos), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1)
-        
-        # Draw steering bar
         bar_x = 200
         bar_width = 150
         bar_height = 15
         cv2.rectangle(panel, (bar_x, y_pos - 12), (bar_x + bar_width, y_pos + 3), (220, 220, 220), -1)
         cv2.rectangle(panel, (bar_x, y_pos - 12), (bar_x + bar_width, y_pos + 3), (0, 0, 0), 1)
-        
-        # Center line
         cv2.line(panel, (bar_x + bar_width//2, y_pos - 15), 
-                (bar_x + bar_width//2, y_pos + 6), (0, 0, 0), 1)
-        
-        # Position indicator
+                 (bar_x + bar_width//2, y_pos + 6), (0, 0, 0), 1)
         steer_pos = int(bar_x + bar_width//2 + controls['steering'] * bar_width/2)
         cv2.circle(panel, (steer_pos, y_pos - 5), 6, (0, 0, 255), -1)
         y_pos += 30
@@ -328,12 +367,8 @@ class SimpleHandGestureDetector:
         # Add throttle info
         cv2.putText(panel, f"Throttle: {controls['throttle']:.2f}", (20, y_pos), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1)
-        
-        # Draw throttle bar
         cv2.rectangle(panel, (bar_x, y_pos - 12), (bar_x + bar_width, y_pos + 3), (220, 220, 220), -1)
         cv2.rectangle(panel, (bar_x, y_pos - 12), (bar_x + bar_width, y_pos + 3), (0, 0, 0), 1)
-        
-        # Fill bar based on throttle value
         fill_width = int(bar_width * controls['throttle'])
         cv2.rectangle(panel, (bar_x, y_pos - 12), (bar_x + fill_width, y_pos + 3), (0, 255, 0), -1)
         y_pos += 30
@@ -341,11 +376,9 @@ class SimpleHandGestureDetector:
         # Add brake and boost status
         brake_color = (0, 0, 255) if controls['braking'] else (150, 150, 150)
         boost_color = (255, 165, 0) if controls['boost'] else (150, 150, 150)
-        
         cv2.putText(panel, "Braking:", (20, y_pos), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1)
         cv2.circle(panel, (120, y_pos - 5), 8, brake_color, -1)
-        
         cv2.putText(panel, "Boost:", (200, y_pos), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1)
         cv2.circle(panel, (260, y_pos - 5), 8, boost_color, -1)
