@@ -328,7 +328,8 @@ class TrainingMode:
             "Welcome to Training Mode! Let's learn to control the car with hand gestures.",
             "Move your hand left and right to steer the car.",
             "Move your hand up and down to control speed.",
-            "Make a fist to brake. Keep your fist raised for boost!",
+            "Make a fist to brake.",
+            "Make a V sign with your index and middle fingers for boost!",
             "Show an open palm (stop sign) to emergency stop.",
             "Let's start practicing! Navigate around the obstacles.",
             "Ready to begin? Press SPACE to start."
@@ -711,7 +712,7 @@ class TrainingMode:
                 self.screen.blit(camera_text, (20, 100))
             
             # Draw controls guide
-            control_text = self.font_small.render("Hand Left/Right: Steer | Hand Up/Down: Speed | Fist: Brake | Fist Up: Boost | Open Palm: Stop", True, WHITE)
+            control_text = self.font_small.render("Hand Left/Right: Steer | Hand Up/Down: Speed | Fist: Brake | V Sign: Boost | Open Palm: Stop", True, WHITE)
             self.screen.blit(control_text, (SCREEN_WIDTH // 2 - control_text.get_width() // 2, SCREEN_HEIGHT - 30))
     
     def draw_camera_feed(self):

@@ -181,6 +181,9 @@ class SimpleHandGestureDetector:
         pinky_curled = pinky_tip[1] > pinky_mcp[1]
         thumb_curled = thumb_tip[0] > thumb_mcp[0] if wrist[0] > thumb_mcp[0] else thumb_tip[0] < thumb_mcp[0]
         
+        # Detect V sign (index and middle fingers extended, other fingers curled)
+        v_sign = not index_curled and not middle_curled and ring_curled and pinky_curled
+        
         # Fist detection
         fist_detected = index_curled and middle_curled and ring_curled and pinky_curled and thumb_curled
         
@@ -199,12 +202,14 @@ class SimpleHandGestureDetector:
         if self.debug_mode:
             cv2.putText(frame, f"Fingers Extended: {fingers_extended}", (10, 120), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-            cv2.putText(frame, f"Fist Detected: {fist_detected}", (10, 150), 
+            cv2.putText(frame, f"V Sign Detected: {v_sign}", (10, 150), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+            cv2.putText(frame, f"Fist Detected: {fist_detected}", (10, 180), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
             
-        # Detect boost and brake gestures
-        boost_gesture = fist_detected and wrist[1] < h/2
-        brake_gesture = fist_detected and wrist[1] >= h/2
+        # Detect boost (V sign) and brake gestures
+        boost_gesture = v_sign  # Changed from fist detection to V sign
+        brake_gesture = fist_detected
         
         # Set controls based on detected gestures
         if stop_sign_gesture:
@@ -214,7 +219,7 @@ class SimpleHandGestureDetector:
             controls['boost'] = False
             self._update_command_stability("STOP")
         elif boost_gesture:
-            controls['gesture_name'] = 'Boost'
+            controls['gesture_name'] = 'Boost (V sign)'  # Updated gesture name
             controls['boost'] = True
             controls['braking'] = False
             controls['throttle'] = 1.0
@@ -351,7 +356,10 @@ class SimpleHandGestureDetector:
         cv2.putText(panel, "- Make a fist to brake", (30, y_pos), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
         y_pos += 20
-        cv2.putText(panel, "- Fist up high for boost", (30, y_pos), 
+        cv2.putText(panel, "- V sign for boost", (30, y_pos), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+        y_pos += 20
+        cv2.putText(panel, "- Open palm for emergency stop", (30, y_pos), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
         
         return panel
