@@ -3,7 +3,8 @@ import mediapipe as mp
 import numpy as np
 
 class HandGestureDetector:
-    """Class to detect hand gestures and convert them to car control signals."""
+    """Class to detect hand gestures and convert them to car control signals 
+    according to the SRS specifications."""
     
     def __init__(self):
         """Initialize the hand gesture detector with MediaPipe."""
@@ -11,8 +12,8 @@ class HandGestureDetector:
         self.hands = self.mp_hands.Hands(
             static_image_mode=False,
             max_num_hands=1,  # Track only one hand for simplicity
-            min_detection_confidence=0.6,  # Increased from 0.4 for more reliable detection
-            min_tracking_confidence=0.5    # Increased from 0.4 for better tracking
+            min_detection_confidence=0.6,  # Increased for more reliable detection
+            min_tracking_confidence=0.5    # Better tracking
         )
         self.mp_draw = mp.solutions.drawing_utils
         self.mp_drawing_styles = mp.solutions.drawing_styles
@@ -34,6 +35,16 @@ class HandGestureDetector:
         self.debug_mode = True
         
     def detect_gestures(self, frame):
+        """
+        Detect hand gestures in the given frame and return control signals.
+        
+        Args:
+            frame: CV2 image frame
+            
+        Returns:
+            controls: Dictionary with control values
+            processed_frame: Frame with visualization
+        """
         try:
             # Convert BGR to RGB
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -71,20 +82,34 @@ class HandGestureDetector:
             # Add visualization of current controls to the frame
             self._add_control_visualization(frame, controls)
             
+            # Add speed and direction mappings for compatibility with the Car class
+            controls['speed'] = controls['throttle']
+            controls['direction'] = controls['steering']
+            
             return controls, frame
+            
         except Exception as e:
             print(f"Error in gesture detection: {e}")
+            import traceback
+            traceback.print_exc()
             return {
                 'steering': 0.0,
                 'throttle': 0.0,
                 'braking': False,
                 'boost': False,
-                'gesture_name': 'Error'
+                'gesture_name': 'Error',
+                'speed': 0.0,
+                'direction': 0.0
             }, frame
     
     def _extract_controls_from_landmarks(self, landmarks, frame, controls):
         """
-        Extract control values from hand landmarks with improved detection.
+        Extract control values from hand landmarks according to SRS specs:
+        - Steering: hand tilt for left/right
+        - Throttle: hand height for speed
+        - Brake: fist gesture
+        - Boost: thumb up, other fingers curled
+        - Stop: open palm
         """
         # Convert landmarks to more accessible format
         h, w, c = frame.shape
@@ -109,7 +134,7 @@ class HandGestureDetector:
         pinky_mcp = landmark_points[17]
         
         # ==================== STEERING DETECTION ====================
-        # Calculate hand rotation for steering
+        # Calculate hand rotation for steering (based on hand tilt)
         # Using index and pinky base for more stable steering detection
         dx = landmark_points[17][0] - landmark_points[5][0]  # Pinky MCP - Index MCP x-distance
         dy = landmark_points[17][1] - landmark_points[5][1]  # Pinky MCP - Index MCP y-distance
@@ -151,11 +176,11 @@ class HandGestureDetector:
         
         # ==================== THROTTLE DETECTION ====================
         # Detect throttle based on overall hand height (y-position)
-        # Lower hand position = more throttle
+        # Lower hand position = more throttle (as specified in SRS)
         normalized_y = 1.0 - (wrist[1] / h)  # Invert so higher hand = lower value
         raw_throttle = normalized_y
         
-        # Apply non-linear mapping for better control (squared for more precision at low speeds)
+        # Apply non-linear mapping for better control
         raw_throttle = raw_throttle ** 1.5  # Exponential curve gives more control
         
         # Apply smoothing and clamp to valid range
@@ -166,45 +191,43 @@ class HandGestureDetector:
         
         # ==================== GESTURE DETECTION ====================
         # Detect gesture based on finger positions
-        # First check if fingers are curled (thumb tip closer to wrist than knuckle)
-        index_curled = index_tip[1] > index_mcp[1]
-        middle_curled = middle_tip[1] > middle_mcp[1]
-        ring_curled = ring_tip[1] > ring_mcp[1]
-        pinky_curled = pinky_tip[1] > pinky_mcp[1]
+        # First check if fingers are curled (tip closer to wrist than knuckle)
+        index_curled = self._is_finger_curled(index_tip, index_mcp, wrist)
+        middle_curled = self._is_finger_curled(middle_tip, middle_mcp, wrist)
+        ring_curled = self._is_finger_curled(ring_tip, ring_mcp, wrist)
+        pinky_curled = self._is_finger_curled(pinky_tip, pinky_mcp, wrist)
         
-        # Detect thumb extended (y-coordinate higher than wrist)
-        thumb_extended = thumb_tip[1] < wrist[1] - h*0.1  # Thumb must be significantly higher
+        # Check thumb position (extended or not)
+        thumb_extended = self._is_thumb_extended(thumb_tip, thumb_mcp, wrist)
         
         # Detect fist (all fingers curled)
-        fist_detected = index_curled and middle_curled and ring_curled and pinky_curled
+        fist_detected = index_curled and middle_curled and ring_curled and pinky_curled and not thumb_extended
         
-        # Detect stop gesture (all fingers extended and spread)
-        # We use open palm = stop
-        all_fingers_extended = not (index_curled or middle_curled or ring_curled or pinky_curled)
+        # Detect stop gesture (all fingers extended) - open palm
+        open_palm = not index_curled and not middle_curled and not ring_curled and not pinky_curled
         
-        # Detect specialized gestures
         # Detect boost gesture (thumb up, all other fingers curled)
         boost_gesture = thumb_extended and index_curled and middle_curled and ring_curled and pinky_curled
         
-        # Detect braking gesture (fist)
-        brake_gesture = fist_detected and not thumb_extended
-        
         # Set control commands based on detected gestures
-        if boost_gesture:
-            controls['gesture_name'] = 'Boost'
-            controls['boost'] = True
-            controls['throttle'] = 1.0  # Full throttle when boosting
-            self._update_command_stability("FORWARD_BOOST")
-        elif brake_gesture:
-            controls['gesture_name'] = 'Brake'
-            controls['braking'] = True
-            controls['throttle'] = 0.0  # No throttle when braking
-            self._update_command_stability("STOP")
-        elif all_fingers_extended:
-            controls['gesture_name'] = 'Stop'
+        if open_palm:
+            controls['gesture_name'] = 'Stop (Open Palm)'
             controls['braking'] = True  # Emergency stop with open palm
             controls['throttle'] = 0.0
+            controls['boost'] = False
             self._update_command_stability("STOP")
+        elif fist_detected:
+            controls['gesture_name'] = 'Brake (Fist)'
+            controls['braking'] = True
+            controls['throttle'] = 0.0  # No throttle when braking
+            controls['boost'] = False
+            self._update_command_stability("BRAKE")
+        elif boost_gesture:
+            controls['gesture_name'] = 'Boost (Thumb Up)'
+            controls['boost'] = True
+            controls['braking'] = False
+            controls['throttle'] = 1.0  # Full throttle when boosting
+            self._update_command_stability("BOOST")
         else:
             # Regular driving with steering and throttle
             if abs(steering) > 0.3:  # Significant steering
@@ -223,6 +246,16 @@ class HandGestureDetector:
                    (frame.shape[1]//2 - 100, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
                 
         return controls
+    
+    def _is_finger_curled(self, finger_tip, finger_mcp, wrist):
+        """Check if a finger is curled by comparing the y position of the tip to the knuckle."""
+        # A finger is considered curled if its tip is lower (higher y value) than its MCP
+        return finger_tip[1] > finger_mcp[1]
+    
+    def _is_thumb_extended(self, thumb_tip, thumb_mcp, wrist):
+        """Check if thumb is extended upward."""
+        # Thumb is considered extended if it's higher than the wrist
+        return thumb_tip[1] < wrist[1] - (wrist[1] - thumb_mcp[1]) * 0.2
         
     def _update_command_stability(self, command):
         """Track command stability to avoid jitter in command sending."""
