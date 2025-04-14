@@ -47,6 +47,8 @@ class SimpleHandGestureDetector:
         
         # Debugging and feedback
         self.debug_mode = True
+        self.prev_steering = 0.0
+        self.steering_smoothing = 0.5
         
     def detect_gestures(self, frame):
         """
@@ -93,68 +95,103 @@ class SimpleHandGestureDetector:
                 wrist_x = wrist.x * width
                 wrist_y = wrist.y * height
                 
-                # Apply smoothing if we have previous positions
-                if self.prev_hand_x is not None and self.prev_hand_y is not None:
-                    wrist_x = self.prev_hand_x + (wrist_x - self.prev_hand_x) * self.smoothing_factor
-                    wrist_y = self.prev_hand_y + (wrist_y - self.prev_hand_y) * self.smoothing_factor
+                # Extract thumb tip position
+                thumb_tip = hand_landmarks.landmark[self.mp_hands.HandLandmark.THUMB_TIP]
+                thumb_tip_x = thumb_tip.x * width
+                thumb_tip_y = thumb_tip.y * height
                 
-                # Store current position for next frame
-                self.prev_hand_x = wrist_x
-                self.prev_hand_y = wrist_y
-                
-                # Calculate steering (x position)
-                # Map hand x position from 0.1-0.9 to -1.0-1.0
-                norm_x = max(0.0, min(1.0, (wrist.x - 0.1) / 0.8))
-                steering = (norm_x * 2.0) - 1.0
+                # ==================== STEERING DETECTION ====================
+                # Calculate thumb angle
+                dx_thumb = float(thumb_tip_x - wrist_x)
+                dy_thumb = float(thumb_tip_y - wrist_y)
+
+                # Calculate angle in degrees (0° is up, positive clockwise)
+                thumb_angle = float(np.degrees(np.arctan2(dx_thumb, -dy_thumb)))
+                # Convert to 0-360 range
+                if thumb_angle < 0:
+                    thumb_angle += 360
+
+                # Print debug info about thumb angle
+                if self.debug_mode:
+                    print(f"Thumb angle: {thumb_angle:.1f}")
+
+                # Define valid angle ranges for steering
+                LEFT_RANGE_START = 225  # 270° - 45°
+                LEFT_RANGE_END = 315    # 270° + 45°
+                RIGHT_RANGE_START = 45  # 90° - 45°
+                RIGHT_RANGE_END = 135   # 90° + 45°
+                UP_RANGE_START = 315    # 360° - 45°
+                UP_RANGE_END = 45       # 0° + 45°
+
+                # Check if the angle is in any of the valid steering ranges
+                is_left = LEFT_RANGE_START <= thumb_angle <= LEFT_RANGE_END
+                is_right = RIGHT_RANGE_START <= thumb_angle <= RIGHT_RANGE_END
+                is_up = thumb_angle >= UP_RANGE_START or thumb_angle <= UP_RANGE_END
+
+                # Combine the checks to get the final valid flag
+                is_valid_steering_angle = is_left or is_right or is_up
+
+                # Calculate steering value based on the angle range
+                if is_valid_steering_angle:
+                    if is_left:
+                        # Map 225°-315° to -1.0 (full left) to -0.0
+                        normalized_angle = (thumb_angle - LEFT_RANGE_START) / (LEFT_RANGE_END - LEFT_RANGE_START)
+                        raw_steering = -1.0 + normalized_angle  # Maps from -1.0 to 0.0
+                    elif is_right:
+                        # Map 45°-135° to 0.0 to 1.0 (full right)
+                        normalized_angle = (thumb_angle - RIGHT_RANGE_START) / (RIGHT_RANGE_END - RIGHT_RANGE_START)
+                        raw_steering = normalized_angle  # Maps from 0.0 to 1.0
+                    elif is_up:
+                        # Special case for up (wraps around 360)
+                        if thumb_angle >= UP_RANGE_START:
+                            # Map 315°-360° to -0.33 to 0.0
+                            normalized_angle = (thumb_angle - UP_RANGE_START) / (360 - UP_RANGE_START)
+                            raw_steering = -0.33 + normalized_angle * 0.33  # Maps to small negative values around 0
+                        else:  # thumb_angle <= UP_RANGE_END
+                            # Map 0°-45° to 0.0 to 0.33
+                            normalized_angle = thumb_angle / UP_RANGE_END
+                            raw_steering = normalized_angle * 0.33  # Maps to small positive values around 0
+                    else:
+                        # Shouldn't happen, but default to 0 for safety
+                        raw_steering = 0.0
+                else:
+                    # Not in valid range, no steering
+                    raw_steering = 0.0
+
+                # Add debug visualization to show valid/invalid regions
+                if self.debug_mode:
+                    thumb_line_length = 100
+                    thumb_angle_rad = np.radians(thumb_angle)
+                    thumb_line_end = (
+                        int(wrist_x + thumb_line_length * np.sin(thumb_angle_rad)),
+                        int(wrist_y - thumb_line_length * np.cos(thumb_angle_rad))
+                    )
+                    
+                    # Color thumb line based on range
+                    if is_left:
+                        line_color = (0, 0, 255)  # Red for left
+                    elif is_right:
+                        line_color = (0, 255, 0)  # Green for right
+                    elif is_up:
+                        line_color = (255, 255, 0)  # Yellow for up
+                    else:
+                        line_color = (128, 128, 128)  # Gray for invalid
+                    
+                    cv2.line(processed_frame, (int(wrist_x), int(wrist_y)), thumb_line_end, line_color, 2)
+                    
+                    cv2.putText(processed_frame, f"Thumb Angle: {thumb_angle:.1f}°", (10, 30), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, line_color, 2)
+                    cv2.putText(processed_frame, f"Valid Steering: {is_valid_steering_angle}", (10, 60), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, line_color, 2)
+                    cv2.putText(processed_frame, f"Steering: {raw_steering:.2f}", (10, 90), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+
+                # Apply smoothing
+                steering = float(self.prev_steering * self.steering_smoothing + raw_steering * (1 - self.steering_smoothing))
+                steering = float(max(-1.0, min(1.0, steering)))  # Clamp to valid range
+                self.prev_steering = steering
                 self.controls['steering'] = steering
-                
-                # Calculate throttle (y position)
-                # Map hand y position from 0.2-0.8 to 0.0-1.0 (inverted, lower hand is more throttle)
-                norm_y = max(0.0, min(1.0, (wrist.y - 0.2) / 0.6))
-                throttle = 1.0 - norm_y
-                self.controls['throttle'] = throttle
-                
-                # Detect gestures for boost and brake
-                # Calculate average distance between fingertips and palm
-                palm = hand_landmarks.landmark[self.mp_hands.HandLandmark.MIDDLE_FINGER_MCP]
-                fingertips = [
-                    hand_landmarks.landmark[self.mp_hands.HandLandmark.THUMB_TIP],
-                    hand_landmarks.landmark[self.mp_hands.HandLandmark.INDEX_FINGER_TIP],
-                    hand_landmarks.landmark[self.mp_hands.HandLandmark.MIDDLE_FINGER_TIP],
-                    hand_landmarks.landmark[self.mp_hands.HandLandmark.RING_FINGER_TIP],
-                    hand_landmarks.landmark[self.mp_hands.HandLandmark.PINKY_TIP]
-                ]
-                
-                # Calculate average distance from palm to fingertips
-                total_dist = 0
-                for fingertip in fingertips:
-                    dist = ((fingertip.x - palm.x)**2 + (fingertip.y - palm.y)**2)**0.5
-                    total_dist += dist
-                avg_dist = total_dist / 5
-                
-                # Detect fist gesture (small distance = fist)
-                fist_threshold = 0.08
-                if avg_dist < fist_threshold:
-                    # Hand is in a fist
-                    if wrist.y < 0.4:  # Hand is high - boost
-                        self.controls['boost'] = True
-                        cv2.putText(processed_frame, "BOOST", (50, 50), 
-                                   cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
-                    else:  # Hand is low/middle - brake
-                        self.controls['braking'] = True
-                        cv2.putText(processed_frame, "BRAKE", (50, 50), 
-                                   cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-                
-                # Detect open palm (emergency stop)
-                palm_threshold = 0.15
-                if avg_dist > palm_threshold:
-                    # Emergency stop - override all controls
-                    self.controls['steering'] = 0.0
-                    self.controls['throttle'] = 0.0
-                    self.controls['braking'] = True
-                    self.controls['boost'] = False
-                    cv2.putText(processed_frame, "STOP", (50, 100), 
-                               cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                self.controls['thumb_angle'] = thumb_angle  # Add thumb angle to controls
         
         # Create data panel
         data_panel = self._create_data_panel(width, height)
