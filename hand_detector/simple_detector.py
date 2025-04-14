@@ -107,6 +107,7 @@ class SimpleHandGestureDetector:
     
     def _extract_controls_from_landmarks(self, landmarks, frame, controls):
         """Extract control values from hand landmarks."""
+        print("RUNNING UPDATED CODE VERSION!")
         h, w, c = frame.shape
         landmark_points = []
         
@@ -141,26 +142,65 @@ class SimpleHandGestureDetector:
         if thumb_angle < 0:
             thumb_angle += 360
         
-        # Modified steering calculation based on thumb angle:
-        # - 0 is vertical up
-        # - 90 is right
-        # - 270 is left
-        # - We only use a 180-degree range for steering
+        # Define invalid angle range for thumb pointing down
+        INVALID_ANGLE_MIN = 80
+        INVALID_ANGLE_MAX = 280
         
-        # Determine if the angle is in the valid range (between 270° and 90°)
-        if 270 <= thumb_angle <= 360 or 0 <= thumb_angle <= 90:
-            # Convert 270-360° to -90-0°
-            if thumb_angle > 270:
-                normalized_angle = thumb_angle - 360  # Maps 270-360° to -90-0°
+        # Check if thumb is pointing in a valid steering direction
+        is_valid_steering_angle = not (INVALID_ANGLE_MIN < thumb_angle < INVALID_ANGLE_MAX)
+        
+        # Additional check: vertical alignment of thumb
+        VERTICAL_THRESHOLD = 30  # Margin around vertical (degrees)
+        is_too_vertical = (thumb_angle < VERTICAL_THRESHOLD or thumb_angle > 360 - VERTICAL_THRESHOLD or
+                          abs(thumb_angle - 180) < VERTICAL_THRESHOLD)
+        
+        # Debug prints for thumb angle calculation
+        print(f"Thumb angle: {thumb_angle:.1f}")
+        print(f"Is valid steering angle: {is_valid_steering_angle}")
+        print(f"Is too vertical: {is_too_vertical}")
+        print(f"Using for steering: {is_valid_steering_angle and not is_too_vertical}")
+        
+        # Add strong visual emphasis for invalid thumb positions
+        if not (is_valid_steering_angle and not is_too_vertical):
+            # Draw a large red circle to indicate invalid thumb position
+            cv2.circle(frame, thumb_tip, 30, (0, 0, 255), 2)
+            # Add large warning text
+            cv2.putText(frame, "INVALID THUMB ANGLE", 
+                        (frame.shape[1]//2 - 150, frame.shape[0]//2), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 3)
+        
+        if is_valid_steering_angle and not is_too_vertical:
+            # Convert angle to normalized_angle in range -90 to 90
+            if 270 <= thumb_angle <= 360:
+                normalized_angle = thumb_angle - 360  # Convert 270-360° to -90-0°
             else:
                 normalized_angle = thumb_angle  # 0-90° remains the same
             
-            # Now normalized_angle is between -90° and 90°
-            # Map -90° to -1.0 (full left) and 90° to 1.0 (full right)
+            # Map normalized_angle in range -90° to 90° to steering coefficient in range -1.0 to 1.0
             raw_steering = normalized_angle / 90.0
         else:
-            # Thumb is pointing down or in invalid range, set steering to 0
+            # Thumb is pointing down or too vertical - not considered for steering
             raw_steering = 0.0
+        
+        # Add debug visualization to show valid/invalid regions
+        if self.debug_mode:
+            thumb_line_length = 100
+            thumb_angle_rad = np.radians(thumb_angle)
+            thumb_line_end = (
+                int(wrist[0] + thumb_line_length * np.sin(thumb_angle_rad)),
+                int(wrist[1] - thumb_line_length * np.cos(thumb_angle_rad))
+            )
+            
+            # Color thumb line green if valid angle, red if not
+            line_color = (0, 255, 0) if is_valid_steering_angle and not is_too_vertical else (0, 0, 255)
+            cv2.line(frame, wrist, thumb_line_end, line_color, 2)
+            
+            cv2.putText(frame, f"Thumb Angle: {thumb_angle:.1f}°", (10, 30), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, line_color, 2)
+            cv2.putText(frame, f"Valid Steering: {is_valid_steering_angle and not is_too_vertical}", (10, 60), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, line_color, 2)
+            cv2.putText(frame, f"Steering: {raw_steering:.2f}", (10, 90), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
         
         # Apply smoothing
         steering = float(self.prev_steering * self.steering_smoothing + raw_steering * (1 - self.steering_smoothing))
@@ -169,35 +209,7 @@ class SimpleHandGestureDetector:
         controls['steering'] = steering
         controls['thumb_angle'] = thumb_angle  # Add thumb angle to controls
         
-        # Draw indicator for thumb angle in debug mode
-        if self.debug_mode:
-            thumb_line_length = 100
-            thumb_angle_rad = np.radians(thumb_angle)
-            thumb_line_end = (
-                int(wrist[0] + thumb_line_length * np.sin(thumb_angle_rad)),
-                int(wrist[1] - thumb_line_length * np.cos(thumb_angle_rad))
-            )
-            cv2.line(frame, wrist, thumb_line_end, (255, 0, 255), 2)
-            cv2.putText(frame, f"Thumb Angle: {thumb_angle:.1f}°", (10, 30), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 255), 2)
-            cv2.putText(frame, f"Steering: {steering:.2f}", (10, 60), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-            
-            # Draw steering range indicator (270° to 90°)
-            cv2.putText(frame, "Valid steering range:", (10, 90),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 255), 2)
-            cv2.putText(frame, "270° (left) to 90° (right)", (10, 120),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 255), 2)
-            
-            # Indicate if current angle is in valid range
-            in_range = (270 <= thumb_angle <= 360 or 0 <= thumb_angle <= 90)
-            range_status = "In valid range" if in_range else "OUT OF RANGE"
-            range_color = (0, 255, 0) if in_range else (0, 0, 255)
-            cv2.putText(frame, range_status, (10, 150),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, range_color, 2)
-            
         # ==================== THROTTLE DETECTION ====================
-        # Throttle based on hand height (y-position)
         normalized_y = float(1.0 - (wrist[1] / h))
         raw_throttle = normalized_y
         
@@ -211,20 +223,14 @@ class SimpleHandGestureDetector:
         controls['throttle'] = throttle
         
         # ==================== GESTURE DETECTION ====================
-        # Check if fingers are curled
         index_curled = index_tip[1] > index_mcp[1]
         middle_curled = middle_tip[1] > middle_mcp[1]
         ring_curled = ring_tip[1] > ring_mcp[1]
         pinky_curled = pinky_tip[1] > pinky_mcp[1]
         thumb_curled = thumb_tip[0] > thumb_mcp[0] if wrist[0] > thumb_mcp[0] else thumb_tip[0] < thumb_mcp[0]
         
-        # Detect V sign (index and middle fingers extended, other fingers curled)
         v_sign = not index_curled and not middle_curled and ring_curled and pinky_curled
-        
-        # Fist detection
         fist_detected = index_curled and middle_curled and ring_curled and pinky_curled and thumb_curled
-        
-        # Check if fingers are extended
         fingers_extended = (
             not index_curled and
             not middle_curled and
@@ -232,10 +238,8 @@ class SimpleHandGestureDetector:
             not pinky_curled
         )
         
-        # Simple stop gesture detection
         stop_sign_gesture = fingers_extended and not thumb_curled
         
-        # Add debug visualization
         if self.debug_mode:
             cv2.putText(frame, f"Fingers Extended: {fingers_extended}", (10, 120), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
@@ -244,11 +248,9 @@ class SimpleHandGestureDetector:
             cv2.putText(frame, f"Fist Detected: {fist_detected}", (10, 180), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
             
-        # Detect boost (V sign) and brake gestures
-        boost_gesture = v_sign  # Changed from fist detection to V sign
+        boost_gesture = v_sign
         brake_gesture = fist_detected
         
-        # Set controls based on detected gestures
         if stop_sign_gesture:
             controls['gesture_name'] = 'Stop'
             controls['braking'] = True
@@ -256,7 +258,7 @@ class SimpleHandGestureDetector:
             controls['boost'] = False
             self._update_command_stability("STOP")
         elif boost_gesture:
-            controls['gesture_name'] = 'Boost (V sign)'  # Updated gesture name
+            controls['gesture_name'] = 'Boost (V sign)'
             controls['boost'] = True
             controls['braking'] = False
             controls['throttle'] = 1.0
@@ -268,11 +270,10 @@ class SimpleHandGestureDetector:
             controls['throttle'] = 0.0
             self._update_command_stability("STOP")
         else:
-            # Regular driving with steering and throttle
             controls['braking'] = False
             controls['boost'] = False
             
-            if abs(steering) > 0.3:  # Significant steering
+            if abs(steering) > 0.3:
                 if steering < -0.3:
                     controls['gesture_name'] = 'Turning Left'
                     self._update_command_stability("LEFT")
@@ -283,10 +284,8 @@ class SimpleHandGestureDetector:
                 controls['gesture_name'] = 'Forward'
                 self._update_command_stability("FORWARD")
                 
-        # Add thumb angle to controls for display in data panel
         controls['thumb_angle'] = thumb_angle
         
-        # Draw current gesture regardless of gesture
         cv2.putText(
             frame,
             f"Gesture: {controls['gesture_name']}",
@@ -297,7 +296,6 @@ class SimpleHandGestureDetector:
             2
         )
         
-        # Display thumb angle on frame
         cv2.putText(
             frame,
             f"Thumb Angle: {thumb_angle:.1f}°",
@@ -330,18 +328,15 @@ class SimpleHandGestureDetector:
         panel_height = 300
         panel = np.ones((panel_height, panel_width, 3), dtype=np.uint8) * 255
         
-        # Add title
         cv2.putText(panel, "Hand Gesture Controls", (20, 30), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 2)
         cv2.line(panel, (20, 40), (panel_width - 20, 40), (0, 0, 0), 1)
         
-        # Add thumb angle display prominently
         if 'thumb_angle' in controls:
             thumb_angle = controls['thumb_angle']
             cv2.putText(panel, f"THUMB ANGLE: {thumb_angle:.1f}°", (20, 70), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 0, 255), 2)
         
-        # Add current gesture info
         y_pos = 100
         cv2.putText(panel, "GESTURE:", (20, y_pos), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2)
@@ -349,12 +344,10 @@ class SimpleHandGestureDetector:
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
         y_pos += 30
         
-        # Add stability info
         cv2.putText(panel, f"Stability: {self.command_stability_count}/{self.stability_threshold}", 
                     (20, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1)
         y_pos += 30
         
-        # Add steering info
         cv2.putText(panel, f"Steering: {controls['steering']:.2f}", (20, y_pos), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1)
         bar_x = 200
@@ -368,7 +361,6 @@ class SimpleHandGestureDetector:
         cv2.circle(panel, (steer_pos, y_pos - 5), 6, (0, 0, 255), -1)
         y_pos += 30
         
-        # Add throttle info
         cv2.putText(panel, f"Throttle: {controls['throttle']:.2f}", (20, y_pos), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1)
         cv2.rectangle(panel, (bar_x, y_pos - 12), (bar_x + bar_width, y_pos + 3), (220, 220, 220), -1)
@@ -377,7 +369,6 @@ class SimpleHandGestureDetector:
         cv2.rectangle(panel, (bar_x, y_pos - 12), (bar_x + fill_width, y_pos + 3), (0, 255, 0), -1)
         y_pos += 30
         
-        # Add brake and boost status
         brake_color = (0, 0, 255) if controls['braking'] else (150, 150, 150)
         boost_color = (255, 165, 0) if controls['boost'] else (150, 150, 150)
         cv2.putText(panel, "Braking:", (20, y_pos), 
@@ -388,7 +379,6 @@ class SimpleHandGestureDetector:
         cv2.circle(panel, (260, y_pos - 5), 8, boost_color, -1)
         y_pos += 40
         
-        # Add control help
         cv2.putText(panel, "CONTROLS:", (20, y_pos), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1)
         y_pos += 25

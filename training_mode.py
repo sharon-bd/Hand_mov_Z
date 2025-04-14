@@ -686,10 +686,15 @@ class TrainingMode:
                     obstacle['width'] // 2
                 )
                 
-                # Add some texture
+                # Add some texture - make sure we don't have negative color values
+                texture_color = (
+                    max(0, color[0] - 30),
+                    max(0, color[1] - 30), 
+                    max(0, color[2] - 30)
+                )
                 pygame.draw.circle(
                     self.screen,
-                    (color[0] - 30, color[1] - 30, color[2] - 30),
+                    texture_color,
                     (obstacle['x'] + 5, obstacle['y'] - 5),
                     obstacle['width'] // 4
                 )
