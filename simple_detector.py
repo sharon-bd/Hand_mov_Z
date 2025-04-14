@@ -49,6 +49,9 @@ class SimpleHandGestureDetector:
         self.debug_mode = True
         self.prev_steering = 0.0
         self.steering_smoothing = 0.5
+        # Add throttle smoothing parameters
+        self.prev_throttle = 0.0
+        self.throttle_smoothing = 0.5
         
     def detect_gestures(self, frame):
         """
@@ -192,6 +195,27 @@ class SimpleHandGestureDetector:
                 self.prev_steering = steering
                 self.controls['steering'] = steering
                 self.controls['thumb_angle'] = thumb_angle  # Add thumb angle to controls
+                
+                # ==================== THROTTLE DETECTION ====================
+                # Normalize wrist position on Y-axis (screen height)
+                normalized_y = float(1.0 - (wrist.y))  # Invert value so higher = higher hand
+                raw_throttle = normalized_y
+
+                # Non-linear mapping for better control (exponential for finer control at low speeds)
+                raw_throttle = float(raw_throttle ** 1.5)
+
+                # Smooth movement and clamp to valid range
+                throttle = float(self.prev_throttle * self.throttle_smoothing + raw_throttle * (1 - self.throttle_smoothing))
+                throttle = float(max(0.0, min(1.0, throttle)))  # Clamp to range 0 to 1
+                self.prev_throttle = throttle
+                self.controls['throttle'] = throttle
+
+                # Add debug visualization if required
+                if self.debug_mode:
+                    throttle_line_y = int(height * (1 - normalized_y))
+                    cv2.line(processed_frame, (0, throttle_line_y), (width, throttle_line_y), (0, 255, 0), 2)
+                    cv2.putText(processed_frame, f"Throttle: {throttle:.2f}", (10, 120), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
         
         # Create data panel
         data_panel = self._create_data_panel(width, height)

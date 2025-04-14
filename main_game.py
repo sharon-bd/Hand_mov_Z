@@ -152,27 +152,16 @@ class GameLauncher:
         )
         
     def launch_training_mode(self):
-        """Launch the training mode."""
+        """Launch the training mode for the game."""
         print("Launching Training Mode...")
-        self.menu_active = False
-        
-        # Create and run the training mode
-        self.training_mode = TrainingMode()
-        
         try:
-            self.training_mode.run()
+            # Pass the screen parameter to TrainingMode
+            self.training_mode = TrainingMode(self.screen)
+            self.training_mode.start()
+            return True  # Successful launch
         except Exception as e:
             print(f"Error in training mode: {e}")
-            import traceback
-            traceback.print_exc()
-        finally:
-            if self.training_mode:
-                self.training_mode.cleanup()
-                self.training_mode = None
-            
-            # Return to menu
-            self.menu_active = True
-            return True
+            return False  # Launch failed
     
     def launch_game_mode(self, mode):
         """Launch the selected game mode."""
