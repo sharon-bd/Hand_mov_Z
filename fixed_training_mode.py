@@ -351,6 +351,9 @@ class TrainingMode:
         self.camera_frame = None
         self.data_panel = None
         
+        # Add mirror mode setting
+        self.mirror_image = True  # Default: mirror mode is enabled
+        
     def select_camera(self, camera_index):
         """Select and initialize a camera by index."""
         # Release current camera if any
@@ -470,8 +473,9 @@ class TrainingMode:
                     'boost': False
                 }
             
-            # Flip the frame for mirror effect (more intuitive)
-            frame = cv2.flip(frame, 1)
+            # Only flip the frame if mirror mode is enabled
+            if self.mirror_image:
+                frame = cv2.flip(frame, 1)
             
             # Process the frame for hand gestures
             controls, processed_frame, data_panel = self.detector.detect_gestures(frame)
@@ -516,6 +520,12 @@ class TrainingMode:
                     elif not self.game_active:
                         # Start game
                         self.start_game()
+                
+                # Add key handler for mirror mode toggle
+                elif event.key == pygame.K_m:
+                    # Toggle mirror image mode
+                    self.mirror_image = not self.mirror_image
+                    print(f"Mirror mode: {'ON' if self.mirror_image else 'OFF'}")
                         
                 # Toggle camera display with 'c' key
                 elif event.key == pygame.K_c:
@@ -710,10 +720,14 @@ class TrainingMode:
                 camera_text = self.font_small.render(f"Camera: {camera_name} (Shift+←/→ to switch)", True, WHITE)
                 self.screen.blit(camera_text, (20, 100))
             
+            # Add mirror mode status indicator
+            mirror_status = self.font_small.render(f"Mirror Mode: {'ON' if self.mirror_image else 'OFF'} (Press M to toggle)", True, WHITE)
+            self.screen.blit(mirror_status, (SCREEN_WIDTH // 2 - mirror_status.get_width() // 2, SCREEN_HEIGHT - 60))
+            
             # Draw controls guide
             control_text = self.font_small.render("Hand Left/Right: Steer | Hand Up/Down: Speed | Fist: Brake | Fist Up: Boost | Open Palm: Stop", True, WHITE)
             self.screen.blit(control_text, (SCREEN_WIDTH // 2 - control_text.get_width() // 2, SCREEN_HEIGHT - 30))
-    
+            
     def draw_camera_feed(self):
         """Draw the camera feed and data panel."""
         if self.camera_frame is not None and self.data_panel is not None:
@@ -822,7 +836,11 @@ class TrainingMode:
             
             # Instructions
             instructions = self.font_small.render("Use LEFT/RIGHT arrow keys to select, SPACE to confirm", True, WHITE)
-            self.screen.blit(instructions, (SCREEN_WIDTH // 2 - instructions.get_width() // 2, SCREEN_HEIGHT - 50))
+            self.screen.blit(instructions, (SCREEN_WIDTH // 2 - instructions.get_width() // 2, SCREEN_HEIGHT - 80))
+            
+            # Add mirror mode status
+            mirror_status = self.font_small.render(f"Mirror Mode: {'ON' if self.mirror_image else 'OFF'} (Press M to toggle)", True, WHITE)
+            self.screen.blit(mirror_status, (SCREEN_WIDTH // 2 - mirror_status.get_width() // 2, SCREEN_HEIGHT - 50))
     
     def draw_tutorial(self):
         """Draw the tutorial overlay."""
