@@ -151,11 +151,18 @@ class Car:
         move_amount = speed_pixels_per_second * dt
         turn_factor = self.direction * move_amount * 0.05
         
-        # Update car position - in training mode movement is only horizontal
+        # Update car position - horizontal movement based on steering
         self.x += turn_factor * 10  # Amplified horizontal movement for better control practice
+        
+        # Add vertical movement based on throttle - move up when throttle increases
+        # In a car game, higher throttle should move the car up the screen (decreasing y-value)
+        # This simulates the car moving forward on the track
+        vertical_move_amount = move_amount * 0.5  # Adjust this scaling factor as needed
+        self.y -= vertical_move_amount  # Subtract to move up the screen
         
         # Keep car within screen bounds
         self.x = max(self.width//2, min(SCREEN_WIDTH - self.width//2, self.x))
+        self.y = max(self.height//2, min(SCREEN_HEIGHT - self.height//2, self.y))
         
         # Update collision detection points
         self.update_collision_points()
