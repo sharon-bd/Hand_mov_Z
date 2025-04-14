@@ -338,10 +338,142 @@ class EnhancedHandGestureDetector:
         self.detection_data['raw_throttle'] = raw_throttle
         
         # Apply non-linear mapping for better control (squared for more precision at low speeds)
-        raw_throttle = float(raw_throttle ** 1.5)  # Exponential curve gives more control
+        raw_throttle = float(np.power(max(0, raw_throttle), 1.5))
         
         # Apply smoothing and clamp to valid range
         throttle = float(self.prev_throttle * self.throttle_smoothing + raw_throttle * (1 - self.throttle_smoothing))
         throttle = float(max(0.0, min(1.0, throttle)))  # Clamp to valid range
         self.prev_throttle = throttle
         controls['throttle'] = throttle
+        
+        # Return the updated controls
+        return controls
+    
+    def _add_minimal_visualization(self, frame, controls):
+        """Add minimal visual indicators to the frame."""
+        h, w, _ = frame.shape
+        
+        # בדיקה שהאובייקט controls אינו None
+        if controls is None:
+            controls = {
+                'gesture_name': 'Error',
+                'steering': 0.0,
+                'throttle': 0.0,
+                'braking': False,
+                'boost': False
+            }
+        
+        # Add gesture name
+        cv2.putText(
+            frame,
+            f"Gesture: {controls['gesture_name']}",
+            (10, 30),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            (0, 255, 0),
+            2
+        )
+        
+        # Add controls
+        cv2.putText(
+            frame,
+            f"Steering: {controls['steering']:.2f}",
+            (10, 60),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            (0, 255, 255),
+            2
+        )
+        
+        cv2.putText(
+            frame,
+            f"Throttle: {controls['throttle']:.2f}",
+            (10, 90),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            (0, 255, 255),
+            2
+        )
+        
+        # Add status indicators for braking and boost
+        brake_color = (0, 0, 255) if controls['braking'] else (200, 200, 200)
+        boost_color = (255, 165, 0) if controls['boost'] else (200, 200, 200)
+        
+        cv2.putText(
+            frame,
+            "BRAKE",
+            (w - 120, 30),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            brake_color,
+            2
+        )
+        
+        cv2.putText(
+            frame,
+            "BOOST",
+            (w - 120, 60),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            boost_color,
+            2
+        )
+        
+        return frame
+        
+    def _create_data_panel(self, controls):
+        """Create a panel with numerical data for analysis."""
+        # Create a white panel
+        panel_width = 400
+        panel_height = 300
+        panel = np.ones((panel_height, panel_width, 3), dtype=np.uint8) * 255
+        
+        # Draw title
+        cv2.putText(panel, "Hand Gesture Detection Data", (20, 30), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 2)
+        cv2.line(panel, (20, 40), (panel_width - 20, 40), (0, 0, 0), 1)
+        
+        # Draw gesture info
+        cv2.putText(panel, f"Gesture: {controls['gesture_name']}", (20, 70), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2)
+        
+        # Draw numerical data
+        y_pos = 110
+        cv2.putText(panel, f"Thumb Angle: {self.detection_data['thumb_angle']:.1f}°", (20, y_pos), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1)
+        y_pos += 30
+        
+        cv2.putText(panel, f"Hand Height: {1.0 - self.detection_data['normalized_y']:.2f}", (20, y_pos), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1)
+        y_pos += 30
+        
+        # Draw finger status
+        cv2.putText(panel, "Finger Status:", (20, y_pos), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1)
+        y_pos += 25
+        
+        for finger, extended in self.detection_data['finger_status'].items():
+            status = "Extended" if extended else "Curled"
+            color = (0, 128, 0) if extended else (0, 0, 200)
+            cv2.putText(panel, f"- {finger.capitalize()}: {status}", (40, y_pos), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+            y_pos += 20
+        
+        # Add detection summary
+        y_pos += 10
+        cv2.putText(panel, "Detected Gestures:", (20, y_pos), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1)
+        y_pos += 25
+        
+        # Show stop sign detection
+        stop_color = (0, 128, 0) if self.detection_data['stop_sign_detected'] else (0, 0, 200)
+        cv2.putText(panel, f"- Stop Sign: {self.detection_data['stop_sign_detected']}", (40, y_pos), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, stop_color, 1)
+        y_pos += 20
+        
+        # Show all fingers extended
+        fingers_color = (0, 128, 0) if self.detection_data['all_fingers_extended'] else (0, 0, 200)
+        cv2.putText(panel, f"- All Fingers: {self.detection_data['all_fingers_extended']}", (40, y_pos), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, fingers_color, 1)
+        
+        return panel
