@@ -322,9 +322,9 @@ class EnhancedHandGestureDetector:
                 int(wrist[1] - thumb_line_length * np.cos(thumb_angle_rad))
             )
             cv2.line(frame, wrist, thumb_line_end, (255, 0, 255), 2)
-            cv2.putText(frame, f"Thumb Angle: {thumb_angle:.1f}", (10, 30), 
+            cv2.putText(frame, f"Thumb Angle: {thumb_angle:.1f}", (10, 130), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 255), 2)
-            cv2.putText(frame, f"Steering: {steering:.2f}", (10, 60), 
+            cv2.putText(frame, f"Steering: {steering:.2f}", (10, 160), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
         
         # ==================== THROTTLE DETECTION ====================
@@ -345,6 +345,40 @@ class EnhancedHandGestureDetector:
         throttle = float(max(0.0, min(1.0, throttle)))  # Clamp to valid range
         self.prev_throttle = throttle
         controls['throttle'] = throttle
+        
+        # Check for fist (braking gesture) - כל האצבעות מכופפות
+        index_curled = index_tip[1] > index_mcp[1]  # האצבע מכופפת אם הקצה מתחת למפרק
+        middle_curled = middle_tip[1] > middle_mcp[1]
+        ring_curled = ring_tip[1] > ring_mcp[1]
+        pinky_curled = pinky_tip[1] > pinky_mcp[1]
+        thumb_curled = thumb_tip[0] > thumb_mcp[0] if wrist[0] > thumb_mcp[0] else thumb_tip[0] < thumb_mcp[0]
+
+        fist_detected = index_curled and middle_curled and ring_curled and pinky_curled
+        self.detection_data['fist_detected'] = fist_detected
+
+        # בדיקת מחוות stop sign (יד פתוחה)
+        stop_sign = self._detect_stop_sign_gesture(landmark_points, frame) 
+
+        # בדיקת מחוות boost (אגודל למעלה, שאר האצבעות מכופפות)
+        boost_gesture = thumb_tip[1] < wrist[1] - 50 and index_curled and middle_curled and ring_curled and pinky_curled
+
+        # עדכון ערכי השליטה
+        if fist_detected:
+            controls['braking'] = True
+            controls['gesture_name'] = 'Brake (Fist)'
+        elif stop_sign:
+            controls['braking'] = True
+            controls['gesture_name'] = 'Stop (Open Palm)'
+        elif boost_gesture:
+            controls['boost'] = True
+            controls['gesture_name'] = 'Boost (Thumb Up)'
+        elif abs(steering) > 0.3:
+            if steering < -0.3:
+                controls['gesture_name'] = 'Turning Left'
+            else:
+                controls['gesture_name'] = 'Turning Right'
+        else:
+            controls['gesture_name'] = 'Forward'
         
         # Return the updated controls
         return controls
@@ -381,7 +415,7 @@ class EnhancedHandGestureDetector:
             (10, 60),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.7,
-            (0, 255, 255),
+            (255, 255, 0),  # צהוב במקום כחול-צהוב
             2
         )
         
@@ -391,18 +425,19 @@ class EnhancedHandGestureDetector:
             (10, 90),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.7,
-            (0, 255, 255),
+            (255, 255, 0),  # צהוב במקום כחול-צהוב
             2
         )
         
-        # Add status indicators for braking and boost
+        # Add status indicators for braking and boost אבל במיקום אחר
         brake_color = (0, 0, 255) if controls['braking'] else (200, 200, 200)
         boost_color = (255, 165, 0) if controls['boost'] else (200, 200, 200)
         
+        # הזזת הכיתובים BRAKE ו-BOOST לתחתית המסך במקום למעלה
         cv2.putText(
             frame,
             "BRAKE",
-            (w - 120, 30),
+            (w - 120, h - 60),  # שינוי המיקום לתחתית המסך
             cv2.FONT_HERSHEY_SIMPLEX,
             0.7,
             brake_color,
@@ -412,7 +447,7 @@ class EnhancedHandGestureDetector:
         cv2.putText(
             frame,
             "BOOST",
-            (w - 120, 60),
+            (w - 120, h - 30),  # שינוי המיקום לתחתית המסך
             cv2.FONT_HERSHEY_SIMPLEX,
             0.7,
             boost_color,
@@ -424,8 +459,8 @@ class EnhancedHandGestureDetector:
     def _create_data_panel(self, controls):
         """Create a panel with numerical data for analysis."""
         # Create a white panel
-        panel_width = 400
-        panel_height = 300
+        panel_width = 500
+        panel_height = 400
         panel = np.ones((panel_height, panel_width, 3), dtype=np.uint8) * 255
         
         # Draw title
@@ -455,7 +490,7 @@ class EnhancedHandGestureDetector:
         for finger, extended in self.detection_data['finger_status'].items():
             status = "Extended" if extended else "Curled"
             color = (0, 128, 0) if extended else (0, 0, 200)
-            cv2.putText(panel, f"- {finger.capitalize()}: {status}", (40, y_pos), 
+            cv2.putText(panel, f"- {finger.capitalize()}: {status}", (60, y_pos), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
             y_pos += 20
         

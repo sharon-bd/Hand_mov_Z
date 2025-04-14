@@ -308,8 +308,12 @@ def main():
     
     # Create windows
     cv2.namedWindow("Hand Detection", cv2.WINDOW_NORMAL)
+    cv2.resizeWindow("Hand Detection", 800, 600)  # גודל חלון גדול יותר
+    
     cv2.namedWindow("Control Visualization", cv2.WINDOW_NORMAL)
+    
     cv2.namedWindow("Data Panel", cv2.WINDOW_NORMAL)
+    cv2.resizeWindow("Data Panel", 500, 400)  # גודל חלון גדול יותר
     
     print("\nPress 'q' or ESC to exit.")
     
