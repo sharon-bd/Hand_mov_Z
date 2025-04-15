@@ -353,8 +353,7 @@ class EnhancedHandGestureDetector:
         pinky_curled = pinky_tip[1] > pinky_mcp[1]
         thumb_curled = thumb_tip[0] > thumb_mcp[0] if wrist[0] > thumb_mcp[0] else thumb_tip[0] < thumb_mcp[0]
 
-        fist_detected = index_curled and middle_curled and ring_curled and pinky_curled
-        self.detection_data['fist_detected'] = fist_detected
+        fist_detected = index_curled and middle_curled and ring_curled and pinky_curled and thumb_curled  # או not self.detection_data['finger_status']["thumb"]
 
         # בדיקת מחוות stop sign (יד פתוחה)
         stop_sign = self._detect_stop_sign_gesture(landmark_points, frame) 
