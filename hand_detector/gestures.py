@@ -254,8 +254,15 @@ class HandGestureDetector:
     
     def _is_thumb_extended(self, thumb_tip, thumb_mcp, wrist):
         """Check if thumb is extended upward."""
-        # Thumb is considered extended if it's higher than the wrist
-        return thumb_tip[1] < wrist[1] - (wrist[1] - thumb_mcp[1]) * 0.2
+        # בדיקה אם האגודל פשוט למעלה
+        basic_check = thumb_tip[1] < wrist[1] - (wrist[1] - thumb_mcp[1]) * 0.2
+        
+        # בדיקה נוספת של האם האגודל מרוחק מהיד
+        # חישוב מרחק אופקי מכף היד
+        horizontal_distance = abs(thumb_tip[0] - wrist[0])
+        
+        # אגודל מורם אם הוא גם למעלה וגם מרוחק מספיק
+        return basic_check and horizontal_distance > 20
         
     def _update_command_stability(self, command):
         """Track command stability to avoid jitter in command sending."""
