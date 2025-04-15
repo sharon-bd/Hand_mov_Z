@@ -360,7 +360,8 @@ class EnhancedHandGestureDetector:
         stop_sign = self._detect_stop_sign_gesture(landmark_points, frame) 
 
         # בדיקת מחוות boost (אגודל למעלה, שאר האצבעות מכופפות)
-        boost_gesture = thumb_tip[1] < wrist[1] - 50 and index_curled and middle_curled and ring_curled and pinky_curled
+        # שימוש רק בבדיקת אגודל מורם ואצבע מורה מכופפת לזיהוי בוסט
+        boost_gesture = thumb_tip[1] < wrist[1] - 30 and index_curled
 
         # עדכון ערכי השליטה
         if fist_detected:
