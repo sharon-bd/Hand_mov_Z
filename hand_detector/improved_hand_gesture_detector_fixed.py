@@ -377,14 +377,16 @@ class EnhancedHandGestureDetector:
         pinky_curled = pinky_tip[1] > pinky_mcp[1]
         thumb_curled = thumb_tip[0] > thumb_mcp[0] if wrist[0] > thumb_mcp[0] else thumb_tip[0] < thumb_mcp[0]
 
-        fist_detected = index_curled and middle_curled and ring_curled and pinky_curled and thumb_curled  # או not self.detection_data['finger_status']["thumb"]
+        # בדיקת מחוות boost (אגודל למעלה, שאר האצבעות מכופפות)
+        # שימוש רק בבדיקת אגודל מורם ואצבע מורה מכופפת לזיהוי בוסט
+        thumb_pointing_up = thumb_tip[1] < wrist[1] - 30  # אגודל מצביע למעלה
+        boost_gesture = thumb_pointing_up and index_curled and middle_curled and ring_curled and pinky_curled
+
+        # תיקון בדיקת אגרוף כדי שלא יכלול את מחוות האגודל למעלה
+        fist_detected = index_curled and middle_curled and ring_curled and pinky_curled and thumb_curled and not boost_gesture
 
         # בדיקת מחוות stop sign (יד פתוחה)
         stop_sign = self._detect_stop_sign_gesture(landmark_points, frame) 
-
-        # בדיקת מחוות boost (אגודל למעלה, שאר האצבעות מכופפות)
-        # שימוש רק בבדיקת אגודל מורם ואצבע מורה מכופפת לזיהוי בוסט
-        boost_gesture = thumb_tip[1] < wrist[1] - 30 and index_curled
 
         # עדכון ערכי השליטה
         if fist_detected:
@@ -409,8 +411,11 @@ class EnhancedHandGestureDetector:
     
     def _add_minimal_visualization(self, frame, controls):
         """Add minimal visual indicators to the frame."""
+        # First store the original frame for text overlay
+        original_frame = frame.copy()
+        
         # Create a mirror display by flipping the frame horizontally
-        frame = cv2.flip(frame, 1)
+        mirrored_frame = cv2.flip(frame, 1)
         
         h, w, _ = frame.shape
         
@@ -424,9 +429,9 @@ class EnhancedHandGestureDetector:
                 'boost': False
             }
         
-        # Add gesture name
+        # Add gesture name to mirrored frame (without mirroring text)
         cv2.putText(
-            frame,
+            mirrored_frame,
             f"Gesture: {controls['gesture_name']}",
             (10, 30),
             cv2.FONT_HERSHEY_SIMPLEX,
@@ -437,7 +442,7 @@ class EnhancedHandGestureDetector:
         
         # Add controls
         cv2.putText(
-            frame,
+            mirrored_frame,
             f"Steering: {controls['steering']:.2f}",
             (10, 60),
             cv2.FONT_HERSHEY_SIMPLEX,
@@ -447,7 +452,7 @@ class EnhancedHandGestureDetector:
         )
         
         cv2.putText(
-            frame,
+            mirrored_frame,
             f"Throttle: {controls['throttle']:.2f}",
             (10, 90),
             cv2.FONT_HERSHEY_SIMPLEX,
@@ -462,7 +467,7 @@ class EnhancedHandGestureDetector:
         
         # הזזת הכיתובים BRAKE ו-BOOST לתחתית המסך במקום למעלה
         cv2.putText(
-            frame,
+            mirrored_frame,
             "BRAKE",
             (w - 120, h - 60),  # שינוי המיקום לתחתית המסך
             cv2.FONT_HERSHEY_SIMPLEX,
@@ -472,7 +477,7 @@ class EnhancedHandGestureDetector:
         )
         
         cv2.putText(
-            frame,
+            mirrored_frame,
             "BOOST",
             (w - 120, h - 30),  # שינוי המיקום לתחתית המסך
             cv2.FONT_HERSHEY_SIMPLEX,
@@ -481,7 +486,7 @@ class EnhancedHandGestureDetector:
             2
         )
         
-        return frame
+        return mirrored_frame
         
     def _create_data_panel(self, controls):
         """Create a panel with numerical data for analysis."""
