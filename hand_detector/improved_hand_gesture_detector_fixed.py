@@ -409,6 +409,9 @@ class EnhancedHandGestureDetector:
     
     def _add_minimal_visualization(self, frame, controls):
         """Add minimal visual indicators to the frame."""
+        # Create a mirror display by flipping the frame horizontally
+        frame = cv2.flip(frame, 1)
+        
         h, w, _ = frame.shape
         
         # בדיקה שהאובייקט controls אינו None
