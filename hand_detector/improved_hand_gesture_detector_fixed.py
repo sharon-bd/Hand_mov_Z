@@ -370,22 +370,14 @@ class EnhancedHandGestureDetector:
         self.prev_throttle = throttle
         controls['throttle'] = throttle
         
-        # שיפור זיהוי אצבעות מכופפות
-        index_curled = index_tip[1] > index_mcp[1] + 10  # הוספת סף מינימלי
-        middle_curled = middle_tip[1] > middle_mcp[1] + 10
-        ring_curled = ring_tip[1] > ring_mcp[1] + 10
-        pinky_curled = pinky_tip[1] > pinky_mcp[1] + 10
-        
-        # שיפור זיהוי האגודל המכופף
-        dx_thumb = float(thumb_tip[0] - wrist[0])
-        dy_thumb = float(thumb_tip[1] - wrist[1])
-        thumb_distance = float(np.sqrt(float(dx_thumb)**2 + float(dy_thumb)**2))
-        thumb_mcp_distance = float(np.sqrt(float(thumb_mcp[0] - wrist[0])**2 + float(thumb_mcp[1] - wrist[1])**2))
-        thumb_curled = thumb_distance < thumb_mcp_distance * 1.2  # מכופף אם הקצה קרוב יחסית
+        # Check for fist (braking gesture) - כל האצבעות מכופפות
+        index_curled = index_tip[1] > index_mcp[1]  # האצבע מכופפת אם הקצה מתחת למפרק
+        middle_curled = middle_tip[1] > middle_mcp[1]
+        ring_curled = ring_tip[1] > ring_mcp[1]
+        pinky_curled = pinky_tip[1] > pinky_mcp[1]
+        thumb_curled = thumb_tip[0] > thumb_mcp[0] if wrist[0] > thumb_mcp[0] else thumb_tip[0] < thumb_mcp[0]
 
-        # זיהוי אגרוף - כל האצבעות מכופפות
-        fist_detected = index_curled and middle_curled and ring_curled and pinky_curled and thumb_curled
-        self.detection_data['fist_detected'] = fist_detected
+        fist_detected = index_curled and middle_curled and ring_curled and pinky_curled and thumb_curled  # או not self.detection_data['finger_status']["thumb"]
 
         # בדיקת מחוות stop sign (יד פתוחה)
         stop_sign = self._detect_stop_sign_gesture(landmark_points, frame) 
@@ -412,26 +404,11 @@ class EnhancedHandGestureDetector:
         else:
             controls['gesture_name'] = 'Forward'
         
-        # Show finger curl status in debug mode
-        if self.debug_mode:
-            finger_names = ["Index", "Middle", "Ring", "Pinky", "Thumb"]
-            curl_status = [index_curled, middle_curled, ring_curled, pinky_curled, thumb_curled]
-            for i, (name, curled) in enumerate(zip(finger_names, curl_status)):
-                status = "Curled" if curled else "Extended"
-                color = (0, 0, 255) if curled else (0, 255, 0)  # Red if curled, green if extended
-                cv2.putText(frame, f"{name}: {status}", 
-                           (10, 300 + i*20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
-            
-            # Show fist detection status
-            fist_color = (0, 0, 255) if fist_detected else (200, 200, 200)
-            cv2.putText(frame, f"Fist: {fist_detected}", 
-                       (10, 400), cv2.FONT_HERSHEY_SIMPLEX, 0.6, fist_color, 2)
-        
         # Return the updated controls
         return controls
     
     def _add_minimal_visualization(self, frame, controls):
-        """הוספת מידע ויזואלי מינימלי למסגרת."""
+        """Add minimal visual indicators to the frame."""
         h, w, _ = frame.shape
         
         # בדיקה שהאובייקט controls אינו None
@@ -444,101 +421,47 @@ class EnhancedHandGestureDetector:
                 'boost': False
             }
         
-        # הוספת רקע כהה לטקסט לשיפור הקריאות
-        gesture_text = f"Gesture: {controls['gesture_name']}"
-        text_size = cv2.getTextSize(gesture_text, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)[0]
-        cv2.rectangle(
-            frame,
-            (10, 10),
-            (10 + text_size[0] + 10, 40),
-            (0, 0, 0),
-            -1
-        )
-        
-        # הצגת שם המחווה
+        # Add gesture name
         cv2.putText(
             frame,
-            gesture_text,
-            (15, 35),
+            f"Gesture: {controls['gesture_name']}",
+            (10, 30),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.8,
+            0.7,
             (0, 255, 0),
             2
         )
         
-        # הוספת רקע כהה לערך ההיגוי
-        steering_text = f"Steering: {controls['steering']:.2f}"
-        text_size = cv2.getTextSize(steering_text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)[0]
-        cv2.rectangle(
-            frame,
-            (10, 45),
-            (10 + text_size[0] + 10, 70),
-            (0, 0, 0),
-            -1
-        )
-        
-        # הצגת ערך ההיגוי
+        # Add controls
         cv2.putText(
             frame,
-            steering_text,
-            (15, 65),
+            f"Steering: {controls['steering']:.2f}",
+            (10, 60),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.7,
-            (255, 255, 0),
+            (255, 255, 0),  # צהוב במקום כחול-צהוב
             2
         )
         
-        # הוספת רקע כהה לערך המצערת
-        throttle_text = f"Throttle: {controls['throttle']:.2f}"
-        text_size = cv2.getTextSize(throttle_text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)[0]
-        cv2.rectangle(
-            frame,
-            (10, 75),
-            (10 + text_size[0] + 10, 100),
-            (0, 0, 0),
-            -1
-        )
-        
-        # הצגת ערך המצערת
         cv2.putText(
             frame,
-            throttle_text,
-            (15, 95),
+            f"Throttle: {controls['throttle']:.2f}",
+            (10, 90),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.7,
-            (255, 255, 0),
+            (255, 255, 0),  # צהוב במקום כחול-צהוב
             2
         )
         
-        # רקע כהה למחווני BRAKE ו-BOOST בתחתית המסך
+        # Add status indicators for braking and boost אבל במיקום אחר
         brake_color = (0, 0, 255) if controls['braking'] else (200, 200, 200)
         boost_color = (255, 165, 0) if controls['boost'] else (200, 200, 200)
         
-        brake_text = "BRAKE"
-        brake_size = cv2.getTextSize(brake_text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)[0]
-        cv2.rectangle(
-            frame,
-            (w - brake_size[0] - 30, h - 70),
-            (w - 10, h - 45),
-            (0, 0, 0),
-            -1
-        )
-        
-        boost_text = "BOOST"
-        boost_size = cv2.getTextSize(boost_text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)[0]
-        cv2.rectangle(
-            frame,
-            (w - boost_size[0] - 30, h - 40),
-            (w - 10, h - 15),
-            (0, 0, 0),
-            -1
-        )
-        
-        # הצגת מחווני BRAKE ו-BOOST
+        # הזזת הכיתובים BRAKE ו-BOOST לתחתית המסך במקום למעלה
         cv2.putText(
             frame,
-            brake_text,
-            (w - brake_size[0] - 20, h - 50),
+            "BRAKE",
+            (w - 120, h - 60),  # שינוי המיקום לתחתית המסך
             cv2.FONT_HERSHEY_SIMPLEX,
             0.7,
             brake_color,
@@ -547,8 +470,8 @@ class EnhancedHandGestureDetector:
         
         cv2.putText(
             frame,
-            boost_text,
-            (w - boost_size[0] - 20, h - 20),
+            "BOOST",
+            (w - 120, h - 30),  # שינוי המיקום לתחתית המסך
             cv2.FONT_HERSHEY_SIMPLEX,
             0.7,
             boost_color,
