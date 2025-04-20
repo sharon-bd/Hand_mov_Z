@@ -84,7 +84,10 @@ class EnhancedHandGestureDetector:
                 }
             }
             
-            # Draw hand landmarks and extract control information
+            # First flip the frame horizontally for mirror display
+            mirrored_frame = cv2.flip(frame.copy(), 1)
+            
+            # Draw hand landmarks and extract control information on original frame
             if results.multi_hand_landmarks:
                 for hand_landmarks in results.multi_hand_landmarks:
                     # Draw hand landmarks on the frame
@@ -98,12 +101,24 @@ class EnhancedHandGestureDetector:
                     
                     # Extract control values from hand landmarks
                     controls = self._extract_controls_from_landmarks(hand_landmarks, frame, controls)
-            else:
-                # Reset stability counter when no hand detected
-                self.command_stability_count = 0
             
-            # Add minimal visualization to the camera frame
-            minimal_frame = self._add_minimal_visualization(frame.copy(), controls)
+            # Process the mirrored frame with hand landmarks
+            if results.multi_hand_landmarks:
+                for hand_landmarks in results.multi_hand_landmarks:
+                    # Flip the landmarks for the mirrored frame
+                    flipped_landmarks = self._flip_landmarks_horizontally(hand_landmarks, frame.shape[1])
+                    
+                    # Draw the flipped landmarks on the mirrored frame
+                    self.mp_draw.draw_landmarks(
+                        mirrored_frame,
+                        flipped_landmarks,
+                        self.mp_hands.HAND_CONNECTIONS,
+                        self.mp_drawing_styles.get_default_hand_landmarks_style(),
+                        self.mp_drawing_styles.get_default_hand_connections_style()
+                    )
+            
+            # Add visual indicators to the mirrored frame
+            processed_frame = self._add_minimal_visualization(mirrored_frame, controls)
             
             # Create separate data panel
             data_panel = self._create_data_panel(controls)
@@ -112,7 +127,7 @@ class EnhancedHandGestureDetector:
             controls['speed'] = controls['throttle']
             controls['direction'] = controls['steering']
             
-            return controls, minimal_frame, data_panel
+            return controls, processed_frame, data_panel
         except Exception as e:
             print(f"Error in gesture detection: {e}")
             import traceback
@@ -546,3 +561,24 @@ class EnhancedHandGestureDetector:
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, fingers_color, 1)
         
         return panel
+
+    def _flip_landmarks_horizontally(self, landmarks, frame_width):
+        """Flip hand landmarks horizontally for mirrored display."""
+        # Create a copy of the landmarks
+        flipped_landmarks = mp.solutions.hands.HandLandmark()
+        
+        # Copy all attributes from the original landmarks
+        for i in range(21):  # 21 hand landmarks
+            # Get the original landmark
+            landmark = landmarks.landmark[i]
+            
+            # Create a new landmark with flipped x-coordinate
+            new_landmark = type(landmark)()
+            new_landmark.x = 1.0 - landmark.x  # Flip horizontally (0.0-1.0 range)
+            new_landmark.y = landmark.y        # Keep y-coordinate the same
+            new_landmark.z = landmark.z        # Keep z-coordinate the same
+            
+            # Set the new landmark
+            flipped_landmarks.landmark[i] = new_landmark
+        
+        return flipped_landmarks
