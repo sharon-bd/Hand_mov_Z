@@ -39,31 +39,26 @@ class EnhancedHandGestureDetector:
     def detect_gestures(self, frame):
         """
         Detect hand gestures in the given frame and return control signals.
-        
-        Args:
-            frame: CV2 image frame
-            
-        Returns:
-            controls: Dictionary with control values (steering, throttle, braking, boost)
-            processed_frame: Frame with visualization of detected hands and controls
-            data_panel: Additional image panel with numerical data
         """
         try:
-            # Convert BGR to RGB
-            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            # First create a mirrored copy of the input frame
+            mirrored_frame = cv2.flip(frame.copy(), 1)
             
-            # Process the frame with MediaPipe
+            # Convert BGR to RGB for the mirrored frame
+            rgb_frame = cv2.cvtColor(mirrored_frame, cv2.COLOR_BGR2RGB)
+            
+            # Process the mirrored RGB frame with MediaPipe
             results = self.hands.process(rgb_frame)
             
             # Default controls
             controls = {
-                'steering': 0.0,     # -1.0 (full left) to 1.0 (full right)
-                'throttle': 0.0,     # 0.0 to 1.0
+                'steering': 0.0,     
+                'throttle': 0.0,     
                 'braking': False,
                 'boost': False,
                 'gesture_name': 'No hand detected',
-                'speed': 0.0,        # For compatibility with Car.update()
-                'direction': 0.0     # For compatibility with Car.update()
+                'speed': 0.0,        
+                'direction': 0.0     
             }
             
             # Reset detection data
@@ -83,39 +78,24 @@ class EnhancedHandGestureDetector:
                     'pinky': False
                 }
             }
-            
-            # First flip the frame horizontally for mirror display
-            mirrored_frame = cv2.flip(frame.copy(), 1)
-            
-            # Draw hand landmarks and extract control information on original frame
+
+            # Draw hand landmarks and extract control information on mirrored frame
             if results.multi_hand_landmarks:
                 for hand_landmarks in results.multi_hand_landmarks:
-                    # Draw hand landmarks on the frame
+                    # Draw hand landmarks on the mirrored frame
                     self.mp_draw.draw_landmarks(
-                        frame,
+                        mirrored_frame,
                         hand_landmarks,
                         self.mp_hands.HAND_CONNECTIONS,
                         self.mp_drawing_styles.get_default_hand_landmarks_style(),
                         self.mp_drawing_styles.get_default_hand_connections_style()
                     )
                     
-                    # Extract control values from hand landmarks
-                    controls = self._extract_controls_from_landmarks(hand_landmarks, frame, controls)
-            
-            # Process the mirrored frame with hand landmarks
-            if results.multi_hand_landmarks:
-                for hand_landmarks in results.multi_hand_landmarks:
-                    # Flip the landmarks for the mirrored frame
-                    flipped_landmarks = self._flip_landmarks_horizontally(hand_landmarks, frame.shape[1])
-                    
-                    # Draw the flipped landmarks on the mirrored frame
-                    self.mp_draw.draw_landmarks(
-                        mirrored_frame,
-                        flipped_landmarks,
-                        self.mp_hands.HAND_CONNECTIONS,
-                        self.mp_drawing_styles.get_default_hand_landmarks_style(),
-                        self.mp_drawing_styles.get_default_hand_connections_style()
-                    )
+                    # Extract control values from hand landmarks using the mirrored frame
+                    controls = self._extract_controls_from_landmarks(hand_landmarks, mirrored_frame, controls)
+            else:
+                # Reset stability counter when no hand detected
+                self.command_stability_count = 0
             
             # Add visual indicators to the mirrored frame
             processed_frame = self._add_minimal_visualization(mirrored_frame, controls)
@@ -123,11 +103,12 @@ class EnhancedHandGestureDetector:
             # Create separate data panel
             data_panel = self._create_data_panel(controls)
             
-            # Add speed and direction mappings for compatibility with the Car class
+            # Add speed and direction mappings for compatibility
             controls['speed'] = controls['throttle']
             controls['direction'] = controls['steering']
             
             return controls, processed_frame, data_panel
+
         except Exception as e:
             print(f"Error in gesture detection: {e}")
             import traceback
@@ -141,7 +122,7 @@ class EnhancedHandGestureDetector:
                 'speed': 0.0,
                 'direction': 0.0
             }, frame, self._create_error_panel()
-    
+
     def _create_error_panel(self):
         """Create an error panel when detection fails"""
         panel = np.ones((300, 400, 3), dtype=np.uint8) * 255
@@ -390,15 +371,95 @@ class EnhancedHandGestureDetector:
         middle_curled = middle_tip[1] > middle_mcp[1]
         ring_curled = ring_tip[1] > ring_mcp[1]
         pinky_curled = pinky_tip[1] > pinky_mcp[1]
-        thumb_curled = thumb_tip[0] > thumb_mcp[0] if wrist[0] > thumb_mcp[0] else thumb_tip[0] < thumb_mcp[0]
 
-        # בדיקת מחוות boost (אגודל למעלה, שאר האצבעות מכופפות)
-        # שימוש רק בבדיקת אגודל מורם ואצבע מורה מכופפת לזיהוי בוסט
-        thumb_pointing_up = thumb_tip[1] < wrist[1] - 30  # אגודל מצביע למעלה
+        # בדיקה מדויקת יותר לזיהוי אגודל מורם (Thumb Up)
+        # תנאים: אגודל זקוף, גבוה מהאצבעות, רחוק מהאצבע המורה, שאר האצבעות מכופפות
+        thumb_tip = landmark_points[4]
+        thumb_ip = landmark_points[3]
+        thumb_mcp = landmark_points[2]
+        wrist = landmark_points[0]
+        index_tip = landmark_points[8]
+        middle_tip = landmark_points[12]
+        ring_tip = landmark_points[16]
+        pinky_tip = landmark_points[20]
+
+        # מרחקים
+        thumb_tip_to_ip = np.linalg.norm(np.array(thumb_tip) - np.array(thumb_ip))
+        thumb_ip_to_mcp = np.linalg.norm(np.array(thumb_ip) - np.array(thumb_mcp))
+        thumb_tip_to_index_tip = np.linalg.norm(np.array(thumb_tip) - np.array(index_tip))
+        thumb_tip_to_wrist = np.linalg.norm(np.array(thumb_tip) - np.array(wrist))
+
+        # יחס זקיפות האגודל
+        distance_ratio = thumb_tip_to_ip / thumb_ip_to_mcp if thumb_ip_to_mcp > 0 else 0
+
+        # חישוב זווית בין שלושת מפרקי האגודל (MCP, IP, TIP)
+        def angle_between_points(a, b, c):
+            # זווית ב-b בין a-b-c
+            a = np.array(a)
+            b = np.array(b)
+            c = np.array(c)
+            ba = a - b
+            bc = c - b
+            cosine_angle = np.dot(ba, bc) / (np.linalg.norm(ba) * np.linalg.norm(bc) + 1e-6)
+            angle = np.degrees(np.arccos(np.clip(cosine_angle, -1.0, 1.0)))
+            return angle
+
+        thumb_angle = angle_between_points(thumb_mcp, thumb_ip, thumb_tip)
+
+        # האגודל גבוה מכל שאר האצבעות (y קטן יותר)
+        thumb_higher_than_fingers = (
+            thumb_tip[1] < min(index_tip[1], middle_tip[1], ring_tip[1], pinky_tip[1]) - 20
+        )
+
+        # האגודל רחוק מהאצבע המורה (לא צמוד)
+        thumb_far_from_index = thumb_tip_to_index_tip > 0.7 * thumb_tip_to_wrist
+
+        # אגודל מקופל אם היחס קטן, קצה קרוב למפרק, או זווית חדה
+        thumb_curled = (
+            distance_ratio < 0.7 or
+            thumb_tip_to_ip < thumb_ip_to_mcp * 0.8 or
+            thumb_angle < 120  # זווית חדה = אגודל מקופל
+        )
+
+        # בדיקה נוספת: האם האגודל קרוב לאצבע המורה (מאפיין אגרוף)
+        thumb_close_to_index = thumb_tip_to_index_tip < 0.4 * thumb_tip_to_wrist  # מרחק קטן = אגודל קרוב לאצבע
+
+        # עדכון ההגדרה של אגרוף
+        fist_detected = index_curled and middle_curled and ring_curled and pinky_curled and thumb_curled and thumb_close_to_index
+
+        # הוספת מידע דיבאג
+        if self.debug_mode:
+            cv2.putText(frame, f"Fist: {fist_detected}", (10, 460), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+            cv2.putText(frame, f"ThumbCloseToIndex: {thumb_close_to_index}", (10, 480), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+
+        # תנאי Thumb Up: אגודל זקוף, גבוה, רחוק מהאצבע, שאר האצבעות מכופפות, זווית קהה
+        # בדיקה נוספת: האם האגודל מצביע כלפי מעלה ביחס לשורש כף היד
+        thumb_to_wrist_dx = thumb_tip[0] - wrist[0]
+        thumb_to_wrist_dy = thumb_tip[1] - wrist[1]
+        thumb_to_wrist_angle = np.degrees(np.arctan2(-thumb_to_wrist_dy, thumb_to_wrist_dx))  # -dy כי ציר Y הפוך
+        if thumb_to_wrist_angle < 0:
+            thumb_to_wrist_angle += 360
+
+        # האגודל צריך להצביע כלפי מעלה (זווית בין 270 ל-90 מעלות דרך 0)
+        thumb_pointing_upward = (270 <= thumb_to_wrist_angle <= 360) or (0 <= thumb_to_wrist_angle <= 90)
+
+        thumb_pointing_up = (
+            distance_ratio > 0.8 and
+            thumb_higher_than_fingers and
+            thumb_far_from_index and
+            thumb_angle > 150 and  # זווית קהה = אגודל זקוף
+            thumb_pointing_upward  # חדש: האגודל מצביע כלפי מעלה
+        )
+
+        if self.debug_mode:
+            cv2.putText(frame, f"ThumbUp: {thumb_pointing_up}", (10, 380), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
+            cv2.putText(frame, f"Thumb>Fingers: {thumb_higher_than_fingers}", (10, 400), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
+            cv2.putText(frame, f"Thumb-Index dist: {thumb_tip_to_index_tip:.1f}", (10, 420), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
+            cv2.putText(frame, f"Thumb angle: {thumb_angle:.1f}", (10, 440), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
+            cv2.putText(frame, f"ThumbUpward: {thumb_pointing_upward}", (10, 500), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
+            cv2.putText(frame, f"ThumbToWristAngle: {thumb_to_wrist_angle:.1f}", (10, 520), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
+
         boost_gesture = thumb_pointing_up and index_curled and middle_curled and ring_curled and pinky_curled
-
-        # תיקון בדיקת אגרוף כדי שלא יכלול את מחוות האגודל למעלה
-        fist_detected = index_curled and middle_curled and ring_curled and pinky_curled and thumb_curled and not boost_gesture
 
         # בדיקת מחוות stop sign (יד פתוחה)
         stop_sign = self._detect_stop_sign_gesture(landmark_points, frame) 
@@ -425,8 +486,8 @@ class EnhancedHandGestureDetector:
         return controls
     
     def _add_minimal_visualization(self, frame, controls):
-        """Add minimal visual indicators to the frame with proper text orientation."""
-        # Save a copy of the original frame
+        """Add visual indicators to the frame without further mirroring."""
+        # Save a copy of the input frame (which is already mirrored)
         display_frame = frame.copy()
         
         h, w, _ = frame.shape
@@ -441,8 +502,7 @@ class EnhancedHandGestureDetector:
                 'boost': False
             }
         
-        # Add all text directly to the display frame (without mirroring)
-        # Add gesture name (now correctly oriented)
+        # Add text directly to the already mirrored frame
         cv2.putText(
             display_frame,
             f"Gesture: {controls['gesture_name']}",
@@ -453,7 +513,7 @@ class EnhancedHandGestureDetector:
             2
         )
         
-        # Add steering value (now correctly oriented)
+        # Add steering value
         cv2.putText(
             display_frame,
             f"Steering: {controls['steering']:.2f}",
@@ -464,7 +524,7 @@ class EnhancedHandGestureDetector:
             2
         )
         
-        # Add throttle value (now correctly oriented)
+        # Add throttle value
         cv2.putText(
             display_frame,
             f"Throttle: {controls['throttle']:.2f}",
@@ -500,10 +560,8 @@ class EnhancedHandGestureDetector:
             2
         )
         
-        # Now flip horizontally for the mirror effect
-        mirrored_frame = cv2.flip(display_frame, 1)
-        
-        return mirrored_frame
+        # Return the frame without additional mirroring
+        return display_frame
         
     def _create_data_panel(self, controls):
         """Create a panel with numerical data for analysis."""
