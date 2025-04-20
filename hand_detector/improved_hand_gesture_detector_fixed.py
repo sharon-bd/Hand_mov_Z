@@ -410,12 +410,9 @@ class EnhancedHandGestureDetector:
         return controls
     
     def _add_minimal_visualization(self, frame, controls):
-        """Add minimal visual indicators to the frame."""
-        # First store the original frame for text overlay
-        original_frame = frame.copy()
-        
-        # Create a mirror display by flipping the frame horizontally
-        mirrored_frame = cv2.flip(frame, 1)
+        """Add minimal visual indicators to the frame with proper text orientation."""
+        # Save a copy of the original frame
+        display_frame = frame.copy()
         
         h, w, _ = frame.shape
         
@@ -429,9 +426,10 @@ class EnhancedHandGestureDetector:
                 'boost': False
             }
         
-        # Add gesture name to mirrored frame (without mirroring text)
+        # Add all text directly to the display frame (without mirroring)
+        # Add gesture name (now correctly oriented)
         cv2.putText(
-            mirrored_frame,
+            display_frame,
             f"Gesture: {controls['gesture_name']}",
             (10, 30),
             cv2.FONT_HERSHEY_SIMPLEX,
@@ -440,36 +438,37 @@ class EnhancedHandGestureDetector:
             2
         )
         
-        # Add controls
+        # Add steering value (now correctly oriented)
         cv2.putText(
-            mirrored_frame,
+            display_frame,
             f"Steering: {controls['steering']:.2f}",
             (10, 60),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.7,
-            (255, 255, 0),  # צהוב במקום כחול-צהוב
+            (255, 255, 0),
             2
         )
         
+        # Add throttle value (now correctly oriented)
         cv2.putText(
-            mirrored_frame,
+            display_frame,
             f"Throttle: {controls['throttle']:.2f}",
             (10, 90),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.7,
-            (255, 255, 0),  # צהוב במקום כחול-צהוב
+            (255, 255, 0),
             2
         )
         
-        # Add status indicators for braking and boost אבל במיקום אחר
+        # Add status indicators for braking and boost
         brake_color = (0, 0, 255) if controls['braking'] else (200, 200, 200)
         boost_color = (255, 165, 0) if controls['boost'] else (200, 200, 200)
         
-        # הזזת הכיתובים BRAKE ו-BOOST לתחתית המסך במקום למעלה
+        # Add BRAKE and BOOST text at the bottom of the screen
         cv2.putText(
-            mirrored_frame,
+            display_frame,
             "BRAKE",
-            (w - 120, h - 60),  # שינוי המיקום לתחתית המסך
+            (w - 120, h - 60),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.7,
             brake_color,
@@ -477,14 +476,17 @@ class EnhancedHandGestureDetector:
         )
         
         cv2.putText(
-            mirrored_frame,
+            display_frame,
             "BOOST",
-            (w - 120, h - 30),  # שינוי המיקום לתחתית המסך
+            (w - 120, h - 30),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.7,
             boost_color,
             2
         )
+        
+        # Now flip horizontally for the mirror effect
+        mirrored_frame = cv2.flip(display_frame, 1)
         
         return mirrored_frame
         
