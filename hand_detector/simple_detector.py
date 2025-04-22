@@ -33,6 +33,13 @@ class SimpleHandGestureDetector:
         
         # New: Maximum steering angle (degrees from vertical)
         self.max_steering_angle = 90
+        
+        # Performance tracking
+        self.prev_frame_time = 0
+        self.curr_frame_time = 0
+        self.fps = 0.0
+        self.frames_processed = 0
+        self.start_time = None
     
     def detect_gestures(self, frame):
         """
@@ -47,6 +54,12 @@ class SimpleHandGestureDetector:
             data_panel: Additional image panel with numerical data
         """
         try:
+            # Update FPS calculation
+            self.curr_frame_time = cv2.getTickCount()
+            if self.prev_frame_time > 0:
+                self.fps = cv2.getTickFrequency() / (self.curr_frame_time - self.prev_frame_time)
+            self.prev_frame_time = self.curr_frame_time
+            
             # Convert BGR to RGB
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             
@@ -88,6 +101,18 @@ class SimpleHandGestureDetector:
             # Add control mappings
             controls['speed'] = controls['throttle']
             controls['direction'] = controls['steering']
+            
+            # Add FPS counter in top-left corner
+            if self.fps > 0:
+                cv2.putText(
+                    frame,
+                    f"FPS: {self.fps:.1f}",
+                    (10, 25),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.7,
+                    (0, 255, 255),
+                    2
+                )
             
             return controls, frame, data_panel
         

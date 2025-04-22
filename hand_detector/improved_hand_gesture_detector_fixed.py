@@ -448,8 +448,21 @@ class EnhancedHandGestureDetector:
 
         # הוספת מידע דיבאג
         if self.debug_mode:
-            cv2.putText(frame, f"Fist: {fist_detected}", (10, 460), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
-            cv2.putText(frame, f"ThumbCloseToIndex: {thumb_close_to_index}", (10, 480), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+            # Rearranged and spaced out debug text lines - at least 20px apart
+            cv2.putText(frame, f"ThumbUp: {thumb_pointing_up}", (10, 380), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
+            cv2.putText(frame, f"Thumb>Fingers: {thumb_higher_than_fingers}", (10, 400), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
+            cv2.putText(frame, f"Thumb-Index dist: {thumb_tip_to_index_tip:.1f}", (10, 420), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
+            # Fixed overlapping lines - changed y-position from 440 to 445 for "Fist" text
+            cv2.putText(frame, f"Fist: {fist_detected}", (10, 445), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+            # Move "Thumb angle" text below "Fist" text
+            cv2.putText(frame, f"Thumb angle: {thumb_angle:.1f}", (10, 465), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
+            # Move "ThumbCloseToIndex" text down
+            cv2.putText(frame, f"ThumbCloseToIndex: {thumb_close_to_index}", (10, 485), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
+            # Empty line not needed since we've properly spaced everything
+            cv2.putText(frame, f"ThumbUpward: {thumb_pointing_upward}", (10, 505), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
+            cv2.putText(frame, f"ThumbToWristAngle: {thumb_to_wrist_angle:.1f}", (10, 525), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
+
+        boost_gesture = thumb_pointing_up and index_curled and middle_curled and ring_curled and pinky_curled
 
         # תנאי Thumb Up: אגודל זקוף, גבוה, רחוק מהאצבע, שאר האצבעות מכופפות, זווית קהה
         # בדיקה נוספת: האם האגודל מצביע כלפי מעלה ביחס לשורש כף היד
@@ -474,9 +487,9 @@ class EnhancedHandGestureDetector:
             cv2.putText(frame, f"ThumbUp: {thumb_pointing_up}", (10, 380), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
             cv2.putText(frame, f"Thumb>Fingers: {thumb_higher_than_fingers}", (10, 400), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
             cv2.putText(frame, f"Thumb-Index dist: {thumb_tip_to_index_tip:.1f}", (10, 420), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
-            cv2.putText(frame, f"Thumb angle: {thumb_angle:.1f}", (10, 440), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
-            cv2.putText(frame, f"ThumbUpward: {thumb_pointing_upward}", (10, 500), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
-            cv2.putText(frame, f"ThumbToWristAngle: {thumb_to_wrist_angle:.1f}", (10, 520), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
+            cv2.putText(frame, f"Thumb angle: {thumb_angle:.1f}", (10, 465), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
+            cv2.putText(frame, f"ThumbUpward: {thumb_pointing_upward}", (10, 505), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
+            cv2.putText(frame, f"ThumbToWristAngle: {thumb_to_wrist_angle:.1f}", (10, 525), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
 
         boost_gesture = thumb_pointing_up and index_curled and middle_curled and ring_curled and pinky_curled
 
@@ -505,77 +518,36 @@ class EnhancedHandGestureDetector:
         return controls
     
     def _add_visualization_to_mirrored_frame(self, frame, controls):
-        """Add visualization to the mirrored frame with correct text orientation."""
+        """Add visualization to the mirrored frame with correct text orientation and positioning."""
         h, w, _ = frame.shape
-        
-        # בדיקה שהאובייקט controls אינו None
-        if controls is None:
-            controls = {
-                'gesture_name': 'Error',
-                'steering': 0.0,
-                'throttle': 0.0,
-                'braking': False,
-                'boost': False
-            }
-        
-        # In this version, we write text on the already-mirrored frame
-        # Add gesture name at the top of the frame
-        cv2.putText(
-            frame,
-            f"Gesture: {controls['gesture_name']}",
-            (10, 30),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
-            (0, 255, 0),
-            2
-        )
-        
-        # Add steering and throttle values
-        cv2.putText(
-            frame,
-            f"Steering: {controls['steering']:.2f}",
-            (10, 60),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
-            (255, 255, 0),
-            2
-        )
-        
-        cv2.putText(
-            frame,
-            f"Throttle: {controls['throttle']:.2f}",
-            (10, 90),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
-            (255, 255, 0),
-            2
-        )
-        
-        # Add status indicators for braking and boost at the bottom
+
+        # Increase margin at the bottom to prevent cutting off text
+        margin = 120  # was 80, now 120 to avoid cutting text
+        frame_with_margin = np.zeros((h + margin, w, 3), dtype=np.uint8)
+        frame_with_margin[:h, :] = frame
+
+        # Add gesture name at the top-left of the frame
+        cv2.putText(frame_with_margin, f"Gesture: {controls['gesture_name']}", (10, 30), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        # Add steering and throttle values below the gesture name
+        cv2.putText(frame_with_margin, f"Steering: {controls['steering']:.2f}", (10, 60),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
+        cv2.putText(frame_with_margin, f"Throttle: {controls['throttle']:.2f}", (10, 90),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
+
         brake_color = (0, 0, 255) if controls['braking'] else (200, 200, 200)
         boost_color = (255, 165, 0) if controls['boost'] else (200, 200, 200)
-        
-        cv2.putText(
-            frame,
-            "BRAKE",
-            (w - 120, h - 60),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
-            brake_color,
-            2
-        )
-        
-        cv2.putText(
-            frame,
-            "BOOST",
-            (w - 120, h - 30),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
-            boost_color,
-            2
-        )
-        
-        return frame
+        # Move up by 120px to avoid being cut off
+        bottom_y_position = h - 80 + 40  # shift up by 40px relative to previous
+        cv2.putText(frame_with_margin, "BRAKE", (w - 120, bottom_y_position),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, brake_color, 2)
+        cv2.putText(frame_with_margin, "BOOST", (w - 120, bottom_y_position + 30),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, boost_color, 2)
+        # Move FPS to top-right
+        if hasattr(self, 'fps'):
+            cv2.putText(frame_with_margin, f"FPS: {self.fps:.1f}", (w - 150, 25),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+        return frame_with_margin
 
     def _create_data_panel(self, controls):
         """Create a panel with numerical data for analysis."""
@@ -584,53 +556,35 @@ class EnhancedHandGestureDetector:
         panel_height = 400
         panel = np.ones((panel_height, panel_width, 3), dtype=np.uint8) * 255
         
-        # Draw title
+        # Draw title and basic info
         cv2.putText(panel, "Hand Gesture Detection Data", (20, 30), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 2)
         cv2.line(panel, (20, 40), (panel_width - 20, 40), (0, 0, 0), 1)
         
-        # Draw gesture info
-        cv2.putText(panel, f"Gesture: {controls['gesture_name']}", (20, 70), 
+        # Safely access detection data with get() method
+        cv2.putText(panel, f"Gesture: {controls['gesture_name']}", (20, 70),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2)
         
-        # Draw numerical data
         y_pos = 110
-        cv2.putText(panel, f"Thumb Angle: {self.detection_data['thumb_angle']:.1f}°", (20, y_pos), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1)
+        cv2.putText(panel, f"Thumb Angle: {self.detection_data.get('thumb_angle', 0):.1f}°", 
+                    (20, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1)
         y_pos += 30
         
-        cv2.putText(panel, f"Hand Height: {1.0 - self.detection_data['normalized_y']:.2f}", (20, y_pos), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1)
+        cv2.putText(panel, f"Hand Height: {1.0 - self.detection_data.get('normalized_y', 0):.2f}", 
+                    (20, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1)
         y_pos += 30
         
-        # Draw finger status
-        cv2.putText(panel, "Finger Status:", (20, y_pos), 
+        # Draw finger status with safe dictionary access
+        cv2.putText(panel, "Finger Status:", (20, y_pos),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1)
         y_pos += 25
         
-        for finger, extended in self.detection_data['finger_status'].items():
+        for finger, extended in self.detection_data.get('finger_status', {}).items():
             status = "Extended" if extended else "Curled"
             color = (0, 128, 0) if extended else (0, 0, 200)
-            cv2.putText(panel, f"- {finger.capitalize()}: {status}", (60, y_pos), 
+            cv2.putText(panel, f"- {finger.capitalize()}: {status}", (60, y_pos),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
             y_pos += 20
-        
-        # Add detection summary
-        y_pos += 10
-        cv2.putText(panel, "Detected Gestures:", (20, y_pos), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1)
-        y_pos += 25
-        
-        # Show stop sign detection
-        stop_color = (0, 128, 0) if self.detection_data['stop_sign_detected'] else (0, 0, 200)
-        cv2.putText(panel, f"- Stop Sign: {self.detection_data['stop_sign_detected']}", (40, y_pos), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, stop_color, 1)
-        y_pos += 20
-        
-        # Show all fingers extended
-        fingers_color = (0, 128, 0) if self.detection_data['all_fingers_extended'] else (0, 0, 200)
-        cv2.putText(panel, f"- All Fingers: {self.detection_data['all_fingers_extended']}", (40, y_pos), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, fingers_color, 1)
         
         return panel
 
