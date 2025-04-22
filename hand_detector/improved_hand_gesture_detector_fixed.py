@@ -8,6 +8,10 @@ class EnhancedHandGestureDetector:
     def __init__(self):
         """Initialize the hand gesture detector with MediaPipe."""
         self.mp_hands = mp.solutions.hands
+        # Define image dimensions
+        self.image_width = 640  # Default width
+        self.image_height = 480  # Default height
+        
         self.hands = self.mp_hands.Hands(
             static_image_mode=False,
             max_num_hands=1,  # Track only one hand for simplicity
@@ -39,26 +43,42 @@ class EnhancedHandGestureDetector:
     def detect_gestures(self, frame):
         """
         Detect hand gestures in the given frame and return control signals.
+        
+        Args:
+            frame: CV2 image frame
+            
+        Returns:
+            controls: Dictionary with control values (steering, throttle, braking, boost)
+            processed_frame: Frame with visualization of detected hands and controls
+            data_panel: Additional image panel with numerical data
         """
         try:
+            # Update image dimensions based on the current frame
+            h, w, _ = frame.shape
+            self.image_width = w
+            self.image_height = h
+
             # First create a mirrored copy of the input frame
             mirrored_frame = cv2.flip(frame.copy(), 1)
             
-            # Convert BGR to RGB for the mirrored frame
+            # Dimensions for debug info
+            h, w, _ = mirrored_frame.shape
+            
+            # Convert BGR to RGB for MediaPipe processing
             rgb_frame = cv2.cvtColor(mirrored_frame, cv2.COLOR_BGR2RGB)
             
-            # Process the mirrored RGB frame with MediaPipe
+            # Process the frame with MediaPipe
             results = self.hands.process(rgb_frame)
             
             # Default controls
             controls = {
-                'steering': 0.0,     
-                'throttle': 0.0,     
+                'steering': 0.0,     # -1.0 (full left) to 1.0 (full right)
+                'throttle': 0.0,     # 0.0 to 1.0
                 'braking': False,
                 'boost': False,
                 'gesture_name': 'No hand detected',
-                'speed': 0.0,        
-                'direction': 0.0     
+                'speed': 0.0,        # For compatibility with Car.update()
+                'direction': 0.0     # For compatibility with Car.update()
             }
             
             # Reset detection data
@@ -78,8 +98,8 @@ class EnhancedHandGestureDetector:
                     'pinky': False
                 }
             }
-
-            # Draw hand landmarks and extract control information on mirrored frame
+            
+            # Draw hand landmarks and extract control information
             if results.multi_hand_landmarks:
                 for hand_landmarks in results.multi_hand_landmarks:
                     # Draw hand landmarks on the mirrored frame
@@ -91,24 +111,23 @@ class EnhancedHandGestureDetector:
                         self.mp_drawing_styles.get_default_hand_connections_style()
                     )
                     
-                    # Extract control values from hand landmarks using the mirrored frame
+                    # Extract control values from hand landmarks
                     controls = self._extract_controls_from_landmarks(hand_landmarks, mirrored_frame, controls)
             else:
                 # Reset stability counter when no hand detected
                 self.command_stability_count = 0
             
-            # Add visual indicators to the mirrored frame
-            processed_frame = self._add_minimal_visualization(mirrored_frame, controls)
+            # Add visual indicators to the frame with proper text orientation
+            processed_frame = self._add_visualization_to_mirrored_frame(mirrored_frame, controls)
             
             # Create separate data panel
             data_panel = self._create_data_panel(controls)
             
-            # Add speed and direction mappings for compatibility
+            # Add speed and direction mappings for compatibility with the Car class
             controls['speed'] = controls['throttle']
             controls['direction'] = controls['steering']
             
             return controls, processed_frame, data_panel
-
         except Exception as e:
             print(f"Error in gesture detection: {e}")
             import traceback
@@ -485,11 +504,8 @@ class EnhancedHandGestureDetector:
         # Return the updated controls
         return controls
     
-    def _add_minimal_visualization(self, frame, controls):
-        """Add visual indicators to the frame without further mirroring."""
-        # Save a copy of the input frame (which is already mirrored)
-        display_frame = frame.copy()
-        
+    def _add_visualization_to_mirrored_frame(self, frame, controls):
+        """Add visualization to the mirrored frame with correct text orientation."""
         h, w, _ = frame.shape
         
         # בדיקה שהאובייקט controls אינו None
@@ -502,9 +518,10 @@ class EnhancedHandGestureDetector:
                 'boost': False
             }
         
-        # Add text directly to the already mirrored frame
+        # In this version, we write text on the already-mirrored frame
+        # Add gesture name at the top of the frame
         cv2.putText(
-            display_frame,
+            frame,
             f"Gesture: {controls['gesture_name']}",
             (10, 30),
             cv2.FONT_HERSHEY_SIMPLEX,
@@ -513,9 +530,9 @@ class EnhancedHandGestureDetector:
             2
         )
         
-        # Add steering value
+        # Add steering and throttle values
         cv2.putText(
-            display_frame,
+            frame,
             f"Steering: {controls['steering']:.2f}",
             (10, 60),
             cv2.FONT_HERSHEY_SIMPLEX,
@@ -524,9 +541,8 @@ class EnhancedHandGestureDetector:
             2
         )
         
-        # Add throttle value
         cv2.putText(
-            display_frame,
+            frame,
             f"Throttle: {controls['throttle']:.2f}",
             (10, 90),
             cv2.FONT_HERSHEY_SIMPLEX,
@@ -535,13 +551,12 @@ class EnhancedHandGestureDetector:
             2
         )
         
-        # Add status indicators for braking and boost
+        # Add status indicators for braking and boost at the bottom
         brake_color = (0, 0, 255) if controls['braking'] else (200, 200, 200)
         boost_color = (255, 165, 0) if controls['boost'] else (200, 200, 200)
         
-        # Add BRAKE and BOOST text at the bottom of the screen
         cv2.putText(
-            display_frame,
+            frame,
             "BRAKE",
             (w - 120, h - 60),
             cv2.FONT_HERSHEY_SIMPLEX,
@@ -551,7 +566,7 @@ class EnhancedHandGestureDetector:
         )
         
         cv2.putText(
-            display_frame,
+            frame,
             "BOOST",
             (w - 120, h - 30),
             cv2.FONT_HERSHEY_SIMPLEX,
@@ -560,9 +575,8 @@ class EnhancedHandGestureDetector:
             2
         )
         
-        # Return the frame without additional mirroring
-        return display_frame
-        
+        return frame
+
     def _create_data_panel(self, controls):
         """Create a panel with numerical data for analysis."""
         # Create a white panel
@@ -640,3 +654,47 @@ class EnhancedHandGestureDetector:
             flipped_landmarks.landmark[i] = new_landmark
         
         return flipped_landmarks
+
+    def _check_thumb_extended(self, thumb_tip, thumb_ip, thumb_mcp, wrist):
+        """
+        Unified method to check if thumb is extended.
+        Returns True if thumb is extended, False if curled.
+        """
+        # Calculate distances
+        thumb_tip_to_ip = np.linalg.norm(np.array(thumb_tip) - np.array(thumb_ip))
+        thumb_ip_to_mcp = np.linalg.norm(np.array(thumb_ip) - np.array(thumb_mcp))
+        thumb_tip_to_wrist = np.linalg.norm(np.array(thumb_tip) - np.array(wrist))  # <-- fixed parenthesis
+        
+        # Calculate ratio for extension check
+        distance_ratio = thumb_tip_to_ip / thumb_ip_to_mcp if thumb_ip_to_mcp > 0 else 0
+        
+        # Calculate angle between segments
+        def angle_between_points(a, b, c):
+            a = np.array(a)
+            b = np.array(b)
+            c = np.array(c)
+            ba = a - b
+            bc = c - b
+            cosine_angle = np.dot(ba, bc) / (np.linalg.norm(ba) * np.linalg.norm(bc) + 1e-6)
+            angle = np.degrees(np.arccos(np.clip(cosine_angle, -1.0, 1.0)))
+            return angle
+
+        thumb_angle = angle_between_points(thumb_mcp, thumb_ip, thumb_tip)
+        
+        # Check if thumb is pointing upward
+        thumb_to_wrist_dx = thumb_tip[0] - wrist[0]
+        thumb_to_wrist_dy = thumb_tip[1] - wrist[1]
+        thumb_to_wrist_angle = np.degrees(np.arctan2(-thumb_to_wrist_dy, thumb_to_wrist_dx))
+        if thumb_to_wrist_angle < 0:
+            thumb_to_wrist_angle += 360
+            
+        thumb_pointing_upward = (270 <= thumb_to_wrist_angle <= 360) or (0 <= thumb_to_wrist_angle <= 90)
+        
+        # Determine if thumb is extended based on multiple criteria
+        thumb_extended = (
+            distance_ratio > 0.7 and
+            thumb_angle > 120 and   # Extended thumb has obtuse angle
+            thumb_pointing_upward    # Thumb should point upward to be considered extended
+        )
+        
+        return thumb_extended

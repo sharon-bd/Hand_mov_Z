@@ -28,9 +28,17 @@ def test_hand_detector(detector_class='improved'):
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
     
+    # Verify webcam initialization
     if not cap.isOpened():
         print("Error: Could not open webcam")
         return
+    
+    # Check actual resolution
+    actual_width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+    actual_height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+    print(f"Webcam resolution: {actual_width}x{actual_height}")
+    if actual_width != 640 or actual_height != 480:
+        print("Warning: Webcam resolution does not match requested 640x480")
     
     # FPS calculation variables
     prev_frame_time = 0
