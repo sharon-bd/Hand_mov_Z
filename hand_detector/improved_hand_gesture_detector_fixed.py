@@ -173,9 +173,6 @@ class EnhancedHandGestureDetector:
             pinky_mcp = landmark_points[17]
             
             # 1. בדיקה שכל האצבעות פרושות (לא מכופפות)
-            # האצבע נחשבת פרושה אם קצה האצבע נמצא רחוק יותר מהמפרק ביחס לשורש כף היד
-            
-            # 1.1 עבור האצבע המורה, האמצעית, הטבעת והזרת
             finger_extended = []
             finger_names = ["index", "middle", "ring", "pinky"]
             
@@ -184,38 +181,24 @@ class EnhancedHandGestureDetector:
                 [index_mcp, middle_mcp, ring_mcp, pinky_mcp],
                 finger_names
             )):
-                # חישוב בטוח של מרחק - explicit numeric calculation
                 dx_tip = float(tip[0] - wrist[0])
                 dy_tip = float(tip[1] - wrist[1])
                 dx_mcp = float(mcp[0] - wrist[0])
                 dy_mcp = float(mcp[1] - wrist[1])
                 
-                # Fixed calculation using explicit square root for Euclidean distance
                 dist_tip = float(np.sqrt(float(dx_tip)**2 + float(dy_tip)**2))
                 dist_mcp = float(np.sqrt(float(dx_mcp)**2 + float(dy_mcp)**2))
                 
-                # האצבע פרושה אם הקצה רחוק יותר מהמפרק
                 is_extended = False
-                if dist_mcp > 0:  # מניעת חלוקה באפס
+                if dist_mcp > 0:
                     is_extended = dist_tip > dist_mcp * 1.2
                 
                 finger_extended.append(is_extended)
                 self.detection_data['finger_status'][name] = is_extended
             
-            # 1.2 עבור האגודל (מקרה מיוחד)
-            dx_thumb = float(thumb_tip[0] - wrist[0])
-            dy_thumb = float(thumb_tip[1] - wrist[1])
-            dx_thumb_mcp = float(thumb_mcp[0] - wrist[0])
-            dy_thumb_mcp = float(thumb_mcp[1] - wrist[1])
-            
-            # Fixed calculation using explicit square root
-            thumb_dist_tip = float(np.sqrt(float(dx_thumb)**2 + float(dy_thumb)**2))
-            thumb_dist_mcp = float(np.sqrt(float(dx_thumb_mcp)**2 + float(dy_thumb_mcp)**2))
-            
-            thumb_extended = False
-            if thumb_dist_mcp > 0:
-                thumb_extended = thumb_dist_tip > thumb_dist_mcp
-            
+            # 1.2 עבור האגודל
+            thumb_ip = landmark_points[3]  # נקודת המפרק האמצעי של האגודל
+            thumb_extended = self._check_thumb_extended(thumb_tip, thumb_ip, thumb_mcp, wrist, context="open_palm")
             self.detection_data['finger_status']["thumb"] = thumb_extended
             
             # 2. בדיקה שהיד פתוחה ומורמת
@@ -223,32 +206,28 @@ class EnhancedHandGestureDetector:
             self.detection_data['all_fingers_extended'] = all_fingers_extended
             
             # 3. בדיקה שהאצבעות פרושות במרחק סביר אחת מהשנייה
-            # מחשב מרחקים בין האצבעות הסמוכות
             finger_tips = [index_tip, middle_tip, ring_tip, pinky_tip]
             finger_spacings = []
             
             for i in range(len(finger_tips) - 1):
                 dx = float(finger_tips[i][0] - finger_tips[i+1][0])
                 dy = float(finger_tips[i][1] - finger_tips[i+1][1])
-                spacing = float(np.sqrt(float(dx)**2 + float(dy)**2))  # Safe square root calculation
+                spacing = float(np.sqrt(float(dx)**2 + float(dy)**2))
                 finger_spacings.append(spacing)
             
-            # האצבעות צריכות להיות במרחק דומה זו מזו
             fingers_evenly_spaced = True
             if len(finger_spacings) > 1:
                 min_spacing = min(finger_spacings)
                 max_spacing = max(finger_spacings)
-                if min_spacing > 0:  # מניעת חלוקה באפס
-                    fingers_evenly_spaced = (max_spacing < min_spacing * 2.0)  # רווחים פחות או יותר שווים
+                if min_spacing > 0:
+                    fingers_evenly_spaced = (max_spacing < min_spacing * 2.0)
             
-            # הוספת מידע דיבאג אם נדרש
             if self.debug_mode:
                 cv2.putText(frame, f"All Fingers Extended: {all_fingers_extended}", 
                            (10, 220), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
                 cv2.putText(frame, f"Fingers Spaced: {fingers_evenly_spaced}", 
                            (10, 240), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
                 
-                # הוספת מידע על פרישת כל אצבע
                 fingers = ["Index", "Middle", "Ring", "Pinky", "Thumb"]
                 extensions = finger_extended + [thumb_extended]
                 for i, (finger, extended) in enumerate(zip(fingers, extensions)):
@@ -256,7 +235,6 @@ class EnhancedHandGestureDetector:
                     cv2.putText(frame, f"{finger}: {extended}", 
                                (w - 150, 10 + i*20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
             
-            # מחוות STOP זוהתה אם כל האצבעות פרושות ובמרווחים סבירים
             stop_gesture_detected = all_fingers_extended and fingers_evenly_spaced
             self.detection_data['stop_sign_detected'] = stop_gesture_detected
             
@@ -266,143 +244,50 @@ class EnhancedHandGestureDetector:
             print(f"Error in _detect_stop_sign_gesture: {e}")
             import traceback
             traceback.print_exc()
-            return False  # במקרה של שגיאה, לא מזהים את המחווה
+            return False
 
     def _extract_controls_from_landmarks(self, landmarks, frame, controls):
         """
         Extract control values from hand landmarks with improved detection.
         """
-        # Convert landmarks to more accessible format
         h, w, c = frame.shape
         landmark_points = []
         for lm in landmarks.landmark:
             x, y = int(lm.x * w), int(lm.y * h)
             landmark_points.append((x, y))
         
-        # Get key points
+        # הגדרה של נקודות מפתח
         wrist = landmark_points[0]
         thumb_tip = landmark_points[4]
+        thumb_ip = landmark_points[3]   # מפרק אמצעי של האגודל
+        thumb_mcp = landmark_points[2]  # בסיס האגודל
         index_tip = landmark_points[8]
-        middle_tip = landmark_points[12]
-        ring_tip = landmark_points[16]
-        pinky_tip = landmark_points[20]
-        
-        # Get MCP (knuckle) positions for detecting finger curling
-        thumb_mcp = landmark_points[2]
         index_mcp = landmark_points[5]
+        middle_tip = landmark_points[12]
         middle_mcp = landmark_points[9]
+        ring_tip = landmark_points[16]
         ring_mcp = landmark_points[13]
+        pinky_tip = landmark_points[20]
         pinky_mcp = landmark_points[17]
         
         # Store hand position data
         self.detection_data['hand_position_y'] = wrist[1]
         
-        # ==================== STEERING DETECTION ====================
-        # מדידת זווית האגודל ביחס למרכז כף היד
-        thumb_tip = landmark_points[4]  # קצה האגודל
-        wrist = landmark_points[0]      # שורש כף היד
-        thumb_mcp = landmark_points[2]  # בסיס האגודל
-
-        # חישוב שיפור לזווית האגודל
-        dx_thumb = float(thumb_tip[0] - wrist[0])
-        dy_thumb = float(thumb_tip[1] - wrist[1])
-        
-        # מעבר לחישוב זווית בטווח 0-360
-        thumb_angle = float(np.degrees(np.arctan2(dx_thumb, -dy_thumb)))
-        if thumb_angle < 0:
-            thumb_angle += 360
-        
-        # הגדרת טווח זוויות לא תקפות (כאשר האגודל מצביע כלפי מטה)
-        INVALID_ANGLE_MIN = 80
-        INVALID_ANGLE_MAX = 280
-        
-        # בדיקה אם האגודל מצביע בכיוון היגוי תקף
-        is_valid_steering_angle = not (INVALID_ANGLE_MIN < thumb_angle < INVALID_ANGLE_MAX)
-
-        # Store the thumb angle
-        self.detection_data['thumb_angle'] = thumb_angle
-
-        # מיפוי הזווית לערך היגוי תוך התחשבות בטווח התקף
-        if is_valid_steering_angle:
-            # Convert 0-360 angle to steering in [-1, 1] range
-            # 0 degrees = thumb pointing up = center steering (0)
-            # 0-80 degrees = right turn (0 to 1)
-            # 280-360 degrees = left turn (-1 to 0)
-            if 0 <= thumb_angle <= INVALID_ANGLE_MIN:
-                # Thumb pointing up-right (0-80 degrees)
-                raw_steering = float(thumb_angle / INVALID_ANGLE_MIN)
-            elif INVALID_ANGLE_MAX <= thumb_angle <= 360:
-                # Thumb pointing up-left (280-360 degrees)
-                # Map 280-360 to -1..0
-                raw_steering = float((thumb_angle - 360) / (360 - INVALID_ANGLE_MAX))
-            else:
-                # Shouldn't reach here with valid angles, but just in case
-                raw_steering = 0.0
-        else:
-            # אם האגודל מצביע בכיוון לא תקף, שמור על ערך ההיגוי הקודם
-            raw_steering = self.prev_steering
-
-        # יישום החלקה לקבלת היגוי יציב יותר
-        steering = float(self.prev_steering * self.steering_smoothing + raw_steering * (1 - self.steering_smoothing))
-        steering = float(max(-1.0, min(1.0, steering)))  # הגבלת הטווח
-        self.prev_steering = steering
-        controls['steering'] = steering
-
-        # הוספת קווי חיווי עבור זווית האגודל אם מצב דיבאג מופעל
-        if self.debug_mode:
-            thumb_line_length = 100
-            thumb_angle_rad = np.radians(thumb_angle)
-            thumb_line_end = (
-                int(wrist[0] + thumb_line_length * np.sin(thumb_angle_rad)),
-                int(wrist[1] - thumb_line_length * np.cos(thumb_angle_rad))
-            )
-            # Use different colors for valid/invalid angles
-            line_color = (255, 0, 255) if is_valid_steering_angle else (0, 0, 255)
-            cv2.line(frame, wrist, thumb_line_end, line_color, 2)
-            cv2.putText(frame, f"Thumb Angle: {thumb_angle:.1f}", (10, 130), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, line_color, 2)
-            cv2.putText(frame, f"Steering: {steering:.2f}", (10, 160), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-            cv2.putText(frame, f"Valid Angle: {is_valid_steering_angle}", (10, 190),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, line_color, 2)
-        
         # ==================== THROTTLE DETECTION ====================
-        # Detect throttle based on overall hand height (y-position)
-        # Lower hand position = more throttle
-        normalized_y = float(1.0 - (wrist[1] / h))  # Invert so higher hand = lower value
-        raw_throttle = normalized_y
-        
-        # Store throttle calculation values
+        normalized_y = wrist[1] / h
+        raw_throttle = 1.0 - normalized_y
         self.detection_data['normalized_y'] = normalized_y
         self.detection_data['raw_throttle'] = raw_throttle
+        controls['throttle'] = self.prev_throttle * self.throttle_smoothing + raw_throttle * (1 - self.throttle_smoothing)
+        self.prev_throttle = controls['throttle']
         
-        # Apply non-linear mapping for better control (squared for more precision at low speeds)
-        raw_throttle = float(np.power(max(0, raw_throttle), 1.5))
-        
-        # Apply smoothing and clamp to valid range
-        throttle = float(self.prev_throttle * self.throttle_smoothing + raw_throttle * (1 - self.throttle_smoothing))
-        throttle = float(max(0.0, min(1.0, throttle)))  # Clamp to valid range
-        self.prev_throttle = throttle
-        controls['throttle'] = throttle
-        
-        # Check for fist (braking gesture) - כל האצבעות מכופפות
+        # בדיקה לאגרוף (מחווה לבלימה) - כל האצבעות מכופפות
         index_curled = index_tip[1] > index_mcp[1]  # האצבע מכופפת אם הקצה מתחת למפרק
         middle_curled = middle_tip[1] > middle_mcp[1]
         ring_curled = ring_tip[1] > ring_mcp[1]
         pinky_curled = pinky_tip[1] > pinky_mcp[1]
 
-        # בדיקה מדויקת יותר לזיהוי אגודל מורם (Thumb Up)
-        # תנאים: אגודל זקוף, גבוה מהאצבעות, רחוק מהאצבע המורה, שאר האצבעות מכופפות
-        thumb_tip = landmark_points[4]
-        thumb_ip = landmark_points[3]
-        thumb_mcp = landmark_points[2]
-        wrist = landmark_points[0]
-        index_tip = landmark_points[8]
-        middle_tip = landmark_points[12]
-        ring_tip = landmark_points[16]
-        pinky_tip = landmark_points[20]
-
-        # מרחקים
+        # מרחקים לחישובי זיהוי מחוות
         thumb_tip_to_ip = np.linalg.norm(np.array(thumb_tip) - np.array(thumb_ip))
         thumb_ip_to_mcp = np.linalg.norm(np.array(thumb_ip) - np.array(thumb_mcp))
         thumb_tip_to_index_tip = np.linalg.norm(np.array(thumb_tip) - np.array(index_tip))
@@ -433,40 +318,25 @@ class EnhancedHandGestureDetector:
         # האגודל רחוק מהאצבע המורה (לא צמוד)
         thumb_far_from_index = thumb_tip_to_index_tip > 0.7 * thumb_tip_to_wrist
 
-        # אגודל מקופל אם היחס קטן, קצה קרוב למפרק, או זווית חדה
-        thumb_curled = (
-            distance_ratio < 0.7 or
-            thumb_tip_to_ip < thumb_ip_to_mcp * 0.8 or
-            thumb_angle < 120  # זווית חדה = אגודל מקופל
-        )
+        # בדיקה אם האגודל זקוף בהקשר של מחוות "אגודל למעלה"
+        thumb_pointing_up = self._check_thumb_extended(thumb_tip, thumb_ip, thumb_mcp, wrist, context="thumb_up")
 
         # בדיקה נוספת: האם האגודל קרוב לאצבע המורה (מאפיין אגרוף)
         thumb_close_to_index = thumb_tip_to_index_tip < 0.4 * thumb_tip_to_wrist  # מרחק קטן = אגודל קרוב לאצבע
 
-        # עדכון ההגדרה של אגרוף
-        fist_detected = index_curled and middle_curled and ring_curled and pinky_curled and thumb_curled and thumb_close_to_index
-
-        # תנאי Thumb Up: אגודל זקוף, גבוה, רחוק מהאצבע, שאר האצבעות מכופפות, זווית קהה
-        # בדיקה נוספת: האם האגודל מצביע כלפי מעלה ביחס לשורש כף היד
+        # עדכון ההגדרה של אגרוף - אגודל לא זקוף וקרוב לאצבע המורה + כל האצבעות מכופפות
+        fist_detected = index_curled and middle_curled and ring_curled and pinky_curled and not thumb_pointing_up and thumb_close_to_index
+        
+        # חישוב כיוון האגודל ביחס לשורש כף היד (לתצוגת דיבאג)
         thumb_to_wrist_dx = thumb_tip[0] - wrist[0]
         thumb_to_wrist_dy = thumb_tip[1] - wrist[1]
-        thumb_to_wrist_angle = np.degrees(np.arctan2(-thumb_to_wrist_dy, thumb_to_wrist_dx))  # -dy כי ציר Y הפוך
+        thumb_to_wrist_angle = np.degrees(np.arctan2(-thumb_to_wrist_dy, thumb_to_wrist_dx))
         if thumb_to_wrist_angle < 0:
             thumb_to_wrist_angle += 360
 
-        # האגודל צריך להצביע כלפי מעלה (זווית בין 270 ל-90 מעלות דרך 0)
         thumb_pointing_upward = (270 <= thumb_to_wrist_angle <= 360) or (0 <= thumb_to_wrist_angle <= 90)
 
-        # קודם מגדירים את thumb_pointing_up
-        thumb_pointing_up = (
-            distance_ratio > 0.8 and
-            thumb_higher_than_fingers and
-            thumb_far_from_index and
-            thumb_angle > 150 and  # זווית קהה = אגודל זקוף
-            thumb_pointing_upward  # חדש: האגודל מצביע כלפי מעלה
-        )
-
-        # רק אחרי ההגדרה מוסיפים את מידע הדיבאג
+        # הוספת מידע דיבאג
         if self.debug_mode:
             cv2.putText(frame, f"Fist: {fist_detected}", (10, 320), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
             cv2.putText(frame, f"ThumbCloseToIndex: {thumb_close_to_index}", (10, 340), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
@@ -480,9 +350,9 @@ class EnhancedHandGestureDetector:
         boost_gesture = thumb_pointing_up and index_curled and middle_curled and ring_curled and pinky_curled
 
         # בדיקת מחוות stop sign (יד פתוחה)
-        stop_sign = self._detect_stop_sign_gesture(landmark_points, frame) 
+        stop_sign = self._detect_stop_sign_gesture(landmark_points, frame)
 
-        # עדכון ערכי השליטה
+        # עדכון ערכי השליטה על בסיס החלטות היגוי ואיתור מחוות
         if fist_detected:
             controls['braking'] = True
             controls['gesture_name'] = 'Brake (Fist)'
@@ -492,17 +362,86 @@ class EnhancedHandGestureDetector:
         elif boost_gesture:
             controls['boost'] = True
             controls['gesture_name'] = 'Boost (Thumb Up)'
-        elif abs(steering) > 0.3:
-            if steering < -0.3:
+        elif abs(controls['steering']) > 0.3:
+            if controls['steering'] < -0.3:
                 controls['gesture_name'] = 'Turning Left'
             else:
                 controls['gesture_name'] = 'Turning Right'
         else:
             controls['gesture_name'] = 'Forward'
         
-        # Return the updated controls
         return controls
     
+    def _check_thumb_extended(self, thumb_tip, thumb_ip, thumb_mcp, wrist, context="thumb_up"):
+        """
+        בדיקה מאוחדת האם האגודל זקוף.
+        מחזירה True אם האגודל זקוף, False אם הוא מקופל.
+        
+        Args:
+            thumb_tip, thumb_ip, thumb_mcp, wrist: נקודות המפרקים של האגודל ושורש כף היד.
+            context (str): סוג המחווה ("thumb_up" עבור בוסט, "open_palm" עבור עצור).
+        """
+        # חישוב מרחקים
+        thumb_tip_to_ip = np.linalg.norm(np.array(thumb_tip) - np.array(thumb_ip))
+        thumb_ip_to_mcp = np.linalg.norm(np.array(thumb_ip) - np.array(thumb_mcp))
+        thumb_tip_to_wrist = np.linalg.norm(np.array(thumb_tip) - np.array(wrist))
+        
+        # חישוב יחס המרחקים
+        distance_ratio = thumb_tip_to_ip / thumb_ip_to_mcp if thumb_ip_to_mcp > 0 else 0
+        
+        # חישוב זווית בין מפרקי האגודל (MCP -> IP -> TIP)
+        def angle_between_points(a, b, c):
+            a = np.array(a)
+            b = np.array(b)
+            c = np.array(c)
+            ba = a - b
+            bc = c - b
+            cosine_angle = np.dot(ba, bc) / (np.linalg.norm(ba) * np.linalg.norm(bc) + 1e-6)
+            angle = np.degrees(np.arccos(np.clip(cosine_angle, -1.0, 1.0)))
+            return angle
+
+        thumb_angle = angle_between_points(thumb_mcp, thumb_ip, thumb_tip)
+        
+        # חישוב כיוון האגודל ביחס לשורש כף היד
+        thumb_to_wrist_dx = thumb_tip[0] - wrist[0]
+        thumb_to_wrist_dy = thumb_tip[1] - wrist[1]
+        thumb_to_wrist_angle = np.degrees(np.arctan2(-thumb_to_wrist_dy, thumb_to_wrist_dx))
+        if thumb_to_wrist_angle < 0:
+            thumb_to_wrist_angle += 360
+        
+        # עבור "אגודל למעלה" (בוסט), האגודל חייב להצביע כלפי מעלה
+        if context == "thumb_up":
+            thumb_pointing_upward = (270 <= thumb_to_wrist_angle <= 360) or (0 <= thumb_to_wrist_angle <= 90)
+            thumb_extended = (
+                distance_ratio > 0.7 and
+                thumb_angle > 120 and
+                thumb_pointing_upward
+            )
+        # עבור "כף יד פתוחה" (עצור), האגודל צריך להיות פרוש הצידה מהכף
+        else:  # context == "open_palm"
+            # בדוק אם האגודל פרוש על ידי השוואת הזווית שלו לזווית הכף
+            index_mcp = (self.image_width - wrist[0], wrist[1])  # הערכה של מפרק האצבע המורה
+            wrist_to_index_dx = index_mcp[0] - wrist[0]
+            wrist_to_index_dy = index_mcp[1] - wrist[1]
+            wrist_to_index_angle = np.degrees(np.arctan2(wrist_to_index_dy, wrist_to_index_dx))
+            if wrist_to_index_angle < 0:
+                wrist_to_index_angle += 360
+            
+            # חישוב ההפרש בזווית בין האגודל לכיוון הכף
+            angle_diff = abs(thumb_to_wrist_angle - wrist_to_index_angle)
+            if angle_diff > 180:
+                angle_diff = 360 - angle_diff
+            
+            # האגודל נחשב "פרוש" אם הוא בזווית מספיק שונה מהכף (כלומר, לא מקופל פנימה)
+            thumb_spread_out = angle_diff > 30  # ניתן לשנות את הסף הזה לפי הצורך
+            thumb_extended = (
+                distance_ratio > 0.7 and
+                thumb_angle > 90 and  # שינוי מ-120 ל-90 כדי להתאים למחווה טבעית יותר
+                thumb_spread_out
+            )
+        
+        return thumb_extended
+
     def _add_visualization_to_mirrored_frame(self, frame, controls):
         """Add visualization to the mirrored frame with correct text orientation and positioning."""
         h, w, _ = frame.shape
@@ -594,47 +533,3 @@ class EnhancedHandGestureDetector:
             flipped_landmarks.landmark[i] = new_landmark
         
         return flipped_landmarks
-
-    def _check_thumb_extended(self, thumb_tip, thumb_ip, thumb_mcp, wrist):
-        """
-        Unified method to check if thumb is extended.
-        Returns True if thumb is extended, False if curled.
-        """
-        # Calculate distances
-        thumb_tip_to_ip = np.linalg.norm(np.array(thumb_tip) - np.array(thumb_ip))
-        thumb_ip_to_mcp = np.linalg.norm(np.array(thumb_ip) - np.array(thumb_mcp))
-        thumb_tip_to_wrist = np.linalg.norm(np.array(thumb_tip) - np.array(wrist))  # <-- fixed parenthesis
-        
-        # Calculate ratio for extension check
-        distance_ratio = thumb_tip_to_ip / thumb_ip_to_mcp if thumb_ip_to_mcp > 0 else 0
-        
-        # Calculate angle between segments
-        def angle_between_points(a, b, c):
-            a = np.array(a)
-            b = np.array(b)
-            c = np.array(c)
-            ba = a - b
-            bc = c - b
-            cosine_angle = np.dot(ba, bc) / (np.linalg.norm(ba) * np.linalg.norm(bc) + 1e-6)
-            angle = np.degrees(np.arccos(np.clip(cosine_angle, -1.0, 1.0)))
-            return angle
-
-        thumb_angle = angle_between_points(thumb_mcp, thumb_ip, thumb_tip)
-        
-        # Check if thumb is pointing upward
-        thumb_to_wrist_dx = thumb_tip[0] - wrist[0]
-        thumb_to_wrist_dy = thumb_tip[1] - wrist[1]
-        thumb_to_wrist_angle = np.degrees(np.arctan2(-thumb_to_wrist_dy, thumb_to_wrist_dx))
-        if thumb_to_wrist_angle < 0:
-            thumb_to_wrist_angle += 360
-            
-        thumb_pointing_upward = (270 <= thumb_to_wrist_angle <= 360) or (0 <= thumb_to_wrist_angle <= 90)
-        
-        # Determine if thumb is extended based on multiple criteria
-        thumb_extended = (
-            distance_ratio > 0.7 and
-            thumb_angle > 120 and   # Extended thumb has obtuse angle
-            thumb_pointing_upward    # Thumb should point upward to be considered extended
-        )
-        
-        return thumb_extended
