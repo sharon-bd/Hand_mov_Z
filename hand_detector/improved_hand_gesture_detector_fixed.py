@@ -244,9 +244,9 @@ class EnhancedHandGestureDetector:
             # הוספת מידע דיבאג אם נדרש
             if self.debug_mode:
                 cv2.putText(frame, f"All Fingers Extended: {all_fingers_extended}", 
-                           (10, 240), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+                           (10, 220), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
                 cv2.putText(frame, f"Fingers Spaced: {fingers_evenly_spaced}", 
-                           (10, 260), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+                           (10, 240), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
                 
                 # הוספת מידע על פרישת כל אצבע
                 fingers = ["Index", "Middle", "Ring", "Pinky", "Thumb"]
@@ -254,7 +254,7 @@ class EnhancedHandGestureDetector:
                 for i, (finger, extended) in enumerate(zip(fingers, extensions)):
                     color = (0, 255, 0) if extended else (0, 0, 255)
                     cv2.putText(frame, f"{finger}: {extended}", 
-                               (w - 150, 30 + i*20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+                               (w - 150, 10 + i*20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
             
             # מחוות STOP זוהתה אם כל האצבעות פרושות ובמרווחים סבירים
             stop_gesture_detected = all_fingers_extended and fingers_evenly_spaced
@@ -446,24 +446,6 @@ class EnhancedHandGestureDetector:
         # עדכון ההגדרה של אגרוף
         fist_detected = index_curled and middle_curled and ring_curled and pinky_curled and thumb_curled and thumb_close_to_index
 
-        # הוספת מידע דיבאג
-        if self.debug_mode:
-            # Rearranged and spaced out debug text lines - at least 20px apart
-            cv2.putText(frame, f"ThumbUp: {thumb_pointing_up}", (10, 380), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
-            cv2.putText(frame, f"Thumb>Fingers: {thumb_higher_than_fingers}", (10, 400), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
-            cv2.putText(frame, f"Thumb-Index dist: {thumb_tip_to_index_tip:.1f}", (10, 420), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
-            # Fixed overlapping lines - changed y-position from 440 to 445 for "Fist" text
-            cv2.putText(frame, f"Fist: {fist_detected}", (10, 445), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
-            # Move "Thumb angle" text below "Fist" text
-            cv2.putText(frame, f"Thumb angle: {thumb_angle:.1f}", (10, 465), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
-            # Move "ThumbCloseToIndex" text down
-            cv2.putText(frame, f"ThumbCloseToIndex: {thumb_close_to_index}", (10, 485), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
-            # Empty line not needed since we've properly spaced everything
-            cv2.putText(frame, f"ThumbUpward: {thumb_pointing_upward}", (10, 505), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
-            cv2.putText(frame, f"ThumbToWristAngle: {thumb_to_wrist_angle:.1f}", (10, 525), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
-
-        boost_gesture = thumb_pointing_up and index_curled and middle_curled and ring_curled and pinky_curled
-
         # תנאי Thumb Up: אגודל זקוף, גבוה, רחוק מהאצבע, שאר האצבעות מכופפות, זווית קהה
         # בדיקה נוספת: האם האגודל מצביע כלפי מעלה ביחס לשורש כף היד
         thumb_to_wrist_dx = thumb_tip[0] - wrist[0]
@@ -475,6 +457,7 @@ class EnhancedHandGestureDetector:
         # האגודל צריך להצביע כלפי מעלה (זווית בין 270 ל-90 מעלות דרך 0)
         thumb_pointing_upward = (270 <= thumb_to_wrist_angle <= 360) or (0 <= thumb_to_wrist_angle <= 90)
 
+        # קודם מגדירים את thumb_pointing_up
         thumb_pointing_up = (
             distance_ratio > 0.8 and
             thumb_higher_than_fingers and
@@ -483,13 +466,16 @@ class EnhancedHandGestureDetector:
             thumb_pointing_upward  # חדש: האגודל מצביע כלפי מעלה
         )
 
+        # רק אחרי ההגדרה מוסיפים את מידע הדיבאג
         if self.debug_mode:
-            cv2.putText(frame, f"ThumbUp: {thumb_pointing_up}", (10, 380), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
-            cv2.putText(frame, f"Thumb>Fingers: {thumb_higher_than_fingers}", (10, 400), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
-            cv2.putText(frame, f"Thumb-Index dist: {thumb_tip_to_index_tip:.1f}", (10, 420), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
-            cv2.putText(frame, f"Thumb angle: {thumb_angle:.1f}", (10, 465), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
-            cv2.putText(frame, f"ThumbUpward: {thumb_pointing_upward}", (10, 505), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
-            cv2.putText(frame, f"ThumbToWristAngle: {thumb_to_wrist_angle:.1f}", (10, 525), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
+            cv2.putText(frame, f"Fist: {fist_detected}", (10, 320), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+            cv2.putText(frame, f"ThumbCloseToIndex: {thumb_close_to_index}", (10, 340), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+            cv2.putText(frame, f"ThumbUp: {thumb_pointing_up}", (10, 360), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
+            cv2.putText(frame, f"Thumb>Fingers: {thumb_higher_than_fingers}", (10, 380), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
+            cv2.putText(frame, f"Thumb-Index dist: {thumb_tip_to_index_tip:.1f}", (10, 400), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
+            cv2.putText(frame, f"Thumb angle: {thumb_angle:.1f}", (10, 420), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
+            cv2.putText(frame, f"ThumbUpward: {thumb_pointing_upward}", (10, 440), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
+            cv2.putText(frame, f"ThumbToWristAngle: {thumb_to_wrist_angle:.1f}", (10, 460), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
 
         boost_gesture = thumb_pointing_up and index_curled and middle_curled and ring_curled and pinky_curled
 
