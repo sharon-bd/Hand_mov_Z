@@ -292,6 +292,33 @@ class EnhancedHandGestureDetector:
         controls['throttle'] = self.prev_throttle * self.throttle_smoothing + raw_throttle * (1 - self.throttle_smoothing)
         self.prev_throttle = controls['throttle']
         
+        # ==================== STEERING DETECTION ====================
+        # Calculate the angle between thumb tip and wrist
+        thumb_to_wrist_dx = thumb_tip[0] - wrist[0]
+        thumb_to_wrist_dy = thumb_tip[1] - wrist[1]
+        thumb_to_wrist_angle = np.degrees(np.arctan2(-thumb_to_wrist_dy, thumb_to_wrist_dx))
+        if thumb_to_wrist_angle < 0:
+            thumb_to_wrist_angle += 360
+            
+        # Store the thumb angle in detection data for display
+        self.detection_data['thumb_angle'] = thumb_to_wrist_angle
+
+        # Map thumb angle to steering in 180-degree range
+        # Normalize the angle to 0-180 range for horizontal movement only
+        if thumb_to_wrist_angle > 180:
+            thumb_to_wrist_angle = thumb_to_wrist_angle - 360
+            
+        # Convert to steering value: 
+        # 0° (left) = -1.0, 90° (center) = 0.0, 180° (right) = 1.0
+        raw_steering = (thumb_to_wrist_angle - 90) / 90.0
+        
+        # Clamp the steering value between -1 and 1
+        raw_steering = np.clip(raw_steering, -1.0, 1.0)
+
+        # Apply smoothing to the steering
+        controls['steering'] = self.prev_steering * self.steering_smoothing + raw_steering * (1 - self.steering_smoothing)
+        self.prev_steering = controls['steering']
+        
         # בדיקה לאגרוף (מחווה לבלימה) - כל האצבעות מכופפות
         index_curled = index_tip[1] > index_mcp[1]  # האצבע מכופפת אם הקצה מתחת למפרק
         middle_curled = middle_tip[1] > middle_mcp[1]
@@ -338,15 +365,6 @@ class EnhancedHandGestureDetector:
         # עדכון ההגדרה של אגרוף - אגודל לא זקוף וקרוב לאצבע המורה + כל האצבעות מכופפות
         fist_detected = index_curled and middle_curled and ring_curled and pinky_curled and not thumb_pointing_up and thumb_close_to_index
         
-        # חישוב כיוון האגודל ביחס לשורש כף היד (לתצוגת דיבאג)
-        thumb_to_wrist_dx = thumb_tip[0] - wrist[0]
-        thumb_to_wrist_dy = thumb_tip[1] - wrist[1]
-        thumb_to_wrist_angle = np.degrees(np.arctan2(-thumb_to_wrist_dy, thumb_to_wrist_dx))
-        if thumb_to_wrist_angle < 0:
-            thumb_to_wrist_angle += 360
-
-        thumb_pointing_upward = (270 <= thumb_to_wrist_angle <= 360) or (0 <= thumb_to_wrist_angle <= 90)
-
         # הוספת מידע דיבאג
         if self.debug_mode:
             cv2.putText(frame, f"Fist: {fist_detected}", (10, 320), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
@@ -355,8 +373,8 @@ class EnhancedHandGestureDetector:
             cv2.putText(frame, f"Thumb>Fingers: {thumb_higher_than_fingers}", (10, 380), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
             cv2.putText(frame, f"Thumb-Index dist: {thumb_tip_to_index_tip:.1f}", (10, 400), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
             cv2.putText(frame, f"Thumb angle: {thumb_angle:.1f}", (10, 420), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
-            cv2.putText(frame, f"ThumbUpward: {thumb_pointing_upward}", (10, 440), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
-            cv2.putText(frame, f"ThumbToWristAngle: {thumb_to_wrist_angle:.1f}", (10, 460), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
+            cv2.putText(frame, f"ThumbToWristAngle: {thumb_to_wrist_angle:.1f}", (10, 440), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
+            cv2.putText(frame, f"Steering: {controls['steering']:.2f}", (10, 460), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 1)
 
         boost_gesture = thumb_pointing_up and index_curled and middle_curled and ring_curled and pinky_curled
 
@@ -375,14 +393,14 @@ class EnhancedHandGestureDetector:
             controls['gesture_name'] = 'Boost (Thumb Up)'
         elif abs(controls['steering']) > 0.3:
             if controls['steering'] < -0.3:
-                controls['gesture_name'] = 'Turning Left'
+                controls['gesture_name'] = f'Turning Left ({controls["steering"]:.2f})'
             else:
-                controls['gesture_name'] = 'Turning Right'
+                controls['gesture_name'] = f'Turning Right ({controls["steering"]:.2f})'
         else:
             controls['gesture_name'] = 'Forward'
         
         return controls
-    
+
     def _check_thumb_extended(self, thumb_tip, thumb_ip, thumb_mcp, wrist, context="thumb_up"):
         """
         בדיקה מאוחדת האם האגודל זקוף.
