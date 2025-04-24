@@ -222,18 +222,29 @@ class EnhancedHandGestureDetector:
                 if min_spacing > 0:
                     fingers_evenly_spaced = (max_spacing < min_spacing * 2.0)
             
+            # Fix: Calculate thumb_angle before using it in debug data
+            # Define angle calculation function if not already available in this scope
+            def angle_between_points(a, b, c):
+                a = np.array(a)
+                b = np.array(b)
+                c = np.array(c)
+                ba = a - b
+                bc = c - b
+                cosine_angle = np.dot(ba, bc) / (np.linalg.norm(ba) * np.linalg.norm(bc) + 1e-6)
+                angle = np.degrees(np.arccos(np.clip(cosine_angle, -1.0, 1.0)))
+                return angle
+            
+            # Calculate thumb angle
+            thumb_angle = angle_between_points(thumb_mcp, thumb_ip, thumb_tip)
+            
             if self.debug_mode:
-                cv2.putText(frame, f"All Fingers Extended: {all_fingers_extended}", 
-                           (10, 220), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
-                cv2.putText(frame, f"Fingers Spaced: {fingers_evenly_spaced}", 
-                           (10, 240), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
-                
-                fingers = ["Index", "Middle", "Ring", "Pinky", "Thumb"]
-                extensions = finger_extended + [thumb_extended]
-                for i, (finger, extended) in enumerate(zip(fingers, extensions)):
-                    color = (0, 255, 0) if extended else (0, 0, 255)
-                    cv2.putText(frame, f"{finger}: {extended}", 
-                               (w - 150, 10 + i*20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+                # אחסן את המידע בתוך self.detection_data במקום להדפיס
+                self.detection_data['thumb_angle_debug'] = {
+                    'angle': thumb_angle,
+                    'finger_spacing': finger_spacings,
+                    'all_extended': all_fingers_extended,
+                    'evenly_spaced': fingers_evenly_spaced
+                }
             
             stop_gesture_detected = all_fingers_extended and fingers_evenly_spaced
             self.detection_data['stop_sign_detected'] = stop_gesture_detected
