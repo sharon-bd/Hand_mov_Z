@@ -303,17 +303,15 @@ class EnhancedHandGestureDetector:
         # Store the thumb angle in detection data for display
         self.detection_data['thumb_angle'] = thumb_to_wrist_angle
 
-        # Map thumb angle to steering in 180-degree range
-        # Normalize the angle to 0-180 range for horizontal movement only
-        if thumb_to_wrist_angle > 180:
-            thumb_to_wrist_angle = thumb_to_wrist_angle - 360
-            
-        # Convert to steering value: 
-        # 0° (left) = -1.0, 90° (center) = 0.0, 180° (right) = 1.0
-        raw_steering = (thumb_to_wrist_angle - 90) / 90.0
-        
-        # Clamp the steering value between -1 and 1
-        raw_steering = np.clip(raw_steering, -1.0, 1.0)
+        # Steering only in upper 180 degrees (thumb pointing up/right/left, not down)
+        # Active range: 0° (right) to 180° (left), i.e., top half of the circle
+        raw_steering = 0.0
+        if 0 <= thumb_to_wrist_angle <= 180:
+            # 0° (right) -> 1, 90° (up) -> 0, 180° (left) -> -1
+            raw_steering = np.cos(np.deg2rad(thumb_to_wrist_angle))
+            # Clamp for safety
+            raw_steering = np.clip(raw_steering, -1.0, 1.0)
+        # If thumb is pointing down (180° < angle < 360°), steering remains 0
 
         # Apply smoothing to the steering
         controls['steering'] = self.prev_steering * self.steering_smoothing + raw_steering * (1 - self.steering_smoothing)
