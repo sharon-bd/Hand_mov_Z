@@ -134,44 +134,61 @@ class HandGestureDetector:
         pinky_mcp = landmark_points[17]
         
         # ==================== STEERING DETECTION ====================
-        # Calculate hand rotation for steering (based on hand tilt)
-        # Using index and pinky base for more stable steering detection
-        dx = landmark_points[17][0] - landmark_points[5][0]  # Pinky MCP - Index MCP x-distance
-        dy = landmark_points[17][1] - landmark_points[5][1]  # Pinky MCP - Index MCP y-distance
+        # Calculate steering based on thumb direction relative to wrist
+        # Calculate the angle between thumb and wrist
+        dx = thumb_tip[0] - wrist[0]
+        dy = thumb_tip[1] - wrist[1]
         
-        # Calculate angle of hand rotation
-        hand_angle = np.degrees(np.arctan2(dy, dx))
+        # Calculate angle in degrees (0° points right, 90° points up, 180° points left, 270° points down)
+        thumb_angle = np.degrees(np.arctan2(-dy, dx))  # Negative dy because y-axis is inverted in images
+        if thumb_angle < 0:
+            thumb_angle += 360  # Convert to 0-360 range
         
-        # Map angle to steering value
-        # Neutral hand orientation (fingers pointing up) is around -90 degrees
-        # We'll map -135° to -45° (90° range) to our full steering range
-        if -135 <= hand_angle <= -45:
-            # Normalize to -1 to 1 steering range
-            # -135° maps to -1 (full left), -90° to 0 (center), -45° to 1 (full right)
-            raw_steering = (hand_angle + 90) / 45
-        else:
-            # If hand is rotated extremely, use max values
-            raw_steering = -1 if hand_angle < -135 else 1
-        
+        # Map thumb angle to steering value with improved dead zone and response
+        # Center dead zone from 80° to 100° for more stable neutral position
+        if 80 <= thumb_angle <= 100:  # Dead zone for more stable center
+            raw_steering = 0.0
+        elif thumb_angle < 80:  # Right turn zone
+            if thumb_angle < 45:  # Sharp right
+                raw_steering = 1.0
+            else:  # Gradual right
+                raw_steering = 0.3 + 0.7 * (80 - thumb_angle) / 35
+        elif thumb_angle > 100:  # Left turn zone
+            if thumb_angle > 135:  # Sharp left
+                raw_steering = -1.0
+            else:  # Gradual left 
+                raw_steering = -0.3 - 0.7 * (thumb_angle - 100) / 35
+
         # Apply smoothing for more stable steering
         steering = self.prev_steering * self.steering_smoothing + raw_steering * (1 - self.steering_smoothing)
         steering = max(-1.0, min(1.0, steering))  # Clamp to valid range
         self.prev_steering = steering
         controls['steering'] = steering
         
-        # Draw steering indicator line on frame if in debug mode
+        # Draw enhanced debug visualization if in debug mode
         if self.debug_mode:
-            steer_start = wrist
-            steer_length = 100
-            steer_angle_rad = np.radians(hand_angle)
-            steer_end = (
-                int(steer_start[0] + steer_length * np.cos(steer_angle_rad)),
-                int(steer_start[1] + steer_length * np.sin(steer_angle_rad))
+            # Draw steering zone indicators
+            center = (wrist[0], wrist[1])
+            radius = 50
+            # Draw dead zone (yellow)
+            cv2.ellipse(frame, center, (radius, radius), 0, -100, -80, (0, 255, 255), 2)
+            # Draw right zone (green)
+            cv2.ellipse(frame, center, (radius, radius), 0, -80, -45, (0, 255, 0), 2)
+            # Draw left zone (red)
+            cv2.ellipse(frame, center, (radius, radius), 0, -135, -100, (0, 0, 255), 2)
+            
+            # Draw current thumb direction
+            angle_rad = np.radians(-thumb_angle)
+            end_point = (
+                int(center[0] + radius * np.cos(angle_rad)),
+                int(center[1] + radius * np.sin(angle_rad))
             )
-            cv2.line(frame, steer_start, steer_end, (0, 255, 255), 2)
-            cv2.putText(frame, f"Angle: {hand_angle:.1f}", (10, 30), 
+            cv2.line(frame, center, end_point, (255, 255, 255), 2)
+            
+            # Draw steering value
+            cv2.putText(frame, f"Thumb: {thumb_angle:.1f}°", (10, 30), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-            cv2.putText(frame, f"Steering: {steering:.2f}", (10, 60), 
+            cv2.putText(frame, f"Steering: {raw_steering:.2f}", (10, 60), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
         
         # ==================== THROTTLE DETECTION ====================

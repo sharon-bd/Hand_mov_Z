@@ -74,11 +74,31 @@ def test_hand_detector(detector_class='improved'):
                 cv2.imshow('Hand Gestures', frame_with_margin)
                 cv2.imshow('Data Analysis', data_panel)
             elif detector_class == 'basic':
-                # Basic detector
-                controls, processed_frame = detector.detect_gestures(frame)
-                cv2.putText(processed_frame, fps_text, (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 
-                            0.7, (0, 255, 0), 2)
-                cv2.imshow('Hand Gestures', processed_frame)
+                # Process frame with flipped image like improved detector
+                controls, processed_frame = detector.detect_gestures(cv2.flip(frame, 1))
+                
+                if controls is None:
+                    controls = {'steering': 0.0, 'throttle': 0.0, 'gesture_name': 'לא ידוע', 
+                              'braking': False, 'boost': False}
+                
+                # Create Hebrew data panel
+                data_panel = create_data_panel(controls)
+                
+                # Add margin and create frame with indicators
+                margin = 80
+                h, w = processed_frame.shape[:2]
+                frame_with_margin = np.zeros((h + margin, w, 3), dtype=np.uint8)
+                frame_with_margin[:h, :] = processed_frame
+                
+                # Add visual indicators with Hebrew labels
+                cv2.putText(frame_with_margin, fps_text, (10, 25), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                cv2.putText(frame_with_margin, f"מחווה: {controls['gesture_name']}", 
+                           (10, h + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                
+                # Show frames with Hebrew titles
+                cv2.imshow('זיהוי תנועות ידיים', frame_with_margin)
+                cv2.imshow('ניתוח נתונים', data_panel)
             else:
                 # Simple detector
                 controls, processed_frame = detector.detect_gestures(frame)
@@ -105,6 +125,65 @@ def test_hand_detector(detector_class='improved'):
         cv2.destroyAllWindows()
         print("\nTest finished.")
 
+def create_data_panel(controls):
+    """יצירת לוח נתונים דומה למה שגלאי היד המשופר מייצר"""
+    panel_width = 500  # Increased width for Hebrew text
+    panel_height = 400
+    panel = np.ones((panel_height, panel_width, 3), dtype=np.uint8) * 255
+    
+    # כותרת
+    cv2.putText(panel, "נתוני זיהוי תנועות ידיים", (20, 30), 
+                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 2)
+    cv2.line(panel, (20, 40), (panel_width - 20, 40), (0, 0, 0), 1)
+    
+    # מידע על המחווה הנוכחית
+    y_pos = 70
+    cv2.putText(panel, f"מחווה: {controls.get('gesture_name', 'לא ידוע')}", 
+                (20, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+    
+    y_pos = 110
+    cv2.putText(panel, f"היגוי: {controls.get('steering', 0):.2f}", 
+                (20, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1)
+    y_pos += 30
+
+    cv2.putText(panel, f"מהירות: {controls.get('throttle', 0):.2f}", 
+                (20, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1)
+    y_pos += 30
+
+    # Draw status indicators
+    brake_color = (0, 0, 255) if controls.get('braking', False) else (150, 150, 150)
+    boost_color = (255, 165, 0) if controls.get('boost', False) else (150, 150, 150)
+
+    cv2.putText(panel, "בלימה:", (20, y_pos), 
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1)
+    cv2.circle(panel, (120, y_pos - 5), 8, brake_color, -1)
+
+    cv2.putText(panel, "האצה:", (200, y_pos), 
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1)
+    cv2.circle(panel, (260, y_pos - 5), 8, boost_color, -1)
+
+    y_pos += 50
+
+    # Add control instructions
+    cv2.putText(panel, "הוראות שליטה:", (20, y_pos), 
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 1)
+    y_pos += 30
+
+    instructions = [
+        "- הטה את היד שמאלה/ימינה להיגוי",
+        "- הזז את היד למעלה/למטה לשליטה במהירות",
+        "- אגרוף לבלימה",
+        "- אגודל למעלה להאצה",
+        "- כף יד פתוחה לעצירת חירום"
+    ]
+
+    for instruction in instructions:
+        cv2.putText(panel, instruction, (30, y_pos), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+        y_pos += 25
+
+    return panel
+
 def create_hand_visualization():
     """Create a separate visualization window for hand gesture data"""
     detector = SimpleHandGestureDetector()
@@ -113,7 +192,7 @@ def create_hand_visualization():
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
     
     prev_frame_time = 0
-    
+
     try:
         while True:
             success, frame = cap.read()

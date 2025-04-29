@@ -303,19 +303,63 @@ class EnhancedHandGestureDetector:
         # Store the thumb angle in detection data for display
         self.detection_data['thumb_angle'] = thumb_to_wrist_angle
 
-        # Steering only in upper 180 degrees (thumb pointing up/right/left, not down)
-        # Active range: 0° (right) to 180° (left), i.e., top half of the circle
+        # Enhanced steering control with dead zone and non-linear response
         raw_steering = 0.0
         if 0 <= thumb_to_wrist_angle <= 180:
-            # 0° (right) -> 1, 90° (up) -> 0, 180° (left) -> -1
-            raw_steering = np.cos(np.deg2rad(thumb_to_wrist_angle))
-            # Clamp for safety
-            raw_steering = np.clip(raw_steering, -1.0, 1.0)
-        # If thumb is pointing down (180° < angle < 360°), steering remains 0
+            # Create a dead zone around vertical (90°) for more stable neutral position
+            # Dead zone: 80° to 100°
+            if 80 <= thumb_to_wrist_angle <= 100:
+                raw_steering = 0.0
+            else:
+                # Non-linear steering response for better control
+                # Map 0-80° to positive steering (right)
+                # Map 100-180° to negative steering (left)
+                if thumb_to_wrist_angle < 80:
+                    # Exponential response for right turns
+                    normalized = (80 - thumb_to_wrist_angle) / 80.0
+                    raw_steering = normalized ** 1.5  # Exponential curve
+                else:  # > 100°
+                    # Exponential response for left turns
+                    normalized = (thumb_to_wrist_angle - 100) / 80.0
+                    raw_steering = -(normalized ** 1.5)  # Exponential curve
+                
+                # Scale the steering to full range
+                raw_steering *= 1.0  # Maximum steering value
 
-        # Apply smoothing to the steering
-        controls['steering'] = self.prev_steering * self.steering_smoothing + raw_steering * (1 - self.steering_smoothing)
+        # Add steering limits for safety
+        raw_steering = np.clip(raw_steering, -1.0, 1.0)
+
+        # Apply smoothing with variable smoothing factor
+        # More smoothing at center, less at extremes
+        center_smoothing = 0.8  # High smoothing near center
+        edge_smoothing = 0.3    # Low smoothing at edges
+        smoothing_factor = center_smoothing - (abs(raw_steering) * (center_smoothing - edge_smoothing))
+        
+        controls['steering'] = (self.prev_steering * smoothing_factor + 
+                              raw_steering * (1 - smoothing_factor))
         self.prev_steering = controls['steering']
+
+        # Enhanced debug visualization
+        if self.debug_mode:
+            # Draw steering zones
+            center_x, center_y = wrist[0], wrist[1]
+            radius = 50
+            
+            # Draw dead zone (yellow)
+            cv2.ellipse(frame, (center_x, center_y), (radius, radius), 
+                       0, -100, -80, (0, 255, 255), 2)
+            
+            # Draw active zones (green for right, red for left)
+            cv2.ellipse(frame, (center_x, center_y), (radius, radius), 
+                       0, -80, 0, (0, 255, 0), 2)  # Right zone
+            cv2.ellipse(frame, (center_x, center_y), (radius, radius), 
+                       0, -180, -100, (0, 0, 255), 2)  # Left zone
+            
+            # Draw current thumb angle
+            angle_rad = np.radians(-thumb_to_wrist_angle)
+            end_x = int(center_x + radius * np.cos(angle_rad))
+            end_y = int(center_y + radius * np.sin(angle_rad))
+            cv2.line(frame, (center_x, center_y), (end_x, end_y), (255, 255, 255), 2)
         
         # בדיקה לאגרוף (מחווה לבלימה) - כל האצבעות מכופפות
         index_curled = index_tip[1] > index_mcp[1]  # האצבע מכופפת אם הקצה מתחת למפרק
