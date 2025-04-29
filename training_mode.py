@@ -713,7 +713,7 @@ class Car:
         if self.show_indicators:
             # Direction indicator (steering)
             indicator_length = 50
-            steer_angle = -self.direction * 30  # Convert steering (-1 to 1) to angle
+            steer_angle = self.direction * 30  # Convert steering (-1 to 1) to angle
             end_x = self.x + indicator_length * math.sin(math.radians(steer_angle))
             end_y = self.y - indicator_length * math.cos(math.radians(steer_angle))
             pygame.draw.line(screen, GREEN, (self.x, self.y), (end_x, end_y), 2)
