@@ -131,6 +131,10 @@ def test_hand_gesture_detector():
     prev_time = time.time()
     fps_history = []
     
+    # Create separate, resizable windows
+    cv2.namedWindow('Camera View', cv2.WINDOW_NORMAL)
+    cv2.namedWindow('Control Panel', cv2.WINDOW_NORMAL)
+    
     try:
         while True:
             # Read frame
@@ -165,20 +169,13 @@ def test_hand_gesture_detector():
             # Add FPS to the detector for display
             detector.fps = avg_fps
             
-            # Resize data panel if needed to match the height of the frame
-            h, w = processed_frame.shape[:2]
-            data_panel_resized = cv2.resize(data_panel, (data_panel.shape[1], h))
-            
-            # Create a combined display
-            combined_display = np.hstack((processed_frame, data_panel_resized))
-            
-            # Show the combined frame
-            cv2.imshow("Hand Gesture Detection", combined_display)
+            # Show frames in their respective windows
+            cv2.imshow('Camera View', processed_frame)
+            cv2.imshow('Control Panel', data_panel)
             
             # Exit on 'q' key
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
-            
     except Exception as e:
         print(f"Error during testing: {e}")
         import traceback
@@ -195,9 +192,7 @@ if __name__ == "__main__":
     print("1. Test with improved detector")
     print("2. List available cameras")
     print("3. Exit")
-    
     choice = input("Select option (1-3): ")
-    
     if choice == "1":
         test_hand_gesture_detector()
     elif choice == "2":
