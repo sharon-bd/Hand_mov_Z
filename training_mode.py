@@ -113,40 +113,162 @@ class CameraThread(threading.Thread):
                 
         return frame_copy, panel_copy, self.fps
             
-def run(self):
-    """Main game loop for training mode"""
-    self.setup()
-    
-    while self.running:
-        # ... קוד קיים ...
+    def run(self):
+        """Main game loop for camera processing thread"""
+        self.running = True
+        self.start_time = time.time()
         
-        # Get controls from camera thread
-        if self.camera_thread is not None:
-            controls = self.camera_thread.get_controls()
+        # Initialize camera capture
+        cap = cv2.VideoCapture(self.camera_index)
+        if not cap.isOpened():
+            print(f"Error: Could not open camera {self.camera_index}")
+            self.running = False
+            return
             
-            # Get camera visuals
-            frame, data_panel, self.fps_camera = self.camera_thread.get_visuals()
-            
-            # Show camera feed in separate OpenCV window if enabled
-            if frame is not None and self.show_camera_feed and self.camera_window_name:
+        # Main processing loop
+        while self.running:
+            # Read frame from camera
+            ret, frame = cap.read()
+            if not ret or frame is None:
+                print("Error: Could not read frame")
+                continue
+                
+            # Process frame with detector if available
+            if self.detector is not None:
                 try:
-                    # Display the frame in the separate window
-                    cv2.imshow(self.camera_window_name, frame)
-                    cv2.waitKey(1)  # Required to update OpenCV window
+                    # First, explicitly check if the detector has the required methods
+                    has_process_frame = hasattr(self.detector, 'process_frame') and callable(getattr(self.detector, 'process_frame'))
+                    has_detect = hasattr(self.detector, 'detect') and callable(getattr(self.detector, 'detect'))
+                    
+                    if not (has_process_frame or has_detect):
+                        # If detector has neither method, log once and create simple implementations
+                        if not hasattr(self, '_method_warning_shown'):
+                            print("Warning: Detector has neither process_frame nor detect method. Using manual fallback.")
+                            self._method_warning_shown = True
+                        
+                        # Create a processed frame with basic information
+                        processed_frame = frame.copy()
+                        # Draw a message on the frame
+                        cv2.putText(
+                            processed_frame,
+                            "Detector interface not implemented",
+                            (30, 30),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.7,
+                            (0, 0, 255),  # Red color for warning
+                            2
+                        )
+                        
+                        # Create a basic data panel
+                        data_panel = np.ones((500, 600, 3), dtype=np.uint8) * 255  # White background
+                        cv2.putText(
+                            data_panel,
+                            "Detector Missing Methods: process_frame and detect",
+                            (20, 50),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.7,
+                            (0, 0, 255),  # Red color for warning
+                            2
+                        )
+                        
+                        # Use default controls
+                        detected_controls = {
+                            'steering': 0,
+                            'throttle': 0.5,
+                            'braking': False,
+                            'boost': False,
+                            'gesture_name': 'No detection interface'
+                        }
+                    elif has_process_frame:
+                        # Process the frame and get controls using process_frame
+                        processed_frame, data_panel, detected_controls = self.detector.process_frame(frame)
+                    elif has_detect:
+                        # Try using detect method with fallback implementation
+                        result = self.detector.detect(frame)
+                        
+                        # Create a basic visualization
+                        processed_frame = frame.copy()
+                        data_panel = np.ones((500, 600, 3), dtype=np.uint8) * 255  # White background
+                        
+                        # Set default controls
+                        detected_controls = {
+                            'steering': 0,
+                            'throttle': 0.5,
+                            'braking': False,
+                            'boost': False,
+                            'gesture_name': 'Unknown'
+                        }
+                        
+                        # Extract controls from result if available
+                        if isinstance(result, dict):
+                            if 'gesture' in result:
+                                detected_controls['gesture_name'] = result['gesture']
+                            
+                            if 'steering' in result:
+                                detected_controls['steering'] = result['steering']
+                            
+                            if 'throttle' in result:
+                                detected_controls['throttle'] = result['throttle']
+                            
+                            if 'braking' in result:
+                                detected_controls['braking'] = result['braking']
+                            
+                            if 'boost' in result:
+                                detected_controls['boost'] = result['boost']
+                        
+                        # Draw basic info on data panel
+                        cv2.putText(
+                            data_panel,
+                            f"Gesture: {detected_controls['gesture_name']}",
+                            (20, 50),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.8,
+                            (0, 0, 0),
+                            2
+                        )
+                        
+                        # Add steering and throttle indicators
+                        cv2.putText(
+                            data_panel,
+                            f"Steering: {detected_controls['steering']:.2f}",
+                            (20, 100),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.7,
+                            (0, 0, 0),
+                            1
+                        )
+                        
+                        cv2.putText(
+                            data_panel,
+                            f"Throttle: {detected_controls['throttle']:.2f}",
+                            (20, 150),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.7,
+                            (0, 0, 0),
+                            1
+                        )
+                    
+                    # Update controls with thread safety
+                    with self.lock:
+                        self.controls = detected_controls
+                        self.processed_frame = processed_frame
+                        self.data_panel = data_panel
+                        
+                        # Update FPS calculation
+                        self.frame_count += 1
+                        elapsed_time = time.time() - self.start_time
+                        if elapsed_time > 1.0:  # Update FPS every second
+                            self.fps = self.frame_count / elapsed_time
+                            self.frame_count = 0
+                            self.start_time = time.time()
                 except Exception as e:
-                    print(f"Error showing camera feed: {e}")
+                    print(f"Error in detector processing: {e}")
             
-            # הסר את הקוד שממיר את התמונה לפורמט pygame
-            # כי אנחנו לא מציגים אותה במסך הראשי יותר
-            # if frame is not None and self.show_camera_feed:
-            #    try:
-            #        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            #        frame_rgb = cv2.resize(frame_rgb, (320, 240))
-            #        self.camera_surface = pygame.surfarray.make_surface(frame_rgb.swapaxes(0, 1))
-            #    except Exception as e:
-            #        print(f"Error converting camera frame: {e}")
+            # Brief sleep to prevent excessive CPU usage
+            time.sleep(0.01)
             
-            # ... המשך הקוד הקיים ...
+        # Clean up
+        cap.release()
         
     def stop(self):
         """Stop the camera thread"""
@@ -506,33 +628,27 @@ class TrainingMode:
         #     pygame.draw.rect(self.screen, WHITE, 
         #                     (SCREEN_WIDTH - 330, 10, 320, 240), 2)
         
-        # Draw HUD information
-        self.draw_hud(controls)
-    
-def draw_hud(self, controls):
-    """Draw heads-up display information"""
-    # Training mode title
-    title_text = self.font.render("Training Mode", True, WHITE)
-    self.screen.blit(title_text, (20, 20))
-    
-    # Performance info
-    fps_text = self.font.render(f"FPS: {self.fps_game:.1f} | Camera: {self.fps_camera:.1f}", True, WHITE)
-    self.screen.blit(fps_text, (20, 60))
-    
-    # Current gesture
-    gesture = controls.get('gesture_name', 'No detection')
-    gesture_text = self.font.render(f"Gesture: {gesture}", True, WHITE)
-    self.screen.blit(gesture_text, (20, 100))
-    
-    # Data panel status
-    panel_text = self.font.render(f"Data Display: {'ON' if self.show_data_panel else 'OFF'} (D to toggle)", True, WHITE)
-    self.screen.blit(panel_text, (20, 140))
-    
-    # Camera feed status - עדכון ההודעה כדי לציין שהווידאו מוצג בחלון נפרד
-    camera_text = self.font.render(f"Camera Feed: {'ON - in separate window' if self.show_camera_feed else 'OFF'} (C to toggle)", True, WHITE)
-    self.screen.blit(camera_text, (20, 180))
-    
- 
+        # Draw HUD information (inline, instead of calling draw_hud)
+        # Training mode title
+        title_text = self.font.render("Training Mode", True, WHITE)
+        self.screen.blit(title_text, (20, 20))
+        
+        # Performance info
+        fps_text = self.font.render(f"FPS: {self.fps_game:.1f} | Camera: {self.fps_camera:.1f}", True, WHITE)
+        self.screen.blit(fps_text, (20, 60))
+        
+        # Current gesture
+        gesture = controls.get('gesture_name', 'No detection')
+        gesture_text = self.font.render(f"Gesture: {gesture}", True, WHITE)
+        self.screen.blit(gesture_text, (20, 100))
+        
+        # Data panel status
+        panel_text = self.font.render(f"Data Display: {'ON' if self.show_data_panel else 'OFF'} (D to toggle)", True, WHITE)
+        self.screen.blit(panel_text, (20, 140))
+        
+        # Camera feed status - עדכון ההודעה כדי לציין שהווידאו מוצג בחלון נפרד
+        camera_text = self.font.render(f"Camera Feed: {'ON - in separate window' if self.show_camera_feed else 'OFF'} (C to toggle)", True, WHITE)
+        self.screen.blit(camera_text, (20, 180))
     
     def cleanup(self):
         """Clean up resources before exiting"""
