@@ -10,6 +10,7 @@ import os
 import sys
 import subprocess
 import platform
+import pygame
 
 def check_dependencies():
     """Check if all required dependencies are installed"""
@@ -39,6 +40,35 @@ def install_dependencies(packages):
         print("Failed to install dependencies. Please install them manually:")
         print("pip install " + " ".join(packages))
         return False
+
+class Game:
+    def __init__(self):
+        self.running = True
+
+    def setup(self):
+        """Placeholder for setup operations"""
+        pass
+
+    def draw_menu(self):
+        """Placeholder for drawing the menu"""
+        pass
+
+    def cleanup(self):
+        """Placeholder for cleanup operations"""
+        pass
+
+    def run(self):
+        """Main game loop for training mode"""
+        self.setup()  # Call setup without checking return value
+        
+        while self.running:
+            # ...existing code...
+            if pygame.display.get_surface():
+                self.draw_menu()
+            else:
+                print("Display surface is not available, exiting game loop")
+                self.running = False
+            # ...existing code...
 
 def main():
     """Main function to run the application"""

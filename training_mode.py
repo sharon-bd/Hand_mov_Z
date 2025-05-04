@@ -317,13 +317,19 @@ class CameraThread(threading.Thread):
 class TrainingMode:
     """Training mode for hand gesture car control system."""
     
-    def __init__(self, camera_index=0):
+    def __init__(self, screen_or_camera=0):
         """Initialize the training mode"""
-        self.screen = None
+        # Check if the parameter is a screen or camera index
+        if isinstance(screen_or_camera, pygame.Surface):
+            self.screen = screen_or_camera
+            self.camera_index = 0  # Default camera index
+        else:
+            self.screen = None
+            self.camera_index = int(screen_or_camera) if isinstance(screen_or_camera, (str, float, int)) else 0
+        
         self.clock = None
         self.running = False
         self.font = None
-        self.camera_index = int(camera_index) if isinstance(camera_index, (str, float, int)) else 0
         self.hand_detector = None
         self.car = None
         self.obstacles = []
@@ -358,7 +364,11 @@ class TrainingMode:
     def setup(self):
         """Set up the training mode environment"""
         pygame.init()
-        self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        
+        # Create a new screen if one is not provided
+        if self.screen is None:
+            self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        
         pygame.display.set_caption("Hand Gesture Car Control - Training Mode")
         self.clock = pygame.time.Clock()
         self.font = pygame.font.Font(None, 36)
@@ -419,6 +429,8 @@ class TrainingMode:
         self.running = True
         self.start_time = time.time()
         self.last_frame_time = time.time()
+        
+        return True  # Indicate successful setup
     
     def generate_training_obstacles(self):
         """Generate static obstacles for the training mode"""
@@ -454,168 +466,182 @@ class TrainingMode:
     
     def run(self):
         """Main game loop for training mode"""
-        if not self.setup():
+        setup_result = self.setup()  # Save the setup result
+        
+        if not setup_result:  # Exit if setup failed
+            print("Setup failed. Exiting training mode.")
             return False
         
-        while self.running:
-            # Check if pygame is still initialized and screen is valid
-            if not pygame.get_init() or self.screen is None:
-                print("Pygame not initialized or screen is None. Exiting.")
-                return False
-                
-            try:
-                # Calculate time delta and FPS
-                current_time = time.time()
-                dt = current_time - self.last_frame_time
-                self.last_frame_time = current_time
-                
-                # Safety check to prevent huge dt values
-                if dt > 0.1:
-                    dt = 0.1
+        try:
+            while self.running:
+                # Check if pygame is still initialized and screen is valid
+                if not pygame.get_init() or self.screen is None:
+                    print("Pygame not initialized or screen is None. Exiting.")
+                    return False
                     
-                # Calculate FPS - smoothed for display
-                if dt > 0:
-                    instantaneous_fps = 1.0 / dt
-                    # Smooth FPS calculation
-                    self.fps_game = 0.9 * self.fps_game + 0.1 * instantaneous_fps if self.fps_game > 0 else instantaneous_fps
-                
-                # Update game time
-                self.game_time = time.time() - self.start_time
-                
-                # Process events
-                for event in pygame.event.get():
-                    if event.type == pygame.QUIT:
-                        self.running = False
-                    elif event.type == pygame.KEYDOWN:
-                        if event.key == pygame.K_ESCAPE:
+                try:
+                    # Calculate time delta and FPS
+                    current_time = time.time()
+                    dt = current_time - self.last_frame_time
+                    self.last_frame_time = current_time
+                    
+                    # Safety check to prevent huge dt values
+                    if dt > 0.1:
+                        dt = 0.1
+                        
+                    # Calculate FPS - smoothed for display
+                    if dt > 0:
+                        instantaneous_fps = 1.0 / dt
+                        # Smooth FPS calculation
+                        self.fps_game = 0.9 * self.fps_game + 0.1 * instantaneous_fps if self.fps_game > 0 else instantaneous_fps
+                    
+                    # Update game time
+                    self.game_time = time.time() - self.start_time
+                    
+                    # Process events
+                    for event in pygame.event.get():
+                        if event.type == pygame.QUIT:
                             self.running = False
-                        # Toggle data panel
-                        elif event.key == pygame.K_d:
-                            self.show_data_panel = not self.show_data_panel
-                            # Create or destroy window as needed
-                            if self.show_data_panel:
-                                try:
-                                    cv2.namedWindow(self.data_panel_cv_window, cv2.WINDOW_NORMAL)
-                                    cv2.resizeWindow(self.data_panel_cv_window, 600, 500)
-                                except Exception as e:
-                                    print(f"Error creating data panel window: {e}")
-                            else:
-                                try:
-                                    cv2.destroyWindow(self.data_panel_cv_window)
-                                except:
-                                    pass
-                        # Toggle camera feed
-                        elif event.key == pygame.K_c:
-                            self.show_camera_feed = not self.show_camera_feed
-                        # Regenerate obstacles (for practice variety)
-                        elif event.key == pygame.K_r:
-                            self.generate_training_obstacles()
-                
-                # Get controls from camera thread
-                controls = {}
-                if self.camera_thread is not None:
-                    controls = self.camera_thread.get_controls()
+                        elif event.type == pygame.KEYDOWN:
+                            if event.key == pygame.K_ESCAPE:
+                                self.running = False
+                            # Toggle data panel
+                            elif event.key == pygame.K_d:
+                                self.show_data_panel = not self.show_data_panel
+                                # Create or destroy window as needed
+                                if self.show_data_panel:
+                                    try:
+                                        cv2.namedWindow(self.data_panel_cv_window, cv2.WINDOW_NORMAL)
+                                        cv2.resizeWindow(self.data_panel_cv_window, 600, 500)
+                                    except Exception as e:
+                                        print(f"Error creating data panel window: {e}")
+                                else:
+                                    try:
+                                        cv2.destroyWindow(self.data_panel_cv_window)
+                                    except:
+                                        pass
+                            # Toggle camera feed
+                            elif event.key == pygame.K_c:
+                                self.show_camera_feed = not self.show_camera_feed
+                            # Regenerate obstacles (for practice variety)
+                            elif event.key == pygame.K_r:
+                                self.generate_training_obstacles()
                     
-                    # Ensure controls is a dictionary
-                    if not isinstance(controls, dict):
-                        print(f"Warning: controls is not a dictionary: {type(controls)}")
+                    # Get controls from camera thread
+                    controls = {}
+                    if self.camera_thread is not None:
+                        controls = self.camera_thread.get_controls()
+                        
+                        # Ensure controls is a dictionary
+                        if not isinstance(controls, dict):
+                            print(f"Warning: controls is not a dictionary: {type(controls)}")
+                            controls = {
+                                'steering': 0,
+                                'throttle': 0.5,
+                                'braking': False,
+                                'boost': False,
+                                'gesture_name': 'Invalid controls format'
+                            }
+                        
+                        # Get camera visuals
+                        frame, data_panel, self.fps_camera = self.camera_thread.get_visuals()
+                        
+                        # Show camera feed in separate OpenCV window if enabled
+                        if frame is not None and self.show_camera_feed and self.camera_window_name:
+                            try:
+                                # Display the original frame in the separate window
+                                cv2.imshow(self.camera_window_name, frame)
+                                cv2.waitKey(1)  # Required to update OpenCV window
+                            except Exception as e:
+                                print(f"Error showing camera feed: {e}")
+
+                        # Convert camera frame to Pygame surface (for in-game preview)
+                        if frame is not None and self.show_camera_feed:
+                            try:
+                                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                                frame_rgb = cv2.resize(frame_rgb, (320, 240))
+                                # Create surface from array
+                                camera_surface = pygame.surfarray.make_surface(frame_rgb.swapaxes(0, 1))
+                                if camera_surface is not None:
+                                    self.camera_surface = camera_surface
+                            except Exception as e:
+                                print(f"Error converting camera frame: {e}")
+                        
+                        # Update data panel window if needed
+                        if data_panel is not None and self.show_data_panel:
+                            try:
+                                # Add game FPS to data panel
+                                cv2.putText(
+                                    data_panel,
+                                    f"Game FPS: {self.fps_game:.1f}",
+                                    (20, 470),
+                                    cv2.FONT_HERSHEY_SIMPLEX,
+                                    0.6,
+                                    (0, 0, 0),
+                                    1
+                                )
+                                
+                                cv2.imshow(self.data_panel_cv_window, data_panel)
+                                cv2.waitKey(1)  # Required to update OpenCV window
+                            except Exception as e:
+                                print(f"Error showing data panel: {e}")
+                    else:
+                        # Default controls if no camera thread
                         controls = {
                             'steering': 0,
                             'throttle': 0.5,
                             'braking': False,
                             'boost': False,
-                            'gesture_name': 'Invalid controls format'
+                            'gesture_name': 'No camera thread'
                         }
                     
-                    # Get camera visuals
-                    frame, data_panel, self.fps_camera = self.camera_thread.get_visuals()
+                    # Allow keyboard override for testing
+                    keys = pygame.key.get_pressed()
+                    if keys[pygame.K_LEFT]:
+                        controls['steering'] = -1
+                        controls['gesture_name'] = 'Keyboard: Left'
+                    elif keys[pygame.K_RIGHT]:
+                        controls['steering'] = 1
+                        controls['gesture_name'] = 'Keyboard: Right'
                     
-                    # Show camera feed in separate OpenCV window if enabled
-                    if frame is not None and self.show_camera_feed and self.camera_window_name:
-                        try:
-                            # Display the original frame in the separate window
-                            cv2.imshow(self.camera_window_name, frame)
-                            cv2.waitKey(1)  # Required to update OpenCV window
-                        except Exception as e:
-                            print(f"Error showing camera feed: {e}")
-
-                    # Convert camera frame to Pygame surface (for in-game preview)
-                    if frame is not None and self.show_camera_feed:
-                        try:
-                            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                            frame_rgb = cv2.resize(frame_rgb, (320, 240))
-                            # Create surface from array
-                            camera_surface = pygame.surfarray.make_surface(frame_rgb.swapaxes(0, 1))
-                            if camera_surface is not None:
-                                self.camera_surface = camera_surface
-                        except Exception as e:
-                            print(f"Error converting camera frame: {e}")
+                    if keys[pygame.K_UP]:
+                        controls['throttle'] = 1.0
+                        controls['gesture_name'] = 'Keyboard: Accelerate'
+                    elif keys[pygame.K_DOWN]:
+                        controls['braking'] = True
+                        controls['gesture_name'] = 'Keyboard: Brake'
                     
-                    # Update data panel window if needed
-                    if data_panel is not None and self.show_data_panel:
-                        try:
-                            # Add game FPS to data panel
-                            cv2.putText(
-                                data_panel,
-                                f"Game FPS: {self.fps_game:.1f}",
-                                (20, 470),
-                                cv2.FONT_HERSHEY_SIMPLEX,
-                                0.6,
-                                (0, 0, 0),
-                                1
-                            )
-                            
-                            cv2.imshow(self.data_panel_cv_window, data_panel)
-                            cv2.waitKey(1)  # Required to update OpenCV window
-                        except Exception as e:
-                            print(f"Error showing data panel: {e}")
-                else:
-                    # Default controls if no camera thread
-                    controls = {
-                        'steering': 0,
-                        'throttle': 0.5,
-                        'braking': False,
-                        'boost': False,
-                        'gesture_name': 'No camera thread'
-                    }
-                
-                # Allow keyboard override for testing
-                keys = pygame.key.get_pressed()
-                if keys[pygame.K_LEFT]:
-                    controls['steering'] = -1
-                    controls['gesture_name'] = 'Keyboard: Left'
-                elif keys[pygame.K_RIGHT]:
-                    controls['steering'] = 1
-                    controls['gesture_name'] = 'Keyboard: Right'
-                
-                if keys[pygame.K_UP]:
-                    controls['throttle'] = 1.0
-                    controls['gesture_name'] = 'Keyboard: Accelerate'
-                elif keys[pygame.K_DOWN]:
-                    controls['braking'] = True
-                    controls['gesture_name'] = 'Keyboard: Brake'
-                
-                if keys[pygame.K_SPACE]:
-                    controls['boost'] = True
-                    controls['gesture_name'] = 'Keyboard: Boost'
-                
-                # Update game state
-                self.update(controls, dt)
-                
-                # Draw everything
-                self.draw(controls)
-                
-                # Update the display
-                pygame.display.flip()
-                
-                # Cap frame rate
-                self.clock.tick(FPS)
-            except Exception as e:
-                print(f"Error in main game loop: {e}")
-                import traceback
-                traceback.print_exc()
-                return False
-                
+                    if keys[pygame.K_SPACE]:
+                        controls['boost'] = True
+                        controls['gesture_name'] = 'Keyboard: Boost'
+                    
+                    # Update game state
+                    self.update(controls, dt)
+                    
+                    # Draw everything
+                    self.draw(controls)
+                    
+                    # Update the display
+                    pygame.display.flip()
+                    
+                    # Cap frame rate
+                    self.clock.tick(FPS)
+                except Exception as e:
+                    print(f"Error in main game loop: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    return False
+                    
+            return True
+        except Exception as e:
+            print(f"Error in main game loop: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+        finally:
+            # Cleanup specific to TrainingMode, e.g., stopping the camera thread
+            pass  
+        
         return True
     
     def update(self, controls, dt):
@@ -727,9 +753,7 @@ class TrainingMode:
         # Close all OpenCV windows
         cv2.destroyAllWindows()
         
-        # Quit pygame
-        pygame.quit()
-        
+        # Do not quit pygame, as GameLauncher may still use it
         print("Cleanup complete.")
 
 

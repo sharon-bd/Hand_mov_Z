@@ -97,6 +97,7 @@ class GameLauncher:
         # Menu background animation
         self.bg_offset = 0
         self.menu_active = True
+        self.running = True
         
     def create_buttons(self):
         """Create buttons for each game mode plus training mode."""
@@ -214,6 +215,10 @@ class GameLauncher:
     
     def draw_menu(self):
         """Draw the main menu."""
+        # Check if the display is still active before drawing
+        if not pygame.get_init() or not pygame.display.get_surface():
+            return
+        
         # Fill background with a gradient
         for y in range(SCREEN_HEIGHT):
             # Create a gradient from dark blue to light blue
@@ -301,22 +306,29 @@ class GameLauncher:
     
     def run(self):
         """Main loop for the game launcher."""
-        running = True
-        
-        while running and self.menu_active:
-            # Handle events
-            running = self.handle_events()
-            
-            # Draw menu
-            self.draw_menu()
-            
-            # Update display
-            pygame.display.flip()
-            
-            # Cap frame rate
-            self.clock.tick(FPS)
-        
-        return running
+        try:
+            while self.running:
+                # Handle events
+                self.running = self.handle_events()
+                
+                # Ensure the video system is still initialized before attempting to update
+                if pygame.get_init() and pygame.display.get_surface():
+                    # Draw the menu and everything else
+                    self.draw_menu()
+                    pygame.display.flip()  # Move screen update here, inside the condition
+                else:
+                    print("Video system not initialized, exiting game loop")
+                    self.running = False
+                    break  # Exit the loop immediately
+                
+        except pygame.error as e:
+            print(f"Pygame error occurred: {e}")
+        except Exception as e:
+            print(f"Unexpected error: {e}")
+        finally:
+            # Clean up only if not already cleaned up
+            if pygame.get_init():
+                self.cleanup()
     
     def cleanup(self):
         """Clean up resources."""
