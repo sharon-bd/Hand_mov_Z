@@ -113,62 +113,40 @@ class CameraThread(threading.Thread):
                 
         return frame_copy, panel_copy, self.fps
             
-    def run(self):
-        """Main thread function - processes camera input"""
-        print("Starting camera processing thread...")
-        self.running = True
-        self.start_time = time.time()
-        self.frame_count = 0
+def run(self):
+    """Main game loop for training mode"""
+    self.setup()
+    
+    while self.running:
+        # ... קוד קיים ...
         
-        # Initialize camera
-        cap = cv2.VideoCapture(self.camera_index)
-        if not cap.isOpened():
-            print(f"Error: Could not open camera {self.camera_index}")
-            self.running = False
-            return
+        # Get controls from camera thread
+        if self.camera_thread is not None:
+            controls = self.camera_thread.get_controls()
             
-        while self.running:
-            # Read camera frame
-            ret, frame = cap.read()
-            if not ret:
-                print("Error: Failed to read frame from camera")
-                time.sleep(0.1)  # Short delay before trying again
-                continue
-                
-            # Process frame with detector
-            with self.lock:
-                detector = self.detector
-                
-            if detector is not None:
+            # Get camera visuals
+            frame, data_panel, self.fps_camera = self.camera_thread.get_visuals()
+            
+            # Show camera feed in separate OpenCV window if enabled
+            if frame is not None and self.show_camera_feed and self.camera_window_name:
                 try:
-                    # Process frame with hand detector
-                    detected_controls, processed_frame, data_panel = detector.detect_gestures(frame)
-                    
-                    # Update the shared data with lock protection
-                    with self.lock:
-                        self.controls = detected_controls
-                        self.processed_frame = processed_frame
-                        self.data_panel = data_panel
-                        
-                        # Update FPS calculation
-                        self.frame_count += 1
-                        elapsed_time = time.time() - self.start_time
-                        if elapsed_time >= 1.0:  # Update FPS every second
-                            self.fps = self.frame_count / elapsed_time
-                            self.frame_count = 0
-                            self.start_time = time.time()
-                            
+                    # Display the frame in the separate window
+                    cv2.imshow(self.camera_window_name, frame)
+                    cv2.waitKey(1)  # Required to update OpenCV window
                 except Exception as e:
-                    print(f"Error in hand detection: {e}")
-                    import traceback
-                    traceback.print_exc()
+                    print(f"Error showing camera feed: {e}")
             
-            # Add small delay to prevent thread from consuming too much CPU
-            time.sleep(0.01)
+            # הסר את הקוד שממיר את התמונה לפורמט pygame
+            # כי אנחנו לא מציגים אותה במסך הראשי יותר
+            # if frame is not None and self.show_camera_feed:
+            #    try:
+            #        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            #        frame_rgb = cv2.resize(frame_rgb, (320, 240))
+            #        self.camera_surface = pygame.surfarray.make_surface(frame_rgb.swapaxes(0, 1))
+            #    except Exception as e:
+            #        print(f"Error converting camera frame: {e}")
             
-        # Clean up
-        cap.release()
-        print("Camera thread stopped.")
+            # ... המשך הקוד הקיים ...
         
     def stop(self):
         """Stop the camera thread"""
@@ -215,6 +193,7 @@ class TrainingMode:
         self.fps_game = 0
         self.fps_camera = 0
         self.last_frame_time = 0
+        self.camera_window_name = None
         
     def setup(self):
         """Set up the training mode environment"""
@@ -248,6 +227,19 @@ class TrainingMode:
                     except Exception as e:
                         print(f"Error creating data panel window: {e}")
                         self.show_data_panel = False
+
+                # --- Add separate Hand Camera View window ---
+                try:
+                    camera_window_name = "Hand Camera View"
+                    cv2.namedWindow(camera_window_name, cv2.WINDOW_NORMAL)
+                    cv2.resizeWindow(camera_window_name, 640, 480)         # initial size
+                    cv2.moveWindow(camera_window_name, SCREEN_WIDTH + 20, 550)  # below data panel
+                    self.camera_window_name = camera_window_name
+                except Exception as e:
+                    print(f"Error creating camera window: {e}")
+                    self.camera_window_name = None
+                # --- end addition ---
+
             else:
                 print("Warning: Hand gesture detector not available. Using keyboard control only.")
         except Exception as e:
@@ -359,7 +351,16 @@ class TrainingMode:
                 # Get camera visuals
                 frame, data_panel, self.fps_camera = self.camera_thread.get_visuals()
                 
-                # Convert camera frame to Pygame surface
+                # Show camera feed in separate OpenCV window if enabled
+                if frame is not None and self.show_camera_feed and self.camera_window_name:
+                    try:
+                        # Display the original frame in the separate window
+                        cv2.imshow(self.camera_window_name, frame)
+                        cv2.waitKey(1)  # Required to update OpenCV window
+                    except Exception as e:
+                        print(f"Error showing camera feed: {e}")
+
+                # Convert camera frame to Pygame surface (for in-game preview)
                 if frame is not None and self.show_camera_feed:
                     try:
                         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -499,63 +500,39 @@ class TrainingMode:
         # Draw the car
         self.car.draw(self.screen)
         
-        # Draw camera feed in top-right corner if enabled
-        if self.show_camera_feed and self.camera_surface is not None:
-            self.screen.blit(self.camera_surface, (SCREEN_WIDTH - 330, 10))
-            # Draw border around camera feed
-            pygame.draw.rect(self.screen, WHITE, 
-                            (SCREEN_WIDTH - 330, 10, 320, 240), 2)
+        # REMOVE THIS SECTION - Don't draw camera feed in main screen anymore
+        # if self.show_camera_feed and self.camera_surface is not None:
+        #     self.screen.blit(self.camera_surface, (SCREEN_WIDTH - 330, 10))
+        #     pygame.draw.rect(self.screen, WHITE, 
+        #                     (SCREEN_WIDTH - 330, 10, 320, 240), 2)
         
         # Draw HUD information
         self.draw_hud(controls)
     
-    def draw_hud(self, controls):
-        """Draw heads-up display information"""
-        # Training mode title
-        title_text = self.font.render("Training Mode", True, WHITE)
-        self.screen.blit(title_text, (20, 20))
-        
-        # Performance info
-        fps_text = self.font.render(f"FPS: {self.fps_game:.1f} | Camera: {self.fps_camera:.1f}", True, WHITE)
-        self.screen.blit(fps_text, (20, 60))
-        
-        # Current gesture
-        gesture = controls.get('gesture_name', 'No detection')
-        gesture_text = self.font.render(f"Gesture: {gesture}", True, WHITE)
-        self.screen.blit(gesture_text, (20, 100))
-        
-        # Data panel status
-        panel_text = self.font.render(f"Data Display: {'ON' if self.show_data_panel else 'OFF'} (D to toggle)", True, WHITE)
-        self.screen.blit(panel_text, (20, 140))
-        
-        # Camera feed status
-        camera_text = self.font.render(f"Camera Feed: {'ON' if self.show_camera_feed else 'OFF'} (C to toggle)", True, WHITE)
-        self.screen.blit(camera_text, (20, 180))
-        
-        # Instructions
-        instructions = [
-            "Use hand gestures to control the car:",
-            "- Move hand left/right to steer",
-            "- Move hand up/down to control speed",
-            "- Make a fist to brake",
-            "- Open palm for emergency stop",
-            "- Thumb up for boost",
-            "",
-            "Keyboard controls:",
-            "- Arrow keys for steering and speed",
-            "- Space for boost",
-            "- D to toggle data display",
-            "- C to toggle camera feed",
-            "- R to regenerate obstacles",
-            "- ESC to exit"
-        ]
-        
-        small_font = pygame.font.Font(None, 24)
-        y_pos = SCREEN_HEIGHT - 290
-        for line in instructions:
-            instr_text = small_font.render(line, True, WHITE)
-            self.screen.blit(instr_text, (20, y_pos))
-            y_pos += 25
+def draw_hud(self, controls):
+    """Draw heads-up display information"""
+    # Training mode title
+    title_text = self.font.render("Training Mode", True, WHITE)
+    self.screen.blit(title_text, (20, 20))
+    
+    # Performance info
+    fps_text = self.font.render(f"FPS: {self.fps_game:.1f} | Camera: {self.fps_camera:.1f}", True, WHITE)
+    self.screen.blit(fps_text, (20, 60))
+    
+    # Current gesture
+    gesture = controls.get('gesture_name', 'No detection')
+    gesture_text = self.font.render(f"Gesture: {gesture}", True, WHITE)
+    self.screen.blit(gesture_text, (20, 100))
+    
+    # Data panel status
+    panel_text = self.font.render(f"Data Display: {'ON' if self.show_data_panel else 'OFF'} (D to toggle)", True, WHITE)
+    self.screen.blit(panel_text, (20, 140))
+    
+    # Camera feed status - עדכון ההודעה כדי לציין שהווידאו מוצג בחלון נפרד
+    camera_text = self.font.render(f"Camera Feed: {'ON - in separate window' if self.show_camera_feed else 'OFF'} (C to toggle)", True, WHITE)
+    self.screen.blit(camera_text, (20, 180))
+    
+ 
     
     def cleanup(self):
         """Clean up resources before exiting"""
