@@ -53,6 +53,21 @@ class EnhancedHandGestureDetector:
             data_panel: Additional image panel with numerical data
         """
         try:
+            # Handle invalid or empty frames
+            if frame is None or frame.size == 0:
+                default_controls = {
+                    'steering': 0.0,
+                    'throttle': 0.0,
+                    'braking': False,
+                    'boost': False,
+                    'gesture_name': 'No frame data',
+                    'speed': 0.0,
+                    'direction': 0.0
+                }
+                empty_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+                empty_panel = self._create_error_panel()
+                return default_controls, empty_frame, empty_panel
+            
             # Update image dimensions based on the current frame
             h, w, _ = frame.shape
             self.image_width = w
@@ -127,20 +142,36 @@ class EnhancedHandGestureDetector:
             controls['speed'] = controls['throttle']
             controls['direction'] = controls['steering']
             
+            # Ensure controls is always a dictionary
+            if not isinstance(controls, dict):
+                controls = {
+                    'steering': 0.0,
+                    'throttle': 0.0,
+                    'braking': False,
+                    'boost': False,
+                    'gesture_name': 'Error: Invalid control format',
+                    'speed': 0.0,
+                    'direction': 0.0
+                }
             return controls, processed_frame, data_panel
         except Exception as e:
             print(f"Error in gesture detection: {e}")
             import traceback
             traceback.print_exc()
-            return {
+            
+            # Return default values on error
+            default_controls = {
                 'steering': 0.0,
                 'throttle': 0.0,
                 'braking': False,
                 'boost': False,
-                'gesture_name': 'Error',
+                'gesture_name': f'Error: {str(e)}',
                 'speed': 0.0,
                 'direction': 0.0
-            }, frame, self._create_error_panel()
+            }
+            error_panel = self._create_error_panel()
+            empty_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+            return default_controls, empty_frame, error_panel
 
     def _create_error_panel(self):
         """Create an error panel when detection fails"""
@@ -604,3 +635,61 @@ class EnhancedHandGestureDetector:
             flipped_landmarks.landmark[i] = new_landmark
         
         return flipped_landmarks
+
+    def process_frame(self, frame):
+        """
+        מעבד פריים ומחזיר בקרות, תמונה מעובדת ולוח נתונים.
+        פונקציה זו נדרשת על ידי מצב האימון (training mode).
+        
+        Args:
+            frame: פריים הוידאו לעיבוד
+                
+        Returns:
+            controls: מילון עם ערכי בקרה
+            processed_frame: פריים עם חיוויים ויזואליים
+            data_panel: לוח עם נתוני זיהוי
+        """
+        # משתמש במתודה הקיימת detect_gestures לעיבוד הפריים
+        controls, processed_frame, data_panel = self.detect_gestures(frame)
+        
+        # וידוא שאנחנו מחזירים מילון עבור controls
+        if not isinstance(controls, dict):
+            print(f"אזהרה: controls אינו מילון: {type(controls)}")
+            controls = {
+                'steering': 0.0,
+                'throttle': 0.0,
+                'braking': False,
+                'boost': False,
+                'gesture_name': 'שגיאה: פורמט בקרה לא תקין',
+                'speed': 0.0,
+                'direction': 0.0
+            }
+            
+        return controls, processed_frame, data_panel
+
+    def detect(self, frame):
+        """
+        מתודת ממשק חלופית שמחזירה רק את הבקרות.
+        
+        Args:
+            frame: פריים הוידאו לעיבוד
+            
+        Returns:
+            controls: מילון עם ערכי בקרה
+        """
+        controls, _, _ = self.detect_gestures(frame)
+        
+        # וידוא שאנחנו מחזירים מילון עבור controls
+        if not isinstance(controls, dict):
+            print(f"אזהרה: controls אינו מילון: {type(controls)}")
+            controls = {
+                'steering': 0.0,
+                'throttle': 0.0,
+                'braking': False,
+                'boost': False,
+                'gesture_name': 'שגיאה: פורמט בקרה לא תקין',
+                'speed': 0.0,
+                'direction': 0.0
+            }
+            
+        return controls
