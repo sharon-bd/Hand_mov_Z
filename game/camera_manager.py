@@ -107,8 +107,12 @@ class CameraManager:
             camera_index = self.available_cameras[index]["index"]
             print(f"Selecting camera {camera_index}: {self.available_cameras[index]['name']}")
             
-            # Initialize the camera
-            self.current_camera = cv2.VideoCapture(camera_index)
+            # Initialize the camera with DirectShow on Windows
+            import platform
+            if platform.system() == 'Windows':
+                self.current_camera = cv2.VideoCapture(camera_index, cv2.CAP_DSHOW)
+            else:
+                self.current_camera = cv2.VideoCapture(camera_index)
             
             # Check if camera opened successfully
             if not self.current_camera.isOpened():

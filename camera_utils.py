@@ -12,6 +12,7 @@ import cv2
 import time
 import pygame
 import numpy as np
+import platform  # Add platform module import
 
 def get_available_cameras(max_cameras=10):
     """
@@ -27,7 +28,11 @@ def get_available_cameras(max_cameras=10):
     
     # Try each camera index
     for camera_index in range(max_cameras):
-        cap = cv2.VideoCapture(camera_index)
+        # Use DirectShow on Windows
+        if platform.system() == 'Windows':
+            cap = cv2.VideoCapture(camera_index, cv2.CAP_DSHOW)  # Use DirectShow on Windows
+        else:
+            cap = cv2.VideoCapture(camera_index)
         
         # Check if camera opened successfully
         if cap.isOpened():
@@ -72,7 +77,10 @@ def test_camera(camera_index=0, display_time=3):
         bool: True if camera works, False otherwise
     """
     # Try to open the camera
-    cap = cv2.VideoCapture(camera_index)
+    if platform.system() == 'Windows':
+        cap = cv2.VideoCapture(camera_index, cv2.CAP_DSHOW)  # Use DirectShow on Windows
+    else:
+        cap = cv2.VideoCapture(camera_index)
     
     if not cap.isOpened():
         print(f"Failed to open camera {camera_index}")
@@ -189,7 +197,10 @@ def camera_selection_gui():
                     preview_cap.release()
                 
                 camera_index = cameras[current_selection]["index"]
-                preview_cap = cv2.VideoCapture(camera_index)
+                if platform.system() == 'Windows':
+                    preview_cap = cv2.VideoCapture(camera_index, cv2.CAP_DSHOW)  # Use DirectShow on Windows
+                else:
+                    preview_cap = cv2.VideoCapture(camera_index)
             
             # Get frame from selected camera
             if preview_cap.isOpened():

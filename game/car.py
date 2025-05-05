@@ -65,6 +65,10 @@ class Car:
             controls: Dictionary with control commands
             dt: Time delta in seconds
         """
+        # Add debug print statements
+        print(f"DEBUG - Car receiving: steering={controls.get('steering', 'N/A')}, "
+              f"throttle={controls.get('throttle', 'N/A')}")
+              
         # Extract controls
         self.direction = float(controls.get('steering', 0.0))
         target_speed = float(controls.get('throttle', 0.0))
