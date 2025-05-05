@@ -277,14 +277,48 @@ class CameraThread(threading.Thread):
                     
                     # Ensure controls is a dictionary
                     if not isinstance(detected_controls, dict):
-                        print(f"Warning: detected_controls is not a dictionary: {type(detected_controls)}")
-                        detected_controls = {
-                            'steering': 0,
-                            'throttle': 0.5,
-                            'braking': False,
-                            'boost': False,
-                            'gesture_name': 'Invalid controls format'
-                        }
+                        # Check if it's a numpy array and try to convert it
+                        if isinstance(detected_controls, np.ndarray):
+                            try:
+                                # If it's a numpy array with correct shape, extract values
+                                if detected_controls.size >= 5:
+                                    array_values = detected_controls.flatten()
+                                    detected_controls = {
+                                        'steering': float(array_values[0]),
+                                        'throttle': float(array_values[1]),
+                                        'braking': bool(array_values[2]),
+                                        'boost': bool(array_values[3]),
+                                        'gesture_name': 'From array'
+                                    }
+                                else:
+                                    # Not enough elements
+                                    print(f"Warning: detected_controls is a numpy array with insufficient elements: {detected_controls.shape}")
+                                    detected_controls = {
+                                        'steering': 0,
+                                        'throttle': 0.5,
+                                        'braking': False,
+                                        'boost': False,
+                                        'gesture_name': 'Invalid array format'
+                                    }
+                            except Exception as e:
+                                print(f"Error converting numpy array to controls: {e}")
+                                detected_controls = {
+                                    'steering': 0,
+                                    'throttle': 0.5,
+                                    'braking': False,
+                                    'boost': False,
+                                    'gesture_name': 'Conversion error'
+                                }
+                        else:
+                            # Not a dict or numpy array
+                            print(f"Warning: detected_controls is not a dictionary: {type(detected_controls)}")
+                            detected_controls = {
+                                'steering': 0,
+                                'throttle': 0.5,
+                                'braking': False,
+                                'boost': False,
+                                'gesture_name': 'Invalid controls format'
+                            }
                     
                     # Update controls with thread safety
                     with self.lock:
