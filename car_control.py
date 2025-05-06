@@ -8,6 +8,7 @@ It provides a clean interface between the hand detection and the car physics.
 
 import math
 import numpy as np
+import pygame  # Add pygame import for collision detection
 
 class CarControlHandler:
     """
@@ -143,54 +144,243 @@ class Car:
         # Collision detection
         self.collision_points = []
         self.update_collision_points()
+        
+        # Rotation and position history for visual effects
+        self.rotation = 0  # Rotation in degrees
+        self.position_history = []
+        self.max_history = 10  # Store last 10 positions for trail effect
+        
+        # Add debug info
+        self.debug_info = {
+            'last_controls': {},
+            'normalized_controls': {},
+            'boundary_hit': False
+        }
     
     def update(self, controls, dt):
         """
-        Update car position and state based on controls and time delta
+        Update car state based on controls
         
         Args:
             controls: Dictionary with control commands
             dt: Time delta in seconds
         """
-        # Extract controls
-        target_direction = float(controls.get('steering', 0.0))
-        target_speed = float(controls.get('throttle', 0.0))
-        self.braking = bool(controls.get('braking', False))
-        self.boost_active = bool(controls.get('boost', False))
+        # Store original controls for debugging
+        self.debug_info['last_controls'] = controls.copy()
         
-        # Update direction with smooth transition
-        self.direction = self.lerp(self.direction, target_direction, self.steering_speed)
+        # Fix debug print statements format to avoid potential errors
+        print(f"DEBUG - Car receiving: steering={controls.get('steering', 0.0)}, "
+              f"throttle={controls.get('throttle', 0.0)}")
         
-        # Update speed based on controls
+        # Add a boundary check to keep car on screen
+        screen_width = 800  # Default screen width
+        screen_height = 600  # Default screen height
+        
+        # Extract controls with proper error checking
+        try:
+            self.direction = float(controls.get('steering', 0.0))
+            target_speed = float(controls.get('throttle', 0.0))
+            self.braking = bool(controls.get('braking', False))
+            self.boost_active = bool(controls.get('boost', False))
+            
+            # Additional validation - clamp values to valid ranges
+            self.direction = max(-1.0, min(1.0, self.direction))
+            target_speed = max(0.0, min(1.0, target_speed))
+            
+            # Store normalized controls for debugging
+            self.debug_info['normalized_controls'] = {
+                'steering': self.direction,
+                'throttle': target_speed,
+                'braking': self.braking,
+                'boost': self.boost_active
+            }
+        except (ValueError, TypeError) as e:
+            print(f"ERROR: Invalid control values: {e}")
+            # Use safe defaults if conversion fails
+            self.direction = 0.0
+            target_speed = 0.0
+            self.braking = False
+            self.boost_active = False
+        
+        # Apply smoothing to speed changes
+        speed_change_rate = 0.1 if target_speed > self.speed else 0.2
+        self.speed = self.speed + (target_speed - self.speed) * speed_change_rate
+        
+        # Special case for braking
         if self.braking:
-            # Apply brakes (rapid deceleration)
             self.speed = max(0.0, self.speed - self.brake_deceleration * dt)
-        elif self.boost_active:
-            # Apply boost (accelerate faster to max)
-            self.speed = min(1.0, self.speed + self.acceleration * 2 * dt)
-        else:
-            # Normal acceleration/deceleration
-            if target_speed > self.speed:
-                self.speed = min(target_speed, self.speed + self.acceleration * dt)
-            else:
-                self.speed = max(target_speed, self.speed - self.deceleration * dt)
+            target_speed = 0.0  # Override target speed when braking
         
-        # Calculate actual pixel movement
-        speed_pixels_per_second = self.max_speed * self.speed
+        # Calculate actual movement
+        movement_speed = self.max_speed * self.speed
         if self.boost_active:
-            speed_pixels_per_second *= self.boost_multiplier
+            movement_speed *= self.boost_multiplier
         
-        move_amount = speed_pixels_per_second * dt
+        # Update position based on direction and speed
+        # Turning radius depends on speed - slower = sharper turns
+        angle = self.direction * math.pi/4  # Convert direction to radians
+        rotation_speed = self.speed * 100 * dt  # How fast car rotates
         
-        # Calculate how much to turn based on speed and direction
-        turn_factor = self.direction * move_amount * 0.05
+        self.rotation += self.direction * rotation_speed
+        self.rotation %= 360  # Keep within 0-360
         
-        # Update position
-        self.x += turn_factor
-        self.y -= move_amount  # Moving up = negative y
+        # Convert rotation to radians for movement calculation
+        rad = math.radians(self.rotation)
+        
+        # Calculate movement vector
+        distance = movement_speed * dt
+        dx = math.sin(rad) * distance
+        dy = -math.cos(rad) * distance  # Negative because y increases downwards
+        
+        # Update position with boundary checking
+        new_x = self.x + dx
+        new_y = self.y + dy
+        
+        # Keep car within screen boundaries
+        self.debug_info['boundary_hit'] = False
+        if new_x < self.width//2 or new_x > screen_width - self.width//2:
+            self.debug_info['boundary_hit'] = True
+        if new_y < self.height//2 or new_y > screen_height - self.height//2:
+            self.debug_info['boundary_hit'] = True
+            
+        self.x = max(self.width//2, min(screen_width - self.width//2, new_x))
+        self.y = max(self.height//2, min(screen_height - self.height//2, new_y))
         
         # Update collision points
         self.update_collision_points()
+        
+        # Store position history for trail effect
+        if distance > 0:  # Only add point if moving
+            self.position_history.append((self.x, self.y))
+            if len(self.position_history) > self.max_history:
+                self.position_history.pop(0)
+    
+    def draw(self, screen):
+        """
+        Draw the car on the screen
+        
+        Args:
+            screen: Pygame surface to draw on
+        """
+        # Draw trail/history points if enabled
+        if len(self.position_history) > 1:
+            for i in range(1, len(self.position_history)):
+                # Draw trail with fading opacity
+                alpha = int(255 * (i / len(self.position_history)))
+                color = (50, 50, 200, alpha)  # Blue trail with alpha
+                pygame.draw.line(
+                    screen, 
+                    color, 
+                    self.position_history[i-1], 
+                    self.position_history[i], 
+                    2
+                )
+        
+        # Save current position and rotation
+        save_position = (self.x, self.y)
+        save_rotation = self.rotation
+        
+        # Create a rotated car surface
+        car_surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+        car_surface.fill((0, 0, 0, 0))  # Transparent background
+        
+        # Draw car body on the surface
+        pygame.draw.rect(
+            car_surface, 
+            self.color, 
+            (0, 0, self.width, self.height), 
+            0, 
+            10  # Rounded corners
+        )
+        
+        # Add details (windshield, lights) if size permits
+        if self.width > 20 and self.height > 40:
+            # Windshield
+            pygame.draw.rect(
+                car_surface,
+                (150, 220, 255),  # Light blue
+                (self.width//6, self.height//6, self.width*2//3, self.height//3),
+                0,
+                5  # Rounded corners
+            )
+            
+            # Headlights
+            light_size = min(8, self.width//5)
+            # Left headlight
+            pygame.draw.circle(
+                car_surface,
+                (255, 255, 200),  # Yellowish light
+                (self.width//4, self.height//6),
+                light_size
+            )
+            # Right headlight
+            pygame.draw.circle(
+                car_surface,
+                (255, 255, 200),  # Yellowish light
+                (self.width*3//4, self.height//6),
+                light_size
+            )
+            
+            # Brake lights if braking
+            if self.braking:
+                # Left brake light
+                pygame.draw.circle(
+                    car_surface,
+                    (255, 50, 50),  # Red
+                    (self.width//4, self.height*5//6),
+                    light_size
+                )
+                # Right brake light
+                pygame.draw.circle(
+                    car_surface,
+                    (255, 50, 50),  # Red
+                    (self.width*3//4, self.height*5//6),
+                    light_size
+                )
+        
+        # Rotate the car surface
+        rotated_car = pygame.transform.rotate(car_surface, -self.rotation)
+        
+        # Get the rect of the rotated surface and center it at car's position
+        car_rect = rotated_car.get_rect(center=(self.x, self.y))
+        
+        # Draw the rotated car
+        screen.blit(rotated_car, car_rect)
+        
+        # Draw boost effect if active
+        if self.boost_active and self.speed > 0.1:
+            # Calculate flame position at the back of the car
+            flame_angle = math.radians((self.rotation + 180) % 360)
+            flame_x = self.x + math.sin(flame_angle) * self.height/2
+            flame_y = self.y - math.cos(flame_angle) * self.height/2
+            
+            # Draw flame
+            flame_points = [
+                (flame_x, flame_y),
+                (flame_x + math.sin(flame_angle + 0.3) * 20, flame_y - math.cos(flame_angle + 0.3) * 20),
+                (flame_x + math.sin(flame_angle) * 30, flame_y - math.cos(flame_angle) * 30),
+                (flame_x + math.sin(flame_angle - 0.3) * 20, flame_y - math.cos(flame_angle - 0.3) * 20)
+            ]
+            pygame.draw.polygon(
+                screen,
+                (255, 165, 0),  # Orange flame
+                flame_points
+            )
+        
+        # Draw direction indicator if enabled
+        if self.show_indicators:
+            # Direction indicator from center of car
+            indicator_len = max(30, self.width)
+            ind_end_x = self.x + math.sin(math.radians(self.rotation)) * indicator_len
+            ind_end_y = self.y - math.cos(math.radians(self.rotation)) * indicator_len
+            
+            pygame.draw.line(
+                screen,
+                (0, 255, 0),  # Green
+                (self.x, self.y),
+                (ind_end_x, ind_end_y),
+                2
+            )
     
     def lerp(self, current, target, factor):
         """Linear interpolation for smoother movement"""
