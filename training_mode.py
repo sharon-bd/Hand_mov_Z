@@ -280,22 +280,22 @@ class CameraThread(threading.Thread):
                         # Check if it's a numpy array and try to convert it
                         if isinstance(detected_controls, np.ndarray):
                             try:
-                                # If it's a numpy array with correct shape, extract values
+                                # If it's a numpy array with correct shape, extract and normalize values
                                 if detected_controls.size >= 5:
                                     array_values = detected_controls.flatten()
+                                    # ===== FIXED: Properly normalize values from numpy array =====
                                     detected_controls = {
-                                        'steering': float(array_values[0]),
-                                        'throttle': float(array_values[1]),
+                                        'steering': float(array_values[0]) / 255.0 * 2.0 - 1.0,  # Normalize to [-1.0, 1.0]
+                                        'throttle': float(array_values[1]) / 255.0,  # Normalize to [0.0, 1.0]
                                         'braking': bool(array_values[2]),
                                         'boost': bool(array_values[3]),
-                                        'gesture_name': 'From array'
+                                        'gesture_name': 'From array (normalized)'
                                     }
                                 else:
-                                    # Not enough elements
                                     print(f"Warning: detected_controls is a numpy array with insufficient elements: {detected_controls.shape}")
                                     detected_controls = {
-                                        'steering': 0,
-                                        'throttle': 0.5,
+                                        'steering': 0.0,
+                                        'throttle': 0.0,
                                         'braking': False,
                                         'boost': False,
                                         'gesture_name': 'Invalid array format'
@@ -303,8 +303,8 @@ class CameraThread(threading.Thread):
                             except Exception as e:
                                 print(f"Error converting numpy array to controls: {e}")
                                 detected_controls = {
-                                    'steering': 0,
-                                    'throttle': 0.5,
+                                    'steering': 0.0,
+                                    'throttle': 0.0,
                                     'braking': False,
                                     'boost': False,
                                     'gesture_name': 'Conversion error'
@@ -313,8 +313,8 @@ class CameraThread(threading.Thread):
                             # Not a dict or numpy array
                             print(f"Warning: detected_controls is not a dictionary: {type(detected_controls)}")
                             detected_controls = {
-                                'steering': 0,
-                                'throttle': 0.5,
+                                'steering': 0.0,
+                                'throttle': 0.0,
                                 'braking': False,
                                 'boost': False,
                                 'gesture_name': 'Invalid controls format'
@@ -322,7 +322,38 @@ class CameraThread(threading.Thread):
                     
                     # Update controls with thread safety
                     with self.lock:
-                        self.controls = detected_controls
+                        # ===== FIXED: Ensure values are properly normalized =====
+                        if isinstance(detected_controls, dict):
+                            normalized_controls = detected_controls.copy()
+                            try:
+                                # Normalize steering if needed
+                                steering = float(normalized_controls.get('steering', 0.0))
+                                if abs(steering) > 1.0:  # Assume steering is in [0, 255] range
+                                    normalized_controls['steering'] = steering / 255.0 * 2.0 - 1.0  # Convert to [-1.0, 1.0]
+                                
+                                # Normalize throttle if needed
+                                throttle = float(normalized_controls.get('throttle', 0.0))
+                                if throttle > 1.0:  # Assume throttle is in [0, 255] range
+                                    normalized_controls['throttle'] = throttle / 255.0  # Convert to [0.0, 1.0]
+                            except Exception as e:
+                                print(f"Error normalizing controls: {e}")
+                                normalized_controls['steering'] = 0.0
+                                normalized_controls['throttle'] = 0.0
+                                
+                            # Ensure boolean values
+                            normalized_controls['braking'] = bool(normalized_controls.get('braking', False))
+                            normalized_controls['boost'] = bool(normalized_controls.get('boost', False))
+                            
+                            self.controls = normalized_controls
+                        else:
+                            self.controls = {
+                                'steering': 0.0,
+                                'throttle': 0.0,
+                                'braking': False,
+                                'boost': False,
+                                'gesture_name': 'Invalid format (not a dictionary)'
+                            }
+                            
                         self.processed_frame = processed_frame
                         self.data_panel = data_panel
                         
@@ -333,8 +364,11 @@ class CameraThread(threading.Thread):
                             self.fps = self.frame_count / elapsed_time
                             self.frame_count = 0
                             self.start_time = time.time()
+                            
                 except Exception as e:
                     print(f"Error in detector processing: {e}")
+                    import traceback
+                    traceback.print_exc()
             
             # Brief sleep to prevent excessive CPU usage
             time.sleep(0.01)
@@ -673,32 +707,35 @@ class TrainingMode:
             traceback.print_exc()
             return False
         finally:
-            # Cleanup specific to TrainingMode, e.g., stopping the camera thread
+            # Cleanup specific to TrainingMode
             pass  
         
         return True
     
     def update(self, controls, dt):
         """Update game state based on controls and time delta"""
-        print(f"DEBUG - Raw controls type: {type(controls)}")
-        print(f"DEBUG - Raw controls content: {controls}")
+        # Use less verbose debug messages
+        # print(f"DEBUG - Raw controls type: {type(controls)}")
+        # print(f"DEBUG - Raw controls content: {controls}")
         
+        # ===== FIXED: Improved array to dictionary conversion with proper normalization =====
         # Convert array to dictionary if needed
         if not isinstance(controls, dict):
             # Check if it's a NumPy array
             if hasattr(controls, 'dtype') and hasattr(controls, 'shape'):
-                print(f"Controls is an array with shape: {controls.shape}")
-                # Convert array to dictionary
+                # print(f"Controls is an array with shape: {controls.shape}")
+                # Convert array to dictionary with proper normalization
                 try:
+                    # Properly normalize values to expected ranges
                     converted_controls = {
-                        'steering': float(controls[0]) if len(controls) > 0 else 0.0,
-                        'throttle': float(controls[1]) if len(controls) > 1 else 0.0,
+                        'steering': float(controls[0]) / 255.0 * 2.0 - 1.0 if len(controls) > 0 else 0.0,  # Normalize to [-1.0, 1.0]
+                        'throttle': float(controls[1]) / 255.0 if len(controls) > 1 else 0.0,  # Normalize to [0.0, 1.0]
                         'braking': bool(controls[2]) if len(controls) > 2 else False,
                         'boost': bool(controls[3]) if len(controls) > 3 else False,
-                        'gesture_name': 'Converted from array'
+                        'gesture_name': 'From array (normalized)'
                     }
                     controls = converted_controls
-                    print(f"DEBUG - Converted controls: {controls}")
+                    # print(f"DEBUG - Converted and normalized controls: {controls}")
                 except Exception as e:
                     print(f"DEBUG - Error converting controls: {e}")
                     # Fallback to default controls
@@ -709,38 +746,34 @@ class TrainingMode:
                         'boost': False,
                         'gesture_name': 'Error converting array'
                     }
+            else:
+                # Not a dictionary or a numpy array
+                controls = {
+                    'steering': 0.0,
+                    'throttle': 0.0,
+                    'braking': False,
+                    'boost': False,
+                    'gesture_name': 'Unknown control type'
+                }
         
-        # נרמול ערכים לא תקינים
-        # עבור היגוי (steering) - מצפים לערכים בין -1 ל-1
+        # Ensure the steering and throttle values are within expected ranges
         if 'steering' in controls:
+            # Ensure steering is between -1.0 and 1.0
             if abs(controls['steering']) > 1.0:
-                if controls['steering'] > 0:
-                    # נרמול מ-0-255 ל-0-1
-                    if controls['steering'] > 200:  # כנראה ערך של 255
-                        controls['steering'] = 1.0
-                    else:
-                        controls['steering'] = min(1.0, controls['steering'] / 255.0)
-                else:
-                    # נרמול מ-(-255)-0 ל-(-1)-0
-                    if controls['steering'] < -200:  # כנראה ערך של -255
-                        controls['steering'] = -1.0
-                    else:
-                        controls['steering'] = max(-1.0, controls['steering'] / 255.0)
-                print(f"DEBUG - Normalized steering to: {controls['steering']}")
+                # Normalize to proper range
+                controls['steering'] = max(-1.0, min(1.0, controls['steering'] / 255.0 * 2.0 - 1.0))
+                # print(f"DEBUG - Normalized steering to: {controls['steering']}")
         
-        # עבור מצערת (throttle) - מצפים לערכים בין 0 ל-1
+        # Ensure throttle is between 0.0 and 1.0
         if 'throttle' in controls:
             if controls['throttle'] > 1.0:
-                # נרמול מ-0-255 ל-0-1
-                if controls['throttle'] > 200:  # כנראה ערך של 255
-                    controls['throttle'] = 1.0
-                else:
-                    controls['throttle'] = min(1.0, controls['throttle'] / 255.0)
-                print(f"DEBUG - Normalized throttle to: {controls['throttle']}")
+                # Normalize to proper range
+                controls['throttle'] = min(1.0, controls['throttle'] / 255.0)
+                # print(f"DEBUG - Normalized throttle to: {controls['throttle']}")
             elif controls['throttle'] < 0.0:
-                # תיקון ערכים שליליים
+                # Fix negative values
                 controls['throttle'] = 0.0
-                print(f"DEBUG - Fixed negative throttle to 0.0")
+                # print(f"DEBUG - Fixed negative throttle to 0.0")
         
         # Handle emergency stop
         if controls.get('emergency_stop', False):
@@ -748,25 +781,14 @@ class TrainingMode:
             self.car.direction = 0
             return
         
-        # Debug log for car input
-        print(f"DEBUG - Car receiving: steering={controls.get('steering', 0)}, throttle={controls.get('throttle', 0)}")
-        
-        # Update car position
-        self.car.update(controls, dt)
-        
-        # Check for collisions with obstacles
-        for obstacle in self.obstacles:
-            if self.car.check_collision(obstacle):
-                # In training mode, just highlight the collision
-                obstacle['hit'] = True
-            else:
-                obstacle['hit'] = False
-                
+        # Final debug log (less verbose now)
+        # print(f"DEBUG - Car receiving: steering={controls.get('steering', 0)}, throttle={controls.get('throttle', 0)}")
+
     def draw(self, controls):
         """Draw the game scene"""
         # Fill the background
         self.screen.fill(DARK_GRAY)
-        
+
         # Draw the road
         road_width = 500
         pygame.draw.rect(self.screen, ROAD_COLOR, (
@@ -775,14 +797,14 @@ class TrainingMode:
             road_width,
             SCREEN_HEIGHT
         ))
-        
+
         # Draw lane markings
         lane_width = 10
         lane_length = 50
         lane_gap = 20
         lanes = 3  # number of lane dividers
         lane_spacing = road_width / (lanes + 1)
-        
+
         for lane in range(lanes):
             x_pos = SCREEN_WIDTH//2 - road_width//2 + lane_spacing * (lane + 1)
             for y_pos in range(0, SCREEN_HEIGHT, lane_length + lane_gap):
@@ -792,7 +814,7 @@ class TrainingMode:
                     lane_width,
                     lane_length
                 ))
-        
+
         # Draw obstacles
         for obstacle in self.obstacles:
             color = obstacle['color'] if not obstacle.get('hit', False) else RED
@@ -802,49 +824,49 @@ class TrainingMode:
                 obstacle['width'],
                 obstacle['height']
             ))
-        
+
         # Draw the car
         self.car.draw(self.screen)
-        
+
         # Draw HUD information
         # Training mode title
         title_text = self.font.render("Training Mode", True, WHITE)
         self.screen.blit(title_text, (20, 20))
-        
+
         # Performance info
         fps_text = self.font.render(f"FPS: {self.fps_game:.1f} | Camera: {self.fps_camera:.1f}", True, WHITE)
         self.screen.blit(fps_text, (20, 60))
-        
+
         # Current gesture
         gesture = controls.get('gesture_name', 'No detection')
         gesture_text = self.font.render(f"Gesture: {gesture}", True, WHITE)
         self.screen.blit(gesture_text, (20, 100))
-        
+
         # Data panel status
         panel_text = self.font.render(f"Data Display: {'ON' if self.show_data_panel else 'OFF'} (D to toggle)", True, WHITE)
         self.screen.blit(panel_text, (20, 140))
-        
+
         # Camera feed status
         camera_text = self.font.render(f"Camera Feed: {'ON - in separate window' if self.show_camera_feed else 'OFF'} (C to toggle)", True, WHITE)
         self.screen.blit(camera_text, (20, 180))
-    
+
     def cleanup(self):
         """Clean up resources before exiting"""
         print("Cleaning up resources...")
-        
+
         # Stop camera thread
         if self.camera_thread is not None:
             self.camera_thread.stop()
-        
+
         # Clean up hand detector if needed
         if self.hand_detector and hasattr(self.hand_detector, 'release'):
             try:
                 self.hand_detector.release()
             except Exception as e:
                 print(f"Error releasing hand detector: {e}")
-        
+
         # Close all OpenCV windows
         cv2.destroyAllWindows()
-        
+
         # Do not quit pygame, as GameLauncher may still use it
         print("Cleanup complete.")
