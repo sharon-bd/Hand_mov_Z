@@ -69,9 +69,27 @@ class Car:
         print(f"DEBUG - Car receiving: steering={controls.get('steering', 'N/A')}, "
               f"throttle={controls.get('throttle', 'N/A')}")
               
-        # Extract controls
-        self.direction = float(controls.get('steering', 0.0))
-        target_speed = float(controls.get('throttle', 0.0))
+        # Normalize incoming control values
+        # Extract controls and normalize them if needed
+        raw_steering = float(controls.get('steering', 0.0))
+        raw_throttle = float(controls.get('throttle', 0.0))
+        
+        # Check if control values need normalization (if they're in 0-255 range)
+        if abs(raw_steering) > 1.0:
+            # Normalize from 0-255 to -1.0 to 1.0
+            self.direction = (raw_steering / 255.0) * 2.0 - 1.0
+        else:
+            # Already normalized value
+            self.direction = raw_steering
+            
+        if raw_throttle > 1.0:
+            # Normalize from 0-255 to 0.0 to 1.0
+            target_speed = raw_throttle / 255.0
+        else:
+            # Already normalized value
+            target_speed = raw_throttle
+        
+        # Extract boolean controls
         self.braking = bool(controls.get('braking', False))
         self.boost_active = bool(controls.get('boost', False))
         
@@ -104,9 +122,26 @@ class Car:
         dx = math.sin(rad) * distance
         dy = -math.cos(rad) * distance  # Negative because y increases downwards
         
+        # Calculate new position
+        new_x = self.x + dx
+        new_y = self.y + dy
+        
+        # Get screen dimensions - assuming 800x600 as default if not specified elsewhere
+        screen_width = 800  # Default screen width
+        screen_height = 600  # Default screen height
+        
+        # Ensure car stays within screen boundaries
+        # We use half of car's width/height as buffer to ensure car is always fully visible
+        buffer_x = self.width // 2
+        buffer_y = self.height // 2
+        
+        # Clamp position to screen boundaries
+        new_x = max(buffer_x, min(screen_width - buffer_x, new_x))
+        new_y = max(buffer_y, min(screen_height - buffer_y, new_y))
+        
         # Update position
-        self.x += dx
-        self.y += dy
+        self.x = new_x
+        self.y = new_y
         
         # Update collision points
         self.update_collision_points()
@@ -348,3 +383,25 @@ class Car:
             points: Number of points to add
         """
         self.score += points
+        
+    def clear_trail(self):
+        """
+        Clear the position history/trail of the car
+        
+        This can be useful when resetting the game state
+        or when teleporting the car to a new position
+        """
+        self.position_history = []
+        
+    def reset_state(self):
+        """
+        Reset the car to default state
+        
+        Useful when starting a new game or after a crash
+        """
+        self.speed = 0.0
+        self.direction = 0.0
+        self.health = 100
+        self.boost_active = False
+        self.braking = False
+        self.clear_trail()
