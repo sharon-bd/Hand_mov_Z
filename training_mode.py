@@ -663,6 +663,31 @@ class TrainingMode:
                             'gesture_name': 'No camera thread'
                         }
                     
+                    # Use improved debug configuration
+                    try:
+                        from debug_config import is_debug_enabled, log, can_log
+                        
+                        # Only log steering value when it changes or periodically
+                        steering_value = controls.get('steering', 0)
+                        if can_log('controls', steering_value):
+                            log('controls', f"Before keyboard: steering={steering_value}", value=steering_value)
+                    except ImportError:
+                        # Fallback for old debug_config
+                        if hasattr(self, '_last_debug_steering') and self._last_debug_steering == controls.get('steering', 0):
+                            pass  # Skip logging if unchanged
+                        else:
+                            self._last_debug_steering = controls.get('steering', 0)
+                            if hasattr(self, '_debug_counter') and self._debug_counter % 20 == 0:  # Only log every 20 frames
+                                print(f"DEBUG - Before keyboard: steering={controls.get('steering', 0)}")
+                            
+                            # Initialize counter if needed
+                            if not hasattr(self, '_debug_counter'):
+                                self._debug_counter = 0
+                            self._debug_counter += 1
+                    
+                    # Store original gesture info before keyboard override
+                    original_gesture = controls.get('gesture_name', 'Unknown')
+                    
                     # Allow keyboard override for testing
                     keys = pygame.key.get_pressed()
                     if keys[pygame.K_LEFT]:
@@ -713,77 +738,141 @@ class TrainingMode:
         return True
     
     def update(self, controls, dt):
-        """Update game state based on controls and time delta"""
-        # Use less verbose debug messages
-        # print(f"DEBUG - Raw controls type: {type(controls)}")
-        # print(f"DEBUG - Raw controls content: {controls}")
+        """עדכון מצב המשחק בהתבסס על הבקרות וזמן חלוף"""
         
-        # ===== FIXED: Improved array to dictionary conversion with proper normalization =====
-        # Convert array to dictionary if needed
+        # המרת מערך למילון אם צריך
         if not isinstance(controls, dict):
-            # Check if it's a NumPy array
+            # בדיקה אם זה מערך NumPy
             if hasattr(controls, 'dtype') and hasattr(controls, 'shape'):
-                # print(f"Controls is an array with shape: {controls.shape}")
-                # Convert array to dictionary with proper normalization
+                # המרת מערך למילון עם נרמול ערכים נכון
                 try:
-                    # Properly normalize values to expected ranges
+                    # נירמול נכון של ערכים לטווחים הצפויים
                     converted_controls = {
-                        'steering': float(controls[0]) / 255.0 * 2.0 - 1.0 if len(controls) > 0 else 0.0,  # Normalize to [-1.0, 1.0]
-                        'throttle': float(controls[1]) / 255.0 if len(controls) > 1 else 0.0,  # Normalize to [0.0, 1.0]
+                        'steering': float(controls[0]) / 255.0 * 2.0 - 1.0 if len(controls) > 0 else 0.0,  # נרמול ל [-1.0, 1.0]
+                        'throttle': float(controls[1]) / 255.0 if len(controls) > 1 else 0.0,  # נרמול ל [0.0, 1.0]
                         'braking': bool(controls[2]) if len(controls) > 2 else False,
                         'boost': bool(controls[3]) if len(controls) > 3 else False,
                         'gesture_name': 'From array (normalized)'
                     }
                     controls = converted_controls
-                    # print(f"DEBUG - Converted and normalized controls: {controls}")
                 except Exception as e:
-                    print(f"DEBUG - Error converting controls: {e}")
-                    # Fallback to default controls
+                    print(f"DEBUG - שגיאה בהמרת בקרות: {e}")
+                    # חזרה לערכי ברירת מחדל
                     controls = {
                         'steering': 0.0,
                         'throttle': 0.0,
                         'braking': False,
                         'boost': False,
-                        'gesture_name': 'Error converting array'
+                        'gesture_name': 'שגיאה בהמרת מערך'
                     }
             else:
-                # Not a dictionary or a numpy array
+                # לא מילון ולא מערך NumPy
                 controls = {
                     'steering': 0.0,
                     'throttle': 0.0,
                     'braking': False,
                     'boost': False,
-                    'gesture_name': 'Unknown control type'
+                    'gesture_name': 'סוג בקרה לא ידוע'
                 }
         
-        # Ensure the steering and throttle values are within expected ranges
+        # וידוא שערכי ההיגוי והמצערת נמצאים בטווחים הצפויים
         if 'steering' in controls:
-            # Ensure steering is between -1.0 and 1.0
+            # וידוא שההיגוי בין -1.0 ל-1.0
             if abs(controls['steering']) > 1.0:
-                # Normalize to proper range
+                # נרמול לטווח הנכון
                 controls['steering'] = max(-1.0, min(1.0, controls['steering'] / 255.0 * 2.0 - 1.0))
-                # print(f"DEBUG - Normalized steering to: {controls['steering']}")
         
-        # Ensure throttle is between 0.0 and 1.0
+        # וידוא שהמצערת בין 0.0 ל-1.0
         if 'throttle' in controls:
             if controls['throttle'] > 1.0:
-                # Normalize to proper range
+                # נרמול לטווח הנכון
                 controls['throttle'] = min(1.0, controls['throttle'] / 255.0)
-                # print(f"DEBUG - Normalized throttle to: {controls['throttle']}")
             elif controls['throttle'] < 0.0:
-                # Fix negative values
+                # תיקון ערכים שליליים
                 controls['throttle'] = 0.0
-                # print(f"DEBUG - Fixed negative throttle to 0.0")
         
-        # Handle emergency stop
+        # טיפול בעצירת חירום
         if controls.get('emergency_stop', False):
             self.car.speed = 0
             self.car.direction = 0
             return
-        
-        # Final debug log (less verbose now)
-        # print(f"DEBUG - Car receiving: steering={controls.get('steering', 0)}, throttle={controls.get('throttle', 0)}")
-
+            
+        # עדכון המכונית עם הבקרות - print רק אם השתנו הבקרות באופן משמעותי
+        if hasattr(self, 'car') and self.car is not None:
+            # Only log if values changed significantly or every 60 frames (reduced frequency)
+            if not hasattr(self, '_control_log_counter'):
+                self._control_log_counter = 0
+                self._last_logged_steering = None
+                self._last_logged_throttle = None
+                self._debug_enabled = True  # New flag to enable/disable debug altogether
+                self._consecutive_same_values = 0  # Counter for consecutive identical values
+                self._last_log_time = time.time()  # Time tracking for throttling logs
+            
+            self._control_log_counter += 1
+            
+            # Log only on significant changes or periodically with larger threshold
+            steering = controls.get('steering', 0)
+            throttle = controls.get('throttle', 0)
+            
+            # Check if values are the same as previous ones
+            values_unchanged = (
+                self._last_logged_steering is not None and
+                self._last_logged_throttle is not None and
+                abs(steering - self._last_logged_steering) < 0.01 and
+                abs(throttle - self._last_logged_throttle) < 0.01
+            )
+            
+            # Increment counter if values are the same
+            if values_unchanged:
+                self._consecutive_same_values += 1
+            else:
+                self._consecutive_same_values = 0
+                
+            # Determine if we should log based on multiple conditions
+            time_since_last_log = time.time() - self._last_log_time
+            should_log = (
+                self._debug_enabled and  # Check if debug is enabled
+                (
+                    # Log if values changed significantly
+                    (not values_unchanged) or
+                    # Log periodically even if values haven't changed
+                    (self._control_log_counter >= 120) or  # Increased from 60 to 120
+                    # Log if it's been at least 5 seconds since our last log
+                    (time_since_last_log >= 5.0)
+                ) and
+                # Don't log too many consecutive identical values, but do log the first few
+                (self._consecutive_same_values < 3 or self._consecutive_same_values % 10 == 0)
+            )
+            
+            # Add toggle for debug output with D key and control
+            keys = pygame.key.get_pressed()
+            if keys[pygame.K_LCTRL] and keys[pygame.K_d]:
+                # Toggle debug output if Ctrl+D is pressed
+                if not hasattr(self, '_last_debug_toggle'):
+                    self._last_debug_toggle = 0
+                
+                if time.time() - self._last_debug_toggle > 0.5:  # Prevent repeated toggles
+                    self._debug_enabled = not self._debug_enabled
+                    self._last_debug_toggle = time.time()
+                    print(f"Debug output {'enabled' if self._debug_enabled else 'disabled'}")
+            
+            if should_log:
+                # More informative log message with time and repeat count if values are unchanged
+                timestamp = time.strftime("%H:%M:%S")
+                if values_unchanged and self._consecutive_same_values > 0:
+                    print(f"[{timestamp}] DEBUG - Sending to car: steering={steering:.2f}, throttle={throttle:.2f} (repeated {self._consecutive_same_values+1} times)")
+                else:
+                    print(f"[{timestamp}] DEBUG - Sending to car: steering={steering:.2f}, throttle={throttle:.2f}")
+                
+                self._last_logged_steering = steering
+                self._last_logged_throttle = throttle
+                self._control_log_counter = 0
+                self._last_log_time = time.time()
+                
+            self.car.update(controls, dt)
+        else:
+            print("WARNING - Car object is None or not initialized")
+    
     def draw(self, controls):
         """Draw the game scene"""
         # Fill the background
@@ -851,22 +940,22 @@ class TrainingMode:
         self.screen.blit(camera_text, (20, 180))
 
     def cleanup(self):
-        """Clean up resources before exiting"""
-        print("Cleaning up resources...")
+        """ניקוי משאבים לפני יציאה"""
+        print("ניקוי משאבים...")
 
-        # Stop camera thread
+        # עצירת חוט המצלמה
         if self.camera_thread is not None:
             self.camera_thread.stop()
 
-        # Clean up hand detector if needed
+        # שחרור גלאי תנועות היד אם נדרש
         if self.hand_detector and hasattr(self.hand_detector, 'release'):
             try:
                 self.hand_detector.release()
             except Exception as e:
-                print(f"Error releasing hand detector: {e}")
+                print(f"שגיאה בשחרור גלאי תנועות היד: {e}")
 
-        # Close all OpenCV windows
+        # סגירת כל חלונות OpenCV
         cv2.destroyAllWindows()
 
-        # Do not quit pygame, as GameLauncher may still use it
-        print("Cleanup complete.")
+        # הערה: אין לסגור את pygame, כיוון שה-GameLauncher עשוי עדיין להשתמש בו
+        print("ניקוי הושלם.")

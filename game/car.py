@@ -32,6 +32,7 @@ class Car:
         self.speed = 0.0      # 0.0 to 1.0
         self.max_speed = 300  # Maximum speed in pixels per second
         self.boost_multiplier = 1.5  # Speed multiplier when boosting
+        self.brake_deceleration = 0.4  # ערך האטה כשבולמים
         
         # Special states
         self.boost_active = False
@@ -59,99 +60,85 @@ class Car:
     
     def update(self, controls, dt):
         """
-        Update car state based on controls
+        עדכון מצב המכונית על סמך הבקרות
         
         Args:
-            controls: Dictionary with control commands
-            dt: Time delta in seconds
+            controls: מילון עם פקודות בקרה
+            dt: פרק זמן בשניות
         """
-        # Add debug print statements
-        print(f"DEBUG - Car receiving: steering={controls.get('steering', 'N/A')}, "
-              f"throttle={controls.get('throttle', 'N/A')}")
-              
-        # Normalize incoming control values
-        # Extract controls and normalize them if needed
-        raw_steering = float(controls.get('steering', 0.0))
-        raw_throttle = float(controls.get('throttle', 0.0))
+        # Static counter variable for all Car instances
+        if not hasattr(Car, '_debug_counter'):
+            Car._debug_counter = 0
+            Car._debug_enabled = False  # Disabled by default
         
-        # Check if control values need normalization (if they're in 0-255 range)
-        if abs(raw_steering) > 1.0:
-            # Normalize from 0-255 to -1.0 to 1.0
-            self.direction = (raw_steering / 255.0) * 2.0 - 1.0
-        else:
-            # Already normalized value
-            self.direction = raw_steering
+        # Increment counter and only log occasionally
+        Car._debug_counter += 1
+        if Car._debug_enabled and Car._debug_counter >= 120:  # Even less frequent logging (120 frames)
+            Car._debug_counter = 0
+            # Only print part of the controls to reduce output size
+            brief_controls = {
+                'steering': controls.get('steering', 0),
+                'throttle': controls.get('throttle', 0)
+            }
+            print(f"DEBUG - Car receiving brief controls: {brief_controls}")
+        
+        # חילוץ בקרות עם בדיקת שגיאות נאותה
+        try:
+            # הערכים צריכים להיות בטווח הנכון כבר בשלב זה - אם לא, נבדוק אותם שוב
+            steering = float(controls.get('steering', 0.0))
+            throttle = float(controls.get('throttle', 0.0))
+            braking = bool(controls.get('braking', False))
+            boost = bool(controls.get('boost', False))
             
-        if raw_throttle > 1.0:
-            # Normalize from 0-255 to 0.0 to 1.0
-            target_speed = raw_throttle / 255.0
-        else:
-            # Already normalized value
-            target_speed = raw_throttle
+            # בדיקה נוספת שהערכים בטווח הנכון
+            steering = max(-1.0, min(1.0, steering))
+            throttle = max(0.0, min(1.0, throttle))
+            
+            # עדכון המכונית
+            self.direction = steering
+            
+            # עדכון מהירות בהתאם למצערת
+            speed_change_rate = 0.1 if throttle > self.speed else 0.2
+            self.speed = self.speed + (throttle - self.speed) * speed_change_rate
+            
+            # טיפול בבלימה
+            if braking:
+                self.speed = max(0.0, self.speed - self.brake_deceleration * dt)
+            
+            # חישוב תנועה בפועל
+            movement_speed = self.max_speed * self.speed
+            if boost:
+                movement_speed *= self.boost_multiplier
+            
+            # עדכון מיקום על סמך כיוון ומהירות
+            angle = self.direction * math.pi/4
+            rotation_speed = self.speed * 100 * dt
+            
+            self.rotation += self.direction * rotation_speed
+            self.rotation %= 360
+            
+            # חישוב וקטור תנועה
+            rad = math.radians(self.rotation)
+            distance = movement_speed * dt
+            dx = math.sin(rad) * distance
+            dy = -math.cos(rad) * distance
+            
+            # עדכון מיקום עם בדיקת גבולות
+            self.x += dx
+            self.y += dy
+            
+            # עדכון נקודות התנגשות
+            self.update_collision_points()
+            
+            # שמירת מיקום להיסטוריה (לאפקט שובל)
+            if distance > 0:
+                self.position_history.append((self.x, self.y))
+                if len(self.position_history) > self.max_history:
+                    self.position_history.pop(0)
         
-        # Extract boolean controls
-        self.braking = bool(controls.get('braking', False))
-        self.boost_active = bool(controls.get('boost', False))
-        
-        # Apply braking
-        if self.braking:
-            target_speed = 0.0
-        
-        # Smoothly adjust speed
-        speed_change_rate = 0.1 if target_speed > self.speed else 0.2
-        self.speed = self.speed + (target_speed - self.speed) * speed_change_rate
-        
-        # Calculate actual movement
-        movement_speed = self.max_speed * self.speed
-        if self.boost_active:
-            movement_speed *= self.boost_multiplier
-        
-        # Update position based on direction and speed
-        # Turning radius depends on speed - slower = sharper turns
-        angle = self.direction * math.pi/4  # Convert direction to radians
-        rotation_speed = self.speed * 100 * dt  # How fast car rotates
-        
-        self.rotation += self.direction * rotation_speed
-        self.rotation %= 360  # Keep within 0-360
-        
-        # Convert rotation to radians for movement calculation
-        rad = math.radians(self.rotation)
-        
-        # Calculate movement vector
-        distance = movement_speed * dt
-        dx = math.sin(rad) * distance
-        dy = -math.cos(rad) * distance  # Negative because y increases downwards
-        
-        # Calculate new position
-        new_x = self.x + dx
-        new_y = self.y + dy
-        
-        # Get screen dimensions - assuming 800x600 as default if not specified elsewhere
-        screen_width = 800  # Default screen width
-        screen_height = 600  # Default screen height
-        
-        # Ensure car stays within screen boundaries
-        # We use half of car's width/height as buffer to ensure car is always fully visible
-        buffer_x = self.width // 2
-        buffer_y = self.height // 2
-        
-        # Clamp position to screen boundaries
-        new_x = max(buffer_x, min(screen_width - buffer_x, new_x))
-        new_y = max(buffer_y, min(screen_height - buffer_y, new_y))
-        
-        # Update position
-        self.x = new_x
-        self.y = new_y
-        
-        # Update collision points
-        self.update_collision_points()
-        
-        # Store position history for trail effect
-        if distance > 0:  # Only add point if moving
-            self.position_history.append((self.x, self.y))
-            if len(self.position_history) > self.max_history:
-                self.position_history.pop(0)
-    
+        except Exception as e:
+            print(f"שגיאה בעדכון המכונית: {e}")
+            
     def draw(self, screen):
         """
         Draw the car on the screen
