@@ -742,140 +742,33 @@ class TrainingMode:
         return True
     
     def update(self, controls, dt):
-        """עדכון מצב המשחק בהתבסס על הבקרות וזמן חלוף"""
+        """Update game state based on controls and elapsed time"""
         
-        # המרת מערך למילון אם צריך
+        # Ensure controls is a dictionary
         if not isinstance(controls, dict):
-            # בדיקה אם זה מערך NumPy
-            if hasattr(controls, 'dtype') and hasattr(controls, 'shape'):
-                # המרת מערך למילון עם נרמול ערכים נכון
-                try:
-                    # נירמול נכון של ערכים לטווחים הצפויים
-                    converted_controls = {
-                        'steering': float(controls[0]) / 255.0 * 2.0 - 1.0 if len(controls) > 0 else 0.0,  # נרמול ל [-1.0, 1.0]
-                        'throttle': float(controls[1]) / 255.0 if len(controls) > 1 else 0.0,  # נרמול ל [0.0, 1.0]
-                        'braking': bool(controls[2]) if len(controls) > 2 else False,
-                        'boost': bool(controls[3]) if len(controls) > 3 else False,
-                        'gesture_name': 'From array (normalized)'
-                    }
-                    controls = converted_controls
-                except Exception as e:
-                    print(f"DEBUG - שגיאה בהמרת בקרות: {e}")
-                    # חזרה לערכי ברירת מחדל
-                    controls = {
-                        'steering': 0.0,
-                        'throttle': 0.0,
-                        'braking': False,
-                        'boost': False,
-                        'gesture_name': 'שגיאה בהמרת מערך'
-                    }
-            else:
-                # לא מילון ולא מערך NumPy
-                controls = {
-                    'steering': 0.0,
-                    'throttle': 0.0,
-                    'braking': False,
-                    'boost': False,
-                    'gesture_name': 'סוג בקרה לא ידוע'
-                }
+            print(f"WARNING: controls is not a dictionary, type: {type(controls)}")
+            controls = {
+                'steering': 0.0,
+                'throttle': 0.0,
+                'braking': False,
+                'boost': False,
+                'gesture_name': 'Invalid controls format'
+            }
         
-        # וידוא שערכי ההיגוי והמצערת נמצאים בטווחים הצפויים
-        if 'steering' in controls:
-            # וידוא שההיגוי בין -1.0 ל-1.0
-            if abs(controls['steering']) > 1.0:
-                # נרמול לטווח הנכון
-                controls['steering'] = max(-1.0, min(1.0, controls['steering'] / 255.0 * 2.0 - 1.0))
+        # Normalize control values
+        controls['steering'] = float(max(-1.0, min(1.0, controls.get('steering', 0.0))))
+        controls['throttle'] = float(max(0.0, min(1.0, controls.get('throttle', 0.0))))
+        controls['braking'] = bool(controls.get('braking', False))
+        controls['boost'] = bool(controls.get('boost', False))
         
-        # וידוא שהמצערת בין 0.0 ל-1.0
-        if 'throttle' in controls:
-            if controls['throttle'] > 1.0:
-                # נרמול לטווח הנכון
-                controls['throttle'] = min(1.0, controls['throttle'] / 255.0)
-            elif controls['throttle'] < 0.0:
-                # תיקון ערכים שליליים
-                controls['throttle'] = 0.0
+        # Debug log for controls
+        print(f"DEBUG: Sending to car - steering: {controls['steering']:.2f}, throttle: {controls['throttle']:.2f}")
         
-        # טיפול בעצירת חירום
-        if controls.get('emergency_stop', False):
-            self.car.speed = 0
-            self.car.direction = 0
-            return
-            
-        # עדכון המכונית עם הבקרות - print רק אם השתנו הבקרות באופן משמעותי
+        # Update the car
         if hasattr(self, 'car') and self.car is not None:
-            # Only log if values changed significantly or every 60 frames (reduced frequency)
-            if not hasattr(self, '_control_log_counter'):
-                self._control_log_counter = 0
-                self._last_logged_steering = None
-                self._last_logged_throttle = None
-                self._debug_enabled = True  # New flag to enable/disable debug altogether
-                self._consecutive_same_values = 0  # Counter for consecutive identical values
-                self._last_log_time = time.time()  # Time tracking for throttling logs
-            
-            self._control_log_counter += 1
-            
-            # Log only on significant changes or periodically with larger threshold
-            steering = controls.get('steering', 0)
-            throttle = controls.get('throttle', 0)
-            
-            # Check if values are the same as previous ones
-            values_unchanged = (
-                self._last_logged_steering is not None and
-                self._last_logged_throttle is not None and
-                abs(steering - self._last_logged_steering) < 0.01 and
-                abs(throttle - self._last_logged_throttle) < 0.01
-            )
-            
-            # Increment counter if values are the same
-            if values_unchanged:
-                self._consecutive_same_values += 1
-            else:
-                self._consecutive_same_values = 0
-                
-            # Determine if we should log based on multiple conditions
-            time_since_last_log = time.time() - self._last_log_time
-            should_log = (
-                self._debug_enabled and  # Check if debug is enabled
-                (
-                    # Log if values changed significantly
-                    (not values_unchanged) or
-                    # Log periodically even if values haven't changed
-                    (self._control_log_counter >= 120) or  # Increased from 60 to 120
-                    # Log if it's been at least 5 seconds since our last log
-                    (time_since_last_log >= 5.0)
-                ) and
-                # Don't log too many consecutive identical values, but do log the first few
-                (self._consecutive_same_values < 3 or self._consecutive_same_values % 10 == 0)
-            )
-            
-            # Add toggle for debug output with D key and control
-            keys = pygame.key.get_pressed()
-            if keys[pygame.K_LCTRL] and keys[pygame.K_d]:
-                # Toggle debug output if Ctrl+D is pressed
-                if not hasattr(self, '_last_debug_toggle'):
-                    self._last_debug_toggle = 0
-                
-                if time.time() - self._last_debug_toggle > 0.5:  # Prevent repeated toggles
-                    self._debug_enabled = not self._debug_enabled
-                    self._last_debug_toggle = time.time()
-                    print(f"Debug output {'enabled' if self._debug_enabled else 'disabled'}")
-            
-            if should_log:
-                # More informative log message with time and repeat count if values are unchanged
-                timestamp = time.strftime("%H:%M:%S")
-                if values_unchanged and self._consecutive_same_values > 0:
-                    print(f"[{timestamp}] DEBUG - Sending to car: steering={steering:.2f}, throttle={throttle:.2f} (repeated {self._consecutive_same_values+1} times)")
-                else:
-                    print(f"[{timestamp}] DEBUG - Sending to car: steering={steering:.2f}, throttle={throttle:.2f}")
-                
-                self._last_logged_steering = steering
-                self._last_logged_throttle = throttle
-                self._control_log_counter = 0
-                self._last_log_time = time.time()
-                
             self.car.update(controls, dt)
         else:
-            print("WARNING - Car object is None or not initialized")
+            print("ERROR: Car object is None or not initialized")
     
     def draw(self, controls):
         """Draw the game scene"""

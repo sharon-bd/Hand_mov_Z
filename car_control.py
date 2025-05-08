@@ -165,95 +165,101 @@ class Car:
             controls: Dictionary with control commands
             dt: Time delta in seconds
         """
-        # Store original controls for debugging
-        self.debug_info['last_controls'] = controls.copy()
-        
-        # Fix debug print statements format to avoid potential errors
-        print(f"DEBUG - Car receiving: steering={controls.get('steering', 0.0)}, "
-              f"throttle={controls.get('throttle', 0.0)}")
-        
-        # Add a boundary check to keep car on screen
-        screen_width = 800  # Default screen width
-        screen_height = 600  # Default screen height
-        
-        # Extract controls with proper error checking
         try:
-            self.direction = float(controls.get('steering', 0.0))
-            target_speed = float(controls.get('throttle', 0.0))
-            self.braking = bool(controls.get('braking', False))
-            self.boost_active = bool(controls.get('boost', False))
+            # Store original controls for debugging
+            self.debug_info['last_controls'] = controls.copy()
             
-            # Additional validation - clamp values to valid ranges
-            self.direction = max(-1.0, min(1.0, self.direction))
-            target_speed = max(0.0, min(1.0, target_speed))
+            # Fix debug print statements format to avoid potential errors
+            print(f"DEBUG - Car receiving: steering={controls.get('steering', 0.0)}, "
+                  f"throttle={controls.get('throttle', 0.0)}")
             
-            # Store normalized controls for debugging
-            self.debug_info['normalized_controls'] = {
-                'steering': self.direction,
-                'throttle': target_speed,
-                'braking': self.braking,
-                'boost': self.boost_active
-            }
-        except (ValueError, TypeError) as e:
-            print(f"ERROR: Invalid control values: {e}")
-            # Use safe defaults if conversion fails
-            self.direction = 0.0
-            target_speed = 0.0
-            self.braking = False
-            self.boost_active = False
-        
-        # Apply smoothing to speed changes
-        speed_change_rate = 0.1 if target_speed > self.speed else 0.2
-        self.speed = self.speed + (target_speed - self.speed) * speed_change_rate
-        
-        # Special case for braking
-        if self.braking:
-            self.speed = max(0.0, self.speed - self.brake_deceleration * dt)
-            target_speed = 0.0  # Override target speed when braking
-        
-        # Calculate actual movement
-        movement_speed = self.max_speed * self.speed
-        if self.boost_active:
-            movement_speed *= self.boost_multiplier
-        
-        # Update position based on direction and speed
-        # Turning radius depends on speed - slower = sharper turns
-        angle = self.direction * math.pi/4  # Convert direction to radians
-        rotation_speed = self.speed * 100 * dt  # How fast car rotates
-        
-        self.rotation += self.direction * rotation_speed
-        self.rotation %= 360  # Keep within 0-360
-        
-        # Convert rotation to radians for movement calculation
-        rad = math.radians(self.rotation)
-        
-        # Calculate movement vector
-        distance = movement_speed * dt
-        dx = math.sin(rad) * distance
-        dy = -math.cos(rad) * distance  # Negative because y increases downwards
-        
-        # Update position with boundary checking
-        new_x = self.x + dx
-        new_y = self.y + dy
-        
-        # Keep car within screen boundaries
-        self.debug_info['boundary_hit'] = False
-        if new_x < self.width//2 or new_x > screen_width - self.width//2:
-            self.debug_info['boundary_hit'] = True
-        if new_y < self.height//2 or new_y > screen_height - self.height//2:
-            self.debug_info['boundary_hit'] = True
+            # Add a boundary check to keep car on screen
+            screen_width = 800  # Default screen width
+            screen_height = 600  # Default screen height
             
-        self.x = max(self.width//2, min(screen_width - self.width//2, new_x))
-        self.y = max(self.height//2, min(screen_height - self.height//2, new_y))
-        
-        # Update collision points
-        self.update_collision_points()
-        
-        # Store position history for trail effect
-        if distance > 0:  # Only add point if moving
-            self.position_history.append((self.x, self.y))
-            if len(self.position_history) > self.max_history:
-                self.position_history.pop(0)
+            # Extract controls with proper error checking and normalization
+            try:
+                steering_input = float(controls.get('steering', 0.0))
+                throttle_input = float(controls.get('throttle', 0.0))
+                self.braking = bool(controls.get('braking', False))
+                self.boost_active = bool(controls.get('boost', False))
+                
+                # Ensure values are in the right range - add explicit clamping
+                steering_input = max(-1.0, min(1.0, steering_input))
+                throttle_input = max(0.0, min(1.0, throttle_input))
+                
+                # Set the direction property directly
+                self.direction = steering_input
+                
+                # Store normalized controls for debugging
+                self.debug_info['normalized_controls'] = {
+                    'steering': self.direction,
+                    'throttle': throttle_input,
+                    'braking': self.braking,
+                    'boost': self.boost_active
+                }
+            except (ValueError, TypeError) as e:
+                print(f"ERROR: Invalid control values: {e}")
+                # Use safe defaults if conversion fails
+                self.direction = 0.0
+                throttle_input = 0.0
+                self.braking = False
+                self.boost_active = False
+            
+            # Apply smoothing to speed changes - more responsive rates
+            speed_change_rate = 0.2 if throttle_input > self.speed else 0.3
+            self.speed = self.speed + (throttle_input - self.speed) * speed_change_rate
+            
+            # Special case for braking
+            if self.braking:
+                self.speed = max(0.0, self.speed - self.brake_deceleration * dt)
+            
+            # Calculate actual movement
+            movement_speed = self.max_speed * self.speed
+            if self.boost_active:
+                movement_speed *= self.boost_multiplier
+            
+            # Update position based on direction and speed
+            angle = self.direction * math.pi/4
+            rotation_speed = self.speed * 100 * dt
+            
+            self.rotation += self.direction * rotation_speed
+            self.rotation %= 360  # Keep within 0-360
+            
+            # Convert rotation to radians for movement calculation
+            rad = math.radians(self.rotation)
+            
+            # Calculate movement vector
+            distance = movement_speed * dt
+            dx = math.sin(rad) * distance
+            dy = -math.cos(rad) * distance  # Negative because y increases downwards
+            
+            # Update position with boundary checking
+            new_x = self.x + dx
+            new_y = self.y + dy
+            
+            # Keep car within screen boundaries
+            self.debug_info['boundary_hit'] = False
+            if new_x < self.width//2 or new_x > screen_width - self.width//2:
+                self.debug_info['boundary_hit'] = True
+            if new_y < self.height//2 or new_y > screen_height - self.height//2:
+                self.debug_info['boundary_hit'] = True
+                
+            self.x = max(self.width//2, min(screen_width - self.width//2, new_x))
+            self.y = max(self.height//2, min(screen_height - self.height//2, new_y))
+            
+            # Update collision points
+            self.update_collision_points()
+            
+            # Store position history for trail effect
+            if distance > 0:  # Only add point if moving
+                self.position_history.append((self.x, self.y))
+                if len(self.position_history) > self.max_history:
+                    self.position_history.pop(0)
+        except Exception as e:
+            print(f"ERROR in Car.update: {e}")
+            import traceback
+            traceback.print_exc()
     
     def draw(self, screen):
         """
