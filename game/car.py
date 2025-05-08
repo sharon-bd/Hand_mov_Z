@@ -34,6 +34,24 @@ class Car:
         self.boost_multiplier = 1.5  # Speed multiplier when boosting
         self.brake_deceleration = 0.4  # ערך האטה כשבולמים
         
+        # Anti-spin steering parameters - more aggressive values
+        self.steering_sensitivity = 1.5   # Reduced from 2.5 to 1.5
+        self.max_steering_angle = 20      # Reduced from 35 to 20 degrees
+        self.steering_return_factor = 0.1 # Increased from 0.05 to 0.1
+        self.max_turn_rate = 45           # Maximum degrees per second the car can turn
+        self.steering_deadzone = 0.1      # Ignore very small steering inputs
+        
+        # Anti-spin detection
+        self.rotation_history = []        # Track rotation changes to detect spinning
+        self.rotation_history_max = 20    # Number of frames to track
+        self.spinning_threshold = 540     # Total degrees of rotation before anti-spin kicks in
+        self.last_rotation = 0            # Last frame's rotation
+        
+        # Screen boundaries
+        self.screen_width = 800  # Default screen width
+        self.screen_height = 600 # Default screen height
+        self.boundary_padding = 50 # Keep car this far from edge
+        
         # Special states
         self.boost_active = False
         self.braking = False
@@ -45,6 +63,7 @@ class Car:
         # Physics properties
         self.mass = 1000  # kg
         self.rotation = 0  # degrees
+        self.target_rotation = 0  # Target rotation angle based on steering
         
         # Collision detection
         self.collision_points = []
@@ -94,6 +113,10 @@ class Car:
             steering = max(-1.0, min(1.0, steering))
             throttle = max(0.0, min(1.0, throttle))
             
+            # Apply steering deadzone - ignore small values
+            if abs(steering) < self.steering_deadzone:
+                steering = 0.0
+            
             # עדכון המכונית
             self.direction = steering
             
@@ -110,11 +133,68 @@ class Car:
             if boost:
                 movement_speed *= self.boost_multiplier
             
-            # עדכון מיקום על סמך כיוון ומהירות
-            angle = self.direction * math.pi/4
-            rotation_speed = self.speed * 100 * dt
+            # ===== ENHANCED: More aggressive anti-spin physics =====
             
-            self.rotation += self.direction * rotation_speed
+            # Store rotation from last frame
+            previous_rotation = self.rotation
+            
+            # Apply steering only if moving (more aggressive speed dependency)
+            if self.speed > 0.05:
+                # Calculate steering effect with much stronger speed-based reduction
+                steering_effect = self.direction * self.steering_sensitivity
+                
+                # Scale steering effect down dramatically at high speeds
+                speed_factor = max(0.2, 1.0 - (self.speed * 1.5))  # More aggressive scaling
+                steering_effect *= speed_factor
+                
+                # Calculate maximum rotation change based on speed and our max_turn_rate
+                max_angle_change = self.max_steering_angle * self.speed
+                max_rate_limited_change = self.max_turn_rate * dt  # Limit by degrees/second
+                
+                # Use the smaller of the two limits
+                max_allowed_change = min(max_angle_change, max_rate_limited_change)
+                
+                # Apply the limited steering effect
+                rotation_change = min(max_allowed_change, 
+                                     max(-max_allowed_change, 
+                                         steering_effect * max_allowed_change))
+                
+                # Apply rotation change
+                self.rotation += rotation_change
+                
+                # ===== NEW: Detect and correct continuous spinning =====
+                
+                # Track rotation history to detect spinning
+                self.rotation_history.append(self.rotation)
+                if len(self.rotation_history) > self.rotation_history_max:
+                    self.rotation_history.pop(0)
+                
+                # Calculate total rotation in history
+                if len(self.rotation_history) > 5:  # Need at least a few frames
+                    # Detect continuous rotation in one direction
+                    rot_diff = (self.rotation - self.last_rotation + 180) % 360 - 180
+                    
+                    # If we've been turning in the same direction for too long, apply correction
+                    if abs(rot_diff) > 0.1:  # Non-zero rotation
+                        # Strong correction if steering is still at maximum but we've turned a lot
+                        if abs(steering) > 0.9 and abs(self.rotation - self.target_rotation) > 90:
+                            # Force a strong return to one of 8 cardinal directions
+                            target_angle = round(self.rotation / 45) * 45
+                            correction = (target_angle - self.rotation) * 0.2  # Strong correction
+                            self.rotation += correction * dt * 5  # Apply correction 5x stronger
+                
+                # Apply natural return to center when steering is not at maximum
+                if abs(self.direction) < 0.8:  # Increased threshold for return to center
+                    # Find the closest rotation that's a multiple of 45 degrees
+                    self.target_rotation = round(self.rotation / 45) * 45
+                    # Gradually rotate toward that target - stronger return to center
+                    angle_diff = (self.target_rotation - self.rotation) * self.steering_return_factor
+                    self.rotation += angle_diff * dt * 2  # Apply 2x stronger return to center
+                
+                # Store current rotation for next frame
+                self.last_rotation = self.rotation
+            
+            # Keep rotation in 0-360 range
             self.rotation %= 360
             
             # חישוב וקטור תנועה
@@ -124,8 +204,31 @@ class Car:
             dy = -math.cos(rad) * distance
             
             # עדכון מיקום עם בדיקת גבולות
-            self.x += dx
-            self.y += dy
+            new_x = self.x + dx
+            new_y = self.y + dy
+            
+            # ===== NEW: Add boundary checking to keep car on screen =====
+            # Get screen dimensions - use instance values or defaults
+            screen_width = getattr(self, 'screen_width', 800)
+            screen_height = getattr(self, 'screen_height', 600)
+            
+            # Only update position if within bounds
+            if (self.boundary_padding < new_x < screen_width - self.boundary_padding and
+                self.boundary_padding < new_y < screen_height - self.boundary_padding):
+                self.x = new_x
+                self.y = new_y
+            else:
+                # If we hit a boundary, stop the car and prevent further movement in that direction
+                self.speed *= 0.5  # Reduce speed when hitting boundaries
+                
+                # Determine which boundary we hit and adjust only that coordinate
+                if new_x <= self.boundary_padding or new_x >= screen_width - self.boundary_padding:
+                    # Hit left or right boundary - keep y movement
+                    self.y = new_y
+                    
+                if new_y <= self.boundary_padding or new_y >= screen_height - self.boundary_padding:
+                    # Hit top or bottom boundary - keep x movement
+                    self.x = new_x
             
             # עדכון נקודות התנגשות
             self.update_collision_points()
@@ -392,3 +495,14 @@ class Car:
         self.boost_active = False
         self.braking = False
         self.clear_trail()
+    
+    def set_screen_dimensions(self, width, height):
+        """
+        Set the screen dimensions for boundary checking
+        
+        Args:
+            width: Screen width
+            height: Screen height
+        """
+        self.screen_width = width
+        self.screen_height = height

@@ -488,6 +488,10 @@ class TrainingMode:
         # Create the player's car
         self.car = Car(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 100)
         
+        # Set screen dimensions for boundary checking
+        if hasattr(self.car, 'set_screen_dimensions'):
+            self.car.set_screen_dimensions(SCREEN_WIDTH, SCREEN_HEIGHT)
+        
         # Generate obstacles for training
         self.generate_training_obstacles()
         

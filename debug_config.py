@@ -10,18 +10,19 @@ DEBUG_LEVEL = 1        # 0=None, 1=Basic, 2=Detailed, 3=Verbose
 
 # Component-specific debug settings
 COMPONENTS = {
-    'car': False,              # Car physics debugging
+    'car': True,               # Car physics debugging - enable to see car physics info
     'camera': False,           # Camera feed debugging  
     'detector': True,          # Hand gesture detector debugging
-    'controls': False,         # Control values debugging - set to False by default to reduce noise
+    'controls': True,          # Control values debugging - enable to track steering issues
     'performance': True,       # FPS and performance metrics
 }
 
 # Debugging frequency limits (in seconds) to prevent spam
 FREQUENCY_LIMITS = {
-    'controls': 1.0,           # Only log control changes once per second
+    'controls': 0.5,           # Log more frequently to track steering issues (was 1.0)
     'camera': 5.0,             # Camera logs limited to once per 5 seconds
     'performance': 10.0,       # Performance logs every 10 seconds
+    'car': 1.0,                # Car physics logging frequency
 }
 
 # Track last log times for frequency limiting
