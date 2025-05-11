@@ -46,6 +46,9 @@ class HandGestureDetector:
             processed_frame: Frame with visualization
         """
         try:
+            # Flip the frame horizontally for more natural interaction
+            frame = cv2.flip(frame, 1)
+            
             # Convert BGR to RGB
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             
@@ -265,9 +268,21 @@ class HandGestureDetector:
         return controls
     
     def _is_finger_curled(self, finger_tip, finger_mcp, wrist):
-        """Check if a finger is curled by comparing the y position of the tip to the knuckle."""
-        # A finger is considered curled if its tip is lower (higher y value) than its MCP
-        return finger_tip[1] > finger_mcp[1]
+        # Original method just checks if fingertip is below knuckle
+        vertical_curl = finger_tip[1] > finger_mcp[1]
+        
+        # Add distance-based check (fingertip close to palm center indicates curled)
+        palm_center_x = wrist[0]
+        palm_center_y = wrist[1] - 50  # Approximate palm center
+        
+        distance_to_palm = np.sqrt((finger_tip[0] - palm_center_x)**2 + 
+                                (finger_tip[1] - palm_center_y)**2)
+        
+        distance_threshold = 100  # Adjust based on testing
+        distance_curl = distance_to_palm < distance_threshold
+        
+        # Return true if either condition suggests curling
+        return vertical_curl or distance_curl
     
     def _is_thumb_extended(self, thumb_tip, thumb_mcp, wrist):
         """Check if thumb is extended upward."""
