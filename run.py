@@ -101,11 +101,11 @@ def main():
         current_dir = os.path.dirname(os.path.abspath(__file__))
         main_script = os.path.join(current_dir, 'main.py')
         
-        # Run the main script
-        if platform.system() == 'Windows':
-            os.system(f'"{sys.executable}" "{main_script}"')
-        else:
-            os.system(f'"{sys.executable}" "{main_script}"')
+        # Run the main script using subprocess instead of os.system
+        try:
+            subprocess.run([sys.executable, main_script], check=True)
+        except subprocess.CalledProcessError as e:
+            print(f"Error running {main_script}: {e}")
             
     except Exception as e:
         print(f"Error launching the application: {e}")
