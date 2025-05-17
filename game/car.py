@@ -135,6 +135,10 @@ class Car:
             # טיפול בבלימה
             if braking:
                 self.speed = max(0.0, self.speed - self.brake_deceleration * dt)
+                self.braking = True  # עדכון מצב הבלימה של הרכב
+            else:
+                # הצג אורות בלימה גם כשהמכונית יוצאת ממצב תנועה לעצירה
+                self.braking = (self.speed < 0.05 and throttle < 0.1)
             
             # חישוב תנועה בפועל
             movement_speed = self.max_speed * self.speed
@@ -344,21 +348,36 @@ class Car:
             light_size // 2
         )
         
-        # Draw brake lights if braking
+        # Draw brake lights if braking or stopped
         if self.braking:
-            # Left brake light
+            # Left brake light - גדול יותר ובולט יותר
             pygame.draw.circle(
                 car_surface,
-                (255, 50, 50),  # Red light
+                (255, 30, 30),  # אדום עמוק יותר
                 (self.width // 4, self.height - light_size),
-                light_size // 2
+                light_size // 2 + 2  # גדול יותר ב-2 פיקסלים
             )
-            # Right brake light
+            # אפקט זוהר מסביב לאור השמאלי
             pygame.draw.circle(
                 car_surface,
-                (255, 50, 50),  # Red light
+                (255, 100, 100, 150),  # אדום שקוף יותר
+                (self.width // 4, self.height - light_size),
+                light_size // 2 + 5  # גדול יותר לאפקט זוהר
+            )
+            
+            # Right brake light - גדול יותר ובולט יותר
+            pygame.draw.circle(
+                car_surface,
+                (255, 30, 30),  # אדום עמוק יותר
                 (self.width - self.width // 4, self.height - light_size),
-                light_size // 2
+                light_size // 2 + 2  # גדול יותר ב-2 פיקסלים
+            )
+            # אפקט זוהר מסביב לאור הימני
+            pygame.draw.circle(
+                car_surface,
+                (255, 100, 100, 150),  # אדום שקוף יותר
+                (self.width - self.width // 4, self.height - light_size),
+                light_size // 2 + 5  # גדול יותר לאפקט זוהר
             )
         
         # Draw boost effect if active
