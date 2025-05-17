@@ -1,353 +1,258 @@
 #!/usr/bin/env python
 """
-Main Game Launcher
-
-This script serves as the main entry point for the Car Control Game.
-It provides a menu to select different game modes, including the training mode.
+Game Launcher for Hand Gesture Car Control System
+Connects hand gestures to car controls
 """
 
-import pygame
-import sys
 import os
+import sys
 import time
-from pygame.locals import *
-
-# Import our game modes
-from config import GAME_MODES, DEFAULT_GAME_MODE
-from training_mode import TrainingMode
-
-# Constants
-SCREEN_WIDTH = 800
-SCREEN_HEIGHT = 600
-FPS = 60
-
-# Colors
-WHITE = (255, 255, 255)
-BLACK = (0, 0, 0)
-RED = (255, 0, 0)
-GREEN = (0, 255, 0)
-BLUE = (0, 0, 255)
-GRAY = (100, 100, 100)
-LIGHT_BLUE = (173, 216, 230)
-DARK_BLUE = (0, 0, 139)
-
-class Button:
-    """A simple button class for the menu."""
-    
-    def __init__(self, x, y, width, height, text, color, hover_color, text_color, action=None):
-        self.rect = pygame.Rect(x, y, width, height)
-        self.text = text
-        self.color = color
-        self.hover_color = hover_color
-        self.text_color = text_color
-        self.action = action
-        self.hovered = False
-        
-    def draw(self, screen, font):
-        """Draw the button on the screen."""
-        # Determine color based on hover state
-        color = self.hover_color if self.hovered else self.color
-        
-        # Draw button
-        pygame.draw.rect(screen, color, self.rect, 0, 10)
-        pygame.draw.rect(screen, BLACK, self.rect, 2, 10)
-        
-        # Draw text
-        text_surface = font.render(self.text, True, self.text_color)
-        text_rect = text_surface.get_rect(center=self.rect.center)
-        screen.blit(text_surface, text_rect)
-        
-    def check_hover(self, mouse_pos):
-        """Check if the mouse is hovering over the button."""
-        self.hovered = self.rect.collidepoint(mouse_pos)
-        return self.hovered
-        
-    def handle_event(self, event):
-        """Handle button click events."""
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if self.hovered and self.action:
-                return self.action()
-        return None
-
+import pygame
+import cv2
+import numpy as np
+from hand_detector.connection import HandCarConnectionManager
+from game.car import Car
 
 class GameLauncher:
-    """Main game launcher with menu to select game modes."""
+    """Main game launcher class"""
     
     def __init__(self):
-        """Initialize the game launcher."""
+        """Initialize the game launcher"""
         pygame.init()
-        pygame.display.set_caption("Hand Gesture Car Control Game")
+        pygame.display.set_caption("Hand Gesture Car Control")
         
         # Set up the screen
-        self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        self.screen_width = 800
+        self.screen_height = 600
+        self.screen = pygame.display.set_mode((self.screen_width + 320, self.screen_height))  # Add width for camera feed
+        
+        # Set up the clock
         self.clock = pygame.time.Clock()
+        self.target_fps = 60
         
-        # Set up fonts
-        self.font_large = pygame.font.Font(None, 64)
-        self.font_medium = pygame.font.Font(None, 36)
-        self.font_small = pygame.font.Font(None, 24)
+        # Create the car
+        self.car = Car(self.screen_width // 2, self.screen_height // 2)
+        self.car.set_screen_dimensions(self.screen_width, self.screen_height)
         
-        # Set up buttons for game modes
-        self.buttons = []
-        self.create_buttons()
+        # Create the hand-car connection
+        self.connection = HandCarConnectionManager()
         
-        # Create training mode instance
-        self.training_mode = None
-        
-        # Menu background animation
-        self.bg_offset = 0
-        self.menu_active = True
+        # Game state
         self.running = True
+        self.debug_mode = True
+        self.show_help = True
+        self.show_camera = True  # Always show camera feed
         
-    def create_buttons(self):
-        """Create buttons for each game mode plus training mode."""
-        button_width = 300
-        button_height = 60
-        start_y = 200
-        button_spacing = 80
+        # Camera display
+        self.camera_surface = None
         
-        # First, add the Training Mode button
-        self.buttons.append(
-            Button(
-                SCREEN_WIDTH // 2 - button_width // 2,
-                start_y,
-                button_width,
-                button_height,
-                "Training Mode",
-                LIGHT_BLUE,
-                BLUE,
-                WHITE,
-                self.launch_training_mode
-            )
-        )
+        # Fonts
+        self.font = pygame.font.SysFont(None, 24)
+        self.title_font = pygame.font.SysFont(None, 36)
         
-        # Then add buttons for all game modes from config
-        for i, (mode_key, mode_data) in enumerate(GAME_MODES.items()):
-            self.buttons.append(
-                Button(
-                    SCREEN_WIDTH // 2 - button_width // 2,
-                    start_y + (i + 1) * button_spacing,
-                    button_width,
-                    button_height,
-                    mode_data['name'],
-                    LIGHT_BLUE,
-                    BLUE,
-                    WHITE,
-                    lambda mode=mode_key: self.launch_game_mode(mode)
-                )
-            )
-            
-        # Add a quit button at the bottom
-        self.buttons.append(
-            Button(
-                SCREEN_WIDTH // 2 - button_width // 2,
-                start_y + (len(GAME_MODES) + 1) * button_spacing,
-                button_width,
-                button_height,
-                "Quit",
-                RED,
-                (200, 0, 0),
-                WHITE,
-                self.quit_game
-            )
-        )
+        # Create a separate OpenCV window for the camera feed
+        self.show_opencv_window = True
+        self.opencv_window_name = "Hand Detector Camera"
+        if self.show_opencv_window:
+            cv2.namedWindow(self.opencv_window_name, cv2.WINDOW_NORMAL)
+            cv2.resizeWindow(self.opencv_window_name, 640, 480)
         
-    def launch_training_mode(self):
-        """Launch the training mode for the game."""
-        print("Launching Training Mode...")
-        try:
-            # Pass the screen parameter to TrainingMode
-            self.training_mode = TrainingMode(self.screen)
-            self.training_mode.start()
-            return True  # Successful launch
-        except Exception as e:
-            print(f"Error in training mode: {e}")
-            return False  # Launch failed
-    
-    def launch_game_mode(self, mode):
-        """Launch the selected game mode."""
-        print(f"Launching game mode: {mode}")
-        # TODO: Implement actual game mode launching
-        # This would connect to your main game code with the specified mode
+        print("🎮 Game launcher initialized")
         
-        # For now, just show a simple message
-        self.show_message(f"Game Mode '{GAME_MODES[mode]['name']}' not implemented yet!")
-        return True
-    
-    def quit_game(self):
-        """Quit the game."""
-        return False
-    
-    def show_message(self, message):
-        """Show a message on screen temporarily."""
-        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 180))
-        self.screen.blit(overlay, (0, 0))
-        
-        message_text = self.font_medium.render(message, True, WHITE)
-        self.screen.blit(message_text, (SCREEN_WIDTH // 2 - message_text.get_width() // 2, SCREEN_HEIGHT // 2))
-        
-        pygame.display.flip()
-        time.sleep(2)  # Show message for 2 seconds
-    
-    def handle_events(self):
-        """Handle events for the menu."""
-        mouse_pos = pygame.mouse.get_pos()
-        
-        # Update button hover states
-        for button in self.buttons:
-            button.check_hover(mouse_pos)
-        
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                return False
-            
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                return False
-            
-            # Handle button clicks
-            for button in self.buttons:
-                result = button.handle_event(event)
-                if result is not None:
-                    return result
-        
-        return True
-    
-    def draw_menu(self):
-        """Draw the main menu."""
-        # Check if the display is still active before drawing
-        if not pygame.get_init() or not pygame.display.get_surface():
-            return
-        
-        # Fill background with a gradient
-        for y in range(SCREEN_HEIGHT):
-            # Create a gradient from dark blue to light blue
-            color_value = y / SCREEN_HEIGHT
-            color = (
-                int(0 + color_value * 173),
-                int(0 + color_value * 216),
-                int(139 + color_value * (230 - 139))
-            )
-            pygame.draw.line(self.screen, color, (0, y), (SCREEN_WIDTH, y))
-        
-        # Draw animated background pattern (grid of dots)
-        self.bg_offset = (self.bg_offset + 0.5) % 50
-        for x in range(0, SCREEN_WIDTH + 50, 50):
-            for y in range(0, SCREEN_HEIGHT + 50, 50):
-                pygame.draw.circle(
-                    self.screen,
-                    WHITE,
-                    (int(x + self.bg_offset), int(y + self.bg_offset)),
-                    2
-                )
-        
-        # Draw title
-        title_text = self.font_large.render("Hand Gesture Car Control", True, WHITE)
-        title_shadow = self.font_large.render("Hand Gesture Car Control", True, BLACK)
-        
-        # Draw with shadow effect
-        self.screen.blit(title_shadow, (SCREEN_WIDTH // 2 - title_text.get_width() // 2 + 2, 80 + 2))
-        self.screen.blit(title_text, (SCREEN_WIDTH // 2 - title_text.get_width() // 2, 80))
-        
-        # Draw subtitle
-        subtitle_text = self.font_medium.render("Select a Game Mode", True, WHITE)
-        self.screen.blit(subtitle_text, (SCREEN_WIDTH // 2 - subtitle_text.get_width() // 2, 140))
-        
-        # Draw all buttons
-        for button in self.buttons:
-            button.draw(self.screen, self.font_medium)
-            
-        # Draw description for the hovered button
-        for button in self.buttons:
-            if button.hovered:
-                # Find the game mode description
-                description = ""
-                for mode_key, mode_data in GAME_MODES.items():
-                    if mode_data['name'] == button.text:
-                        description = mode_data['description']
-                        break
-                
-                # Special case for training mode and quit
-                if button.text == "Training Mode":
-                    description = "Practice controlling the car with hand gestures without time pressure."
-                elif button.text == "Quit":
-                    description = "Exit the game."
-                
-                # Draw the description
-                if description:
-                    desc_text = self.font_small.render(description, True, WHITE)
-                    pygame.draw.rect(
-                        self.screen,
-                        DARK_BLUE,
-                        (SCREEN_WIDTH // 2 - desc_text.get_width() // 2 - 10,
-                         SCREEN_HEIGHT - 100,
-                         desc_text.get_width() + 20,
-                         40),
-                        0,
-                        10
-                    )
-                    self.screen.blit(
-                        desc_text,
-                        (SCREEN_WIDTH // 2 - desc_text.get_width() // 2,
-                         SCREEN_HEIGHT - 90)
-                    )
-                break
-        
-        # Draw instructions at the bottom
-        instructions = self.font_small.render(
-            "Use your mouse to select a mode. Press ESC to quit.",
-            True,
-            WHITE
-        )
-        self.screen.blit(
-            instructions,
-            (SCREEN_WIDTH // 2 - instructions.get_width() // 2, SCREEN_HEIGHT - 40)
-        )
-    
     def run(self):
-        """Main loop for the game launcher."""
-        try:
-            while self.running:
-                # Handle events
-                self.running = self.handle_events()
-                
-                # Ensure the video system is still initialized before attempting to update
-                if pygame.get_init() and pygame.display.get_surface():
-                    # Draw the menu and everything else
-                    self.draw_menu()
-                    pygame.display.flip()  # Move screen update here, inside the condition
-                else:
-                    print("Video system not initialized, exiting game loop")
+        """Run the game loop"""
+        # Start the hand-car connection
+        if not self.connection.start():
+            print("❌ Failed to start hand-car connection")
+            return
+            
+        print("🏁 Starting game loop")
+        
+        # Main game loop
+        last_time = time.time()
+        while self.running:
+            # Calculate delta time
+            current_time = time.time()
+            dt = current_time - last_time
+            last_time = current_time
+            
+            # Process events
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
                     self.running = False
-                    break  # Exit the loop immediately
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        self.running = False
+                    elif event.key == pygame.K_h:
+                        self.show_help = not self.show_help
+                    elif event.key == pygame.K_d:
+                        self.debug_mode = not self.debug_mode
+                    elif event.key == pygame.K_c:
+                        self.show_camera = not self.show_camera
+                    elif event.key == pygame.K_v:
+                        self.show_opencv_window = not self.show_opencv_window
+                        if self.show_opencv_window:
+                            cv2.namedWindow(self.opencv_window_name, cv2.WINDOW_NORMAL)
+                            cv2.resizeWindow(self.opencv_window_name, 640, 480)
+                        else:
+                            cv2.destroyWindow(self.opencv_window_name)
+                        
+            # Get controls from hand detector
+            controls = self.connection.get_controls()
+            
+            # Get camera feed and data panel
+            camera_frame, data_panel, fps = self.connection.get_visuals()
+            
+            # Convert camera frame to pygame surface if available
+            if camera_frame is not None:
+                # Display the camera feed in OpenCV window
+                if self.show_opencv_window:
+                    try:
+                        cv2.imshow(self.opencv_window_name, camera_frame)
+                        cv2.waitKey(1)
+                    except Exception as e:
+                        print(f"Error showing OpenCV window: {e}")
                 
-        except pygame.error as e:
-            print(f"Pygame error occurred: {e}")
-        except Exception as e:
-            print(f"Unexpected error: {e}")
-        finally:
-            # Clean up only if not already cleaned up
-            if pygame.get_init():
-                self.cleanup()
-    
-    def cleanup(self):
-        """Clean up resources."""
+                # Convert OpenCV frame to Pygame surface for in-game display
+                try:
+                    # Resize the frame for in-game display
+                    small_frame = cv2.resize(camera_frame, (320, 240))
+                    # Convert BGR to RGB for Pygame
+                    small_frame_rgb = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
+                    # Create Pygame surface
+                    self.camera_surface = pygame.surfarray.make_surface(small_frame_rgb.swapaxes(0, 1))
+                except Exception as e:
+                    print(f"Error converting camera frame: {e}")
+                    self.camera_surface = None
+            
+            # Update car
+            self.car.update(controls, dt)
+            
+            # Draw everything
+            self._draw()
+            
+            # Cap the frame rate
+            self.clock.tick(self.target_fps)
+            
+        # Clean up
+        self.connection.stop()
+        cv2.destroyAllWindows()
         pygame.quit()
-
-
-def main():
-    """Main function to run the game launcher."""
-    launcher = GameLauncher()
-    
-    try:
-        launcher.run()
-    except Exception as e:
-        print(f"Error in game launcher: {e}")
-        import traceback
-        traceback.print_exc()
-    finally:
-        launcher.cleanup()
-
-
-if __name__ == "__main__":
-    main()
+        
+    def _draw(self):
+        """Draw the game screen"""
+        # Clear the screen
+        self.screen.fill((240, 240, 240))
+        
+        # Draw a simple road/track in the main game area
+        pygame.draw.rect(
+            self.screen,
+            (120, 120, 120),
+            (100, 100, self.screen_width - 200, self.screen_height - 200),
+            0
+        )
+        
+        pygame.draw.rect(
+            self.screen,
+            (200, 200, 200),
+            (110, 110, self.screen_width - 220, self.screen_height - 220),
+            0
+        )
+        
+        # Draw the car
+        self.car.draw(self.screen)
+        
+        # Draw camera feed if available and enabled
+        if self.camera_surface is not None and self.show_camera:
+            # Draw the camera feed on the right side
+            self.screen.blit(self.camera_surface, (self.screen_width, 0))
+            
+            # Add a border around camera feed
+            pygame.draw.rect(
+                self.screen,
+                (0, 0, 0),
+                (self.screen_width, 0, 320, 240),
+                2
+            )
+            
+            # Add label
+            camera_label = self.font.render("Camera Feed (Press C to toggle)", True, (0, 0, 0))
+            self.screen.blit(camera_label, (self.screen_width + 10, 245))
+        
+        # Draw debug info if enabled
+        if self.debug_mode:
+            controls = self.connection.get_controls()
+            debug_text = [
+                f"FPS: {self.clock.get_fps():.1f}",
+                f"Gesture: {controls.get('gesture_name', 'Unknown')}",
+                f"Steering: {controls.get('steering', 0):.2f}",
+                f"Throttle: {controls.get('throttle', 0):.2f}",
+                f"Braking: {controls.get('braking', False)}",
+                f"Boost: {controls.get('boost', False)}",
+                f"Car position: ({self.car.x:.1f}, {self.car.y:.1f})",
+                f"Car rotation: {self.car.rotation:.1f}°",
+                f"Car speed: {self.car.speed:.2f}"
+            ]
+            
+            for i, text in enumerate(debug_text):
+                text_surface = self.font.render(text, True, (0, 0, 0))
+                self.screen.blit(text_surface, (10, 10 + i * 25))
+                
+        # Draw help text if enabled
+        if self.show_help:
+            help_text = [
+                "Controls:",
+                "- Move hand left/right: Steer",
+                "- Raise/lower hand: Speed up/down",
+                "- Make a fist: Brake",
+                "- Thumb up: Boost",
+                "- Open palm: Stop",
+                "",
+                "Keys:",
+                "- ESC: Quit",
+                "- H: Toggle this help",
+                "- D: Toggle debug info",
+                "- C: Toggle camera feed in game",
+                "- V: Toggle separate camera window"
+            ]
+            
+            # Draw help panel on right side, below camera
+            if self.show_camera:
+                help_y = 280
+            else:
+                help_y = 10
+                
+            help_surface = pygame.Surface((320, 300), pygame.SRCALPHA)
+            pygame.draw.rect(help_surface, (255, 255, 255, 200), (0, 0, 320, 300), 0)
+            pygame.draw.rect(help_surface, (0, 0, 0), (0, 0, 320, 300), 2)
+            
+            title_surface = self.title_font.render("Help", True, (0, 0, 0))
+            help_surface.blit(title_surface, (10, 10))
+            
+            for i, text in enumerate(help_text):
+                text_surface = self.font.render(text, True, (0, 0, 0))
+                help_surface.blit(text_surface, (10, 50 + i * 20))
+                
+            self.screen.blit(help_surface, (self.screen_width, help_y))
+            
+        # Update the display
+        pygame.display.flip()
+        
+    def cleanup(self):
+        """Clean up resources"""
+        try:
+            self.connection.stop()
+        except:
+            pass
+            
+        try:
+            cv2.destroyAllWindows()
+        except:
+            pass
+            
+        try:
+            pygame.quit()
+        except:
+            pass
+            
+        print("🧹 Game resources cleaned up")

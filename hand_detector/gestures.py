@@ -1,6 +1,7 @@
 import cv2
 import mediapipe as mp
 import numpy as np
+import time  # Add time for debugging timestamps
 
 class HandGestureDetector:
     """Class to detect hand gestures and convert them to car control signals 
@@ -12,7 +13,7 @@ class HandGestureDetector:
         self.hands = self.mp_hands.Hands(
             static_image_mode=False,
             max_num_hands=1,  # Track only one hand for simplicity
-            min_detection_confidence=0.6,  # Increased for more reliable detection
+            min_detection_confidence=0.5,  # Reduced for better detection rate
             min_tracking_confidence=0.5    # Better tracking
         )
         self.mp_draw = mp.solutions.drawing_utils
@@ -33,6 +34,39 @@ class HandGestureDetector:
         
         # Debug and display options
         self.debug_mode = True
+        self.last_log_time = time.time()
+        self.log_interval = 2.0  # Log every 2 seconds
+        
+        # Fallback controls in case of detection issues
+        self.fallback_controls = {
+            'steering': 0.0,
+            'throttle': 0.0,
+            'braking': False,
+            'boost': False,
+            'gesture_name': 'Fallback controls',
+            'speed': 0.0,
+            'direction': 0.0
+        }
+        
+        print("🖐️ Hand gesture detector initialized - v2.0 with improved reliability")
+        
+    def ensure_valid_frame(self, frame):
+        """Ensure we have a valid frame to process"""
+        if frame is None:
+            print("⚠️ Warning: Received None frame, using blank frame instead")
+            return np.zeros((480, 640, 3), dtype=np.uint8)
+        
+        # Check if frame is grayscale and convert to BGR if needed
+        if len(frame.shape) == 2 or (len(frame.shape) == 3 and frame.shape[2] == 1):
+            print("⚠️ Warning: Received grayscale frame, converting to BGR")
+            return cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+            
+        # Check if frame is too small
+        if frame.shape[0] < 10 or frame.shape[1] < 10:
+            print(f"⚠️ Warning: Frame too small {frame.shape}, using blank frame")
+            return np.zeros((480, 640, 3), dtype=np.uint8)
+            
+        return frame
         
     def detect_gestures(self, frame):
         """
@@ -46,6 +80,15 @@ class HandGestureDetector:
             processed_frame: Frame with visualization
         """
         try:
+            # Ensure we have a valid frame
+            frame = self.ensure_valid_frame(frame)
+            
+            # Periodic debugging
+            current_time = time.time()
+            if current_time - self.last_log_time > self.log_interval:
+                self.last_log_time = current_time
+                print(f"🖐️ Hand detector processing frame: shape={frame.shape}")
+            
             # Flip the frame horizontally for more natural interaction
             frame = cv2.flip(frame, 1)
             
@@ -78,6 +121,12 @@ class HandGestureDetector:
                     
                     # Extract control values from hand landmarks
                     controls = self._extract_controls_from_landmarks(hand_landmarks, frame, controls)
+                    
+                    # Log detected gestures at intervals
+                    if current_time - self.last_log_time > self.log_interval:
+                        print(f"👋 Detected gesture: {controls['gesture_name']}, " +
+                              f"Steering: {controls['steering']:.2f}, " +
+                              f"Throttle: {controls['throttle']:.2f}")
             else:
                 # Reset stability counter when no hand detected
                 self.command_stability_count = 0
@@ -95,15 +144,8 @@ class HandGestureDetector:
             print(f"Error in gesture detection: {e}")
             import traceback
             traceback.print_exc()
-            return {
-                'steering': 0.0,
-                'throttle': 0.0,
-                'braking': False,
-                'boost': False,
-                'gesture_name': 'Error',
-                'speed': 0.0,
-                'direction': 0.0
-            }, frame
+            # Return the fallback controls to ensure the car still gets input
+            return self.fallback_controls, frame
     
     def _extract_controls_from_landmarks(self, landmarks, frame, controls):
         """

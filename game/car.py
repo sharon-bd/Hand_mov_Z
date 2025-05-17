@@ -7,6 +7,7 @@ This module implements the Car class for the game.
 
 import math
 import pygame
+import time
 
 class Car:
     """
@@ -88,18 +89,25 @@ class Car:
         # Static counter variable for all Car instances
         if not hasattr(Car, '_debug_counter'):
             Car._debug_counter = 0
-            Car._debug_enabled = False  # Disabled by default
+            Car._debug_enabled = True  # Enable debug by default
+            Car._last_debug_time = time.time()
         
         # Increment counter and only log occasionally
         Car._debug_counter += 1
-        if Car._debug_enabled and Car._debug_counter >= 120:  # Even less frequent logging (120 frames)
+        current_time = time.time()
+        if Car._debug_enabled and current_time - Car._last_debug_time > 2.0:  # Log every 2 seconds
+            Car._last_debug_time = current_time
             Car._debug_counter = 0
             # Only print part of the controls to reduce output size
             brief_controls = {
                 'steering': controls.get('steering', 0),
-                'throttle': controls.get('throttle', 0)
+                'throttle': controls.get('throttle', 0),
+                'braking': controls.get('braking', False),
+                'boost': controls.get('boost', False),
+                'gesture_name': controls.get('gesture_name', 'Unknown')
             }
-            print(f"DEBUG - Car receiving brief controls: {brief_controls}")
+            print(f"🚗 Car receiving controls: {brief_controls}")
+            print(f"🚗 Current car state: pos=({self.x:.1f},{self.y:.1f}), speed={self.speed:.2f}, rotation={self.rotation:.1f}°")
         
         # חילוץ בקרות עם בדיקת שגיאות נאותה
         try:
