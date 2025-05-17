@@ -167,14 +167,6 @@ class GameLauncher:
             # Draw the camera feed on the right side
             self.screen.blit(self.camera_surface, (self.screen_width, 0))
             
-            # Add a border around camera feed
-            pygame.draw.rect(
-                self.screen,
-                (0, 0, 0),
-                (self.screen_width, 0, 320, 240),
-                2
-            )
-            
             # Add label
             camera_label = self.font.render("Camera Feed (Press C to toggle)", True, (0, 0, 0))
             self.screen.blit(camera_label, (self.screen_width + 10, 245))

@@ -215,28 +215,48 @@ class Car:
             new_x = self.x + dx
             new_y = self.y + dy
             
-            # ===== NEW: Add boundary checking to keep car on screen =====
+            # ===== IMPROVED: Strict boundary checking to keep car on screen =====
             # Get screen dimensions - use instance values or defaults
             screen_width = getattr(self, 'screen_width', 800)
             screen_height = getattr(self, 'screen_height', 600)
             
-            # Only update position if within bounds
-            if (self.boundary_padding < new_x < screen_width - self.boundary_padding and
-                self.boundary_padding < new_y < screen_height - self.boundary_padding):
-                self.x = new_x
-                self.y = new_y
-            else:
-                # If we hit a boundary, stop the car and prevent further movement in that direction
-                self.speed *= 0.5  # Reduce speed when hitting boundaries
+            # Check if we're about to hit any boundary
+            hit_boundary = False
+            
+            # Check and enforce X boundaries - never allow going beyond the padding
+            if new_x < self.boundary_padding:
+                new_x = self.boundary_padding
+                hit_boundary = True
+            elif new_x > screen_width - self.boundary_padding:
+                new_x = screen_width - self.boundary_padding
+                hit_boundary = True
                 
-                # Determine which boundary we hit and adjust only that coordinate
-                if new_x <= self.boundary_padding or new_x >= screen_width - self.boundary_padding:
-                    # Hit left or right boundary - keep y movement
-                    self.y = new_y
-                    
-                if new_y <= self.boundary_padding or new_y >= screen_height - self.boundary_padding:
-                    # Hit top or bottom boundary - keep x movement
-                    self.x = new_x
+            # Check and enforce Y boundaries - never allow going beyond the padding
+            if new_y < self.boundary_padding:
+                new_y = self.boundary_padding
+                hit_boundary = True
+            elif new_y > screen_height - self.boundary_padding:
+                new_y = screen_height - self.boundary_padding
+                hit_boundary = True
+            
+            # If we hit any boundary, reduce speed and add visual bounce effect
+            if hit_boundary:
+                # Stronger speed reduction at boundaries
+                self.speed *= 0.4  # More aggressive slowdown
+                
+                # Create a small "bounce" effect by reversing a tiny bit of velocity
+                # This makes the collision feel more realistic
+                bounce_factor = -0.2  # Small rebound
+                if new_x == self.boundary_padding or new_x == screen_width - self.boundary_padding:
+                    # Modify the x-velocity component slightly for horizontal bounce
+                    self.x += dx * bounce_factor
+                if new_y == self.boundary_padding or new_y == screen_height - self.boundary_padding:
+                    # Modify the y-velocity component slightly for vertical bounce
+                    self.y += dy * bounce_factor
+                
+            # Always update position to the clamped values
+            self.x = new_x
+            self.y = new_y
             
             # עדכון נקודות התנגשות
             self.update_collision_points()
