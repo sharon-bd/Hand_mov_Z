@@ -8,6 +8,7 @@ This module implements the Car class for the game.
 import math
 import pygame
 import time
+import random
 
 class Car:
     """
@@ -23,8 +24,10 @@ class Car:
             width, height: Car dimensions
         """
         # Position and size
-        self.x = x
-        self.y = y
+        self.x = x  # אמיתי בעולם
+        self.y = y  # אמיתי בעולם
+        self.screen_x = x  # תמיד יהיה במרכז המסך
+        self.screen_y = y  # תמיד יהיה במרכז המסך
         self.width = width
         self.height = height
         
@@ -48,10 +51,17 @@ class Car:
         self.spinning_threshold = 540     # Total degrees of rotation before anti-spin kicks in
         self.last_rotation = 0            # Last frame's rotation
         
-        # Screen boundaries
-        self.screen_width = 800  # Default screen width
-        self.screen_height = 600 # Default screen height
-        self.boundary_padding = 50 # Keep car this far from edge
+        # World boundaries
+        self.world_width = 2000  # רוחב העולם הווירטואלי
+        self.world_height = 2000  # גובה העולם הווירטואלי
+        self.screen_width = 800  # רוחב המסך
+        self.screen_height = 600  # גובה המסך
+        
+        # Collision state
+        self.collision_cooldown = 0
+        self.collision_flash = False
+        self.last_collision_time = 0
+        self.is_colliding = False
         
         # Special states
         self.boost_active = False
@@ -215,222 +225,245 @@ class Car:
             dx = math.sin(rad) * distance
             dy = -math.cos(rad) * distance
             
-            # עדכון מיקום עם בדיקת גבולות
+            # עדכון מיקום אמיתי בעולם (לא על המסך)
             new_x = self.x + dx
             new_y = self.y + dy
             
-            # ===== IMPROVED: Strict boundary checking to keep car on screen =====
-            # Get screen dimensions - use instance values or defaults
-            screen_width = getattr(self, 'screen_width', 800)
-            screen_height = getattr(self, 'screen_height', 600)
-            
-            # Check if we're about to hit any boundary
+            # בדיקת גבולות העולם הווירטואלי
             hit_boundary = False
             
-            # Check and enforce X boundaries - never allow going beyond the padding
-            if new_x < self.boundary_padding:
-                new_x = self.boundary_padding
+            # בדיקת גבולות אופקיים
+            if new_x < 0:
+                new_x = 0
                 hit_boundary = True
-            elif new_x > screen_width - self.boundary_padding:
-                new_x = screen_width - self.boundary_padding
+            elif new_x > self.world_width:
+                new_x = self.world_width
                 hit_boundary = True
                 
-            # Check and enforce Y boundaries - never allow going beyond the padding
-            if new_y < self.boundary_padding:
-                new_y = self.boundary_padding
+            # בדיקת גבולות אנכיים
+            if new_y < 0:
+                new_y = 0
                 hit_boundary = True
-            elif new_y > screen_height - self.boundary_padding:
-                new_y = screen_height - self.boundary_padding
+            elif new_y > self.world_height:
+                new_y = self.world_height
                 hit_boundary = True
             
-            # If we hit any boundary, reduce speed and add visual bounce effect
+            # אם פגענו בגבול, האט את המכונית
             if hit_boundary:
-                # Stronger speed reduction at boundaries
-                self.speed *= 0.4  # More aggressive slowdown
+                self.speed *= 0.4  # האטה משמעותית בפגיעה בגבול
                 
-                # Create a small "bounce" effect by reversing a tiny bit of velocity
-                # This makes the collision feel more realistic
-                bounce_factor = -0.2  # Small rebound
-                if new_x == self.boundary_padding or new_x == screen_width - self.boundary_padding:
-                    # Modify the x-velocity component slightly for horizontal bounce
+                # אפקט קפיצה קטן מהקיר
+                bounce_factor = -0.2
+                if new_x == 0 or new_x == self.world_width:
                     self.x += dx * bounce_factor
-                if new_y == self.boundary_padding or new_y == screen_height - self.boundary_padding:
-                    # Modify the y-velocity component slightly for vertical bounce
+                if new_y == 0 or new_y == self.world_height:
                     self.y += dy * bounce_factor
-                
-            # Always update position to the clamped values
+            
+            # עדכון המיקום בעולם
             self.x = new_x
             self.y = new_y
+            
+            # עדכון מצב התנגשות
+            if self.collision_cooldown > 0:
+                self.collision_cooldown -= dt
+                # הבהוב בזמן התנגשות
+                self.collision_flash = int(self.collision_cooldown * 10) % 2 == 0
+            else:
+                self.collision_flash = False
+                self.is_colliding = False
+            
+            # במשחק העדכני המכונית תישאר במרכז המסך
+            # screen_center_x = self.screen_width // 2
+            # screen_center_y = self.screen_height // 2
+            # self.screen_x = screen_center_x
+            # self.screen_y = screen_center_y
             
             # עדכון נקודות התנגשות
             self.update_collision_points()
             
             # שמירת מיקום להיסטוריה (לאפקט שובל)
             if distance > 0:
-                self.position_history.append((self.x, self.y))
+                self.position_history.append((self.x, self.y))  # שמירת מיקום אמיתי בעולם
                 if len(self.position_history) > self.max_history:
                     self.position_history.pop(0)
         
         except Exception as e:
             print(f"שגיאה בעדכון המכונית: {e}")
+            import traceback
+            traceback.print_exc()
             
-    def draw(self, screen):
+    def draw(self, screen, offset_x=0, offset_y=0):
         """
         Draw the car on the screen
         
         Args:
             screen: Pygame surface to draw on
+            offset_x, offset_y: World offset (for scrolling)
         """
-        # Draw trail effect if moving
-        if self.position_history and self.speed > 0.1:
-            for i in range(len(self.position_history) - 1):
-                alpha = i / len(self.position_history) * 255
-                color = (50, 50, min(50 + int(alpha), 255))
-                width = max(1, int(i / len(self.position_history) * 3))
-                
-                pygame.draw.line(
-                    screen, 
-                    color, 
-                    self.position_history[i], 
-                    self.position_history[i+1], 
-                    width
-                )
-        
-        # Create a rotated car surface
-        car_surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-        
-        # Choose color based on state
-        color = self.color
-        if self.boost_active:
-            color = (0, 150, 255)  # Bluish boost color
-        elif self.braking:
-            color = (200, 50, 50)  # Reddish brake color
-        
-        # Draw car body
-        pygame.draw.rect(
-            car_surface, 
-            color, 
-            (0, 0, self.width, self.height),
-            0,  # Fill rectangle
-            10  # Rounded corners
-        )
-        
-        # Draw windshield
-        windshield_width = self.width * 0.7
-        windshield_height = self.height * 0.3
-        pygame.draw.rect(
-            car_surface,
-            (150, 220, 255),  # Light blue windshield
-            (
-                (self.width - windshield_width) / 2,
-                self.height * 0.15,
-                windshield_width,
-                windshield_height
-            ),
-            0,  # Fill rectangle
-            5   # Slightly rounded corners
-        )
-        
-        # Draw headlights
-        light_size = self.width // 5
-        # Left headlight
-        pygame.draw.circle(
-            car_surface,
-            (255, 255, 200),  # Yellowish light
-            (self.width // 4, light_size),
-            light_size // 2
-        )
-        # Right headlight
-        pygame.draw.circle(
-            car_surface,
-            (255, 255, 200),  # Yellowish light
-            (self.width - self.width // 4, light_size),
-            light_size // 2
-        )
-        
-        # Draw brake lights if braking or stopped
-        if self.braking:
-            # Left brake light - גדול יותר ובולט יותר
-            pygame.draw.circle(
-                car_surface,
-                (255, 30, 30),  # אדום עמוק יותר
-                (self.width // 4, self.height - light_size),
-                light_size // 2 + 2  # גדול יותר ב-2 פיקסלים
-            )
-            # אפקט זוהר מסביב לאור השמאלי
-            pygame.draw.circle(
-                car_surface,
-                (255, 100, 100, 150),  # אדום שקוף יותר
-                (self.width // 4, self.height - light_size),
-                light_size // 2 + 5  # גדול יותר לאפקט זוהר
-            )
+        try:
+            # בגרסה זו המכונית תמיד במרכז, ולכן נחשב את המיקום שלה על המסך
+            screen_center_x = self.screen_width // 2
+            screen_center_y = self.screen_height // 2
             
-            # Right brake light - גדול יותר ובולט יותר
-            pygame.draw.circle(
-                car_surface,
-                (255, 30, 30),  # אדום עמוק יותר
-                (self.width - self.width // 4, self.height - light_size),
-                light_size // 2 + 2  # גדול יותר ב-2 פיקסלים
-            )
-            # אפקט זוהר מסביב לאור הימני
-            pygame.draw.circle(
-                car_surface,
-                (255, 100, 100, 150),  # אדום שקוף יותר
-                (self.width - self.width // 4, self.height - light_size),
-                light_size // 2 + 5  # גדול יותר לאפקט זוהר
-            )
-        
-        # Draw boost effect if active
-        if self.boost_active:
-            flame_points = [
-                (self.width // 2, self.height),
-                (self.width // 2 - self.width // 4, self.height + self.height // 3),
-                (self.width // 2 + self.width // 4, self.height + self.height // 3)
-            ]
-            pygame.draw.polygon(car_surface, (255, 165, 0), flame_points)
+            # Draw trail effect if moving
+            if self.position_history and self.speed > 0.1:
+                # Draw trail
+                for i, (pos_x, pos_y) in enumerate(self.position_history):
+                    # Calculate screen position based on world position
+                    screen_x = screen_center_x - (self.x - pos_x)
+                    screen_y = screen_center_y - (self.y - pos_y)
+                    # Make trail more transparent as it gets older
+                    alpha = int(255 * (i / len(self.position_history)))
+                    trail_size = max(3, int(self.width * 0.3 * (i / len(self.position_history))))
+                    pygame.draw.circle(
+                        screen,
+                        (*self.color[:3], alpha),  # Use car color with calculated alpha
+                        (int(screen_x), int(screen_y)),
+                        trail_size
+                    )
             
-            # Add inner flame
-            inner_flame_points = [
-                (self.width // 2, self.height),
-                (self.width // 2 - self.width // 8, self.height + self.height // 4),
-                (self.width // 2 + self.width // 8, self.height + self.height // 4)
-            ]
-            pygame.draw.polygon(car_surface, (255, 255, 0), inner_flame_points)
-        
-        # Rotate the car surface
-        rotated_car = pygame.transform.rotate(car_surface, -self.rotation)
-        
-        # Get the rect of the rotated car and position it
-        rotated_rect = rotated_car.get_rect(center=(self.x, self.y))
-        
-        # Draw the rotated car
-        screen.blit(rotated_car, rotated_rect)
-        
-        # Draw debug indicators if enabled
-        if self.show_indicators:
-            # Direction indicator
-            indicator_length = 50
-            dx = math.sin(math.radians(self.rotation)) * indicator_length
-            dy = -math.cos(math.radians(self.rotation)) * indicator_length
-            pygame.draw.line(
-                screen,
-                (0, 255, 0),
-                (self.x, self.y),
-                (self.x + dx, self.y + dy),
-                2
-            )
+            # Create a rotated car surface
+            car_surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
             
-            # Speed indicator
+            # Choose color based on state
+            color = self.color
+            if self.collision_flash:
+                # צבע אדום בזמן התנגשות עם מכשול
+                color = (255, 0, 0)
+            elif self.boost_active:
+                color = (0, 150, 255)  # Bluish boost color
+            elif self.braking:
+                color = (200, 50, 50)  # Reddish brake color
+            
+            # Draw car body - החזרת הצבע המקורי
             pygame.draw.rect(
-                screen,
-                (0, 255, 0) if not self.boost_active else (255, 165, 0),
-                (
-                    self.x - self.width//2 - 20,
-                    self.y - self.height//2,
-                    10,
-                    self.height * self.speed
-                )
+                car_surface, 
+                color,  # שימוש בצבע המקורי במקום צבע מגנטה לבדיקה
+                (0, 0, self.width, self.height),
+                0,  # Fill rectangle
+                10  # Rounded corners
             )
+            
+            # Draw windshield
+            windshield_width = self.width * 0.7
+            windshield_height = self.height * 0.3
+            pygame.draw.rect(
+                car_surface,
+                (150, 220, 255),  # Light blue windshield
+                (
+                    (self.width - windshield_width) / 2,
+                    self.height * 0.15,
+                    windshield_width,
+                    windshield_height
+                ),
+                0,  # Fill rectangle
+                5   # Slightly rounded corners
+            )
+            
+            # Draw headlights
+            light_size = self.width // 5
+            # Left headlight
+            pygame.draw.circle(
+                car_surface,
+                (255, 255, 200),  # Yellowish light
+                (self.width // 4, light_size),
+                light_size // 2
+            )
+            # Right headlight
+            pygame.draw.circle(
+                car_surface,
+                (255, 255, 200),  # Yellowish light
+                (self.width - self.width // 4, light_size),
+                light_size // 2
+            )
+            
+            # Draw brake lights if braking or stopped
+            if self.braking:
+                # Left brake light - גדול יותר ובולט יותר
+                pygame.draw.circle(
+                    car_surface,
+                    (255, 30, 30),  # אדום עמוק יותר
+                    (self.width // 4, self.height - light_size),
+                    light_size // 2 + 2  # גדול יותר ב-2 פיקסלים
+                )
+                # אפקט זוהר מסביב לאור השמאלי
+                pygame.draw.circle(
+                    car_surface,
+                    (255, 100, 100, 150),  # אדום שקוף יותר
+                    (self.width // 4, self.height - light_size),
+                    light_size // 2 + 5  # גדול יותר לאפקט זוהר
+                )
+                
+                # Right brake light - גדול יותר ובולט יותר
+                pygame.draw.circle(
+                    car_surface,
+                    (255, 30, 30),  # אדום עמוק יותר
+                    (self.width - self.width // 4, self.height - light_size),
+                    light_size // 2 + 2  # גדול יותר ב-2 פיקסלים
+                )
+                # אפקט זוהר מסביב לאור הימני
+                pygame.draw.circle(
+                    car_surface,
+                    (255, 100, 100, 150),  # אדום שקוף יותר
+                    (self.width - self.width // 4, self.height - light_size),
+                    light_size // 2 + 5  # גדול יותר לאפקט זוהר
+                )
+            
+            # Draw boost effect if active
+            if self.boost_active:
+                flame_points = [
+                    (self.width // 2, self.height),
+                    (self.width // 2 - self.width // 4, self.height + self.height // 3),
+                    (self.width // 2 + self.width // 4, self.height + self.height // 3)
+                ]
+                pygame.draw.polygon(car_surface, (255, 165, 0), flame_points)
+                
+                # Add inner flame
+                inner_flame_points = [
+                    (self.width // 2, self.height),
+                    (self.width // 2 - self.width // 8, self.height + self.height // 4),
+                    (self.width // 2 + self.width // 8, self.height + self.height // 4)
+                ]
+                pygame.draw.polygon(car_surface, (255, 255, 0), inner_flame_points)
+            
+            # Rotate the car surface
+            rotated_car = pygame.transform.rotate(car_surface, -self.rotation)
+            
+            # Get the rect of the rotated car and position it
+            rotated_rect = rotated_car.get_rect(center=(screen_center_x, screen_center_y))
+            
+            # Draw the rotated car
+            screen.blit(rotated_car, rotated_rect)
+            
+            # Draw debug indicators if enabled
+            if self.show_indicators:
+                # Direction indicator
+                indicator_length = 50
+                dx = math.sin(math.radians(self.rotation)) * indicator_length
+                dy = -math.cos(math.radians(self.rotation)) * indicator_length
+                pygame.draw.line(
+                    screen,
+                    (0, 255, 0),
+                    (screen_center_x, screen_center_y),
+                    (screen_center_x + dx, screen_center_y + dy),
+                    2
+                )
+                
+                # Speed indicator
+                pygame.draw.rect(
+                    screen,
+                    (0, 255, 0) if not self.boost_active else (255, 165, 0),
+                    (
+                        screen_center_x - self.width//2 - 20,
+                        screen_center_y - self.height//2,
+                        10,
+                        self.height * self.speed
+                    )
+                )
+        except Exception as e:
+            print(f"❌ Error drawing car: {e}")
+            import traceback
+            traceback.print_exc()
     
     def update_collision_points(self):
         """Update collision detection points around the car"""
@@ -488,6 +521,48 @@ class Car:
         
         return False
     
+    def handle_obstacle_collision(self, obstacle_type=None):
+        """
+        מטפל בהתנגשות עם מכשול
+        
+        Args:
+            obstacle_type: סוג המכשול (אופציונלי)
+        """
+        # אם יש כבר התנגשות פעילה, לא נתייחס לזו החדשה
+        if self.collision_cooldown > 0:
+            return
+        
+        # קביעת משך ההתנגשות והשפעתה לפי סוג המכשול
+        if obstacle_type == "rock":
+            self.collision_cooldown = 1.0  # שנייה
+            self.speed *= 0.2  # האטה משמעותית
+            damage = 20
+        elif obstacle_type == "tree":
+            self.collision_cooldown = 1.5  # שנייה וחצי
+            self.speed *= 0.1  # כמעט עצירה מוחלטת
+            damage = 30
+        elif obstacle_type == "cone":
+            self.collision_cooldown = 0.5  # חצי שנייה
+            self.speed *= 0.5  # האטה קלה
+            damage = 5
+        elif obstacle_type == "puddle":
+            self.collision_cooldown = 0.8  # 0.8 שניות
+            # בשלולית המכונית תחליק (כיוון אקראי מעט)
+            slip_angle = random.uniform(-20, 20)
+            self.rotation += slip_angle
+            damage = 0  # אין נזק בשלולית
+        else:
+            self.collision_cooldown = 0.7  # ברירת מחדל
+            self.speed *= 0.3
+            damage = 10
+        
+        # עדכון נזק למכונית
+        self.take_damage(damage)
+        
+        # סימון המכונית כמתנגשת
+        self.is_colliding = True
+        self.last_collision_time = time.time()
+    
     def take_damage(self, amount):
         """
         Reduce car health by the given amount
@@ -543,6 +618,17 @@ class Car:
         self.braking = False
         self.clear_trail()
     
+    def set_world_dimensions(self, width, height):
+        """
+        קביעת ממדי העולם הוירטואלי
+        
+        Args:
+            width: רוחב העולם
+            height: גובה העולם
+        """
+        self.world_width = width
+        self.world_height = height
+        
     def set_screen_dimensions(self, width, height):
         """
         Set the screen dimensions for boundary checking

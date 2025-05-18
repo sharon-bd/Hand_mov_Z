@@ -114,37 +114,39 @@ class HandCarConnectionManager:
         
     def _process_frames(self):
         """Process frames from the camera in a separate thread"""
-        consecutive_failures = 0
+        frame_count = 0
         while self.running:
             try:
                 # Capture a frame
                 ret, frame = self.camera.read()
+                
+                # Debug info every 30 frames
+                frame_count += 1
+                if frame_count % 30 == 0:
+                    print(f"📷 Read frame {frame_count}: success={ret}, frame={'valid' if frame is not None else 'None'}")
+                
                 if not ret or frame is None:
-                    consecutive_failures += 1
-                    print(f"⚠️ Warning: Failed to capture frame ({consecutive_failures})")
-                    
-                    # If too many consecutive failures, try to reinitialize the camera
-                    if consecutive_failures > 5:
-                        print("🔄 Attempting to reinitialize camera")
-                        self.camera.release()
-                        self.camera = cv2.VideoCapture(self.camera_index)
-                        
-                        if not self.camera.isOpened():
-                            print("❌ Failed to reinitialize camera")
-                            time.sleep(0.5)
-                            continue
-                        
-                        self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-                        self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-                        consecutive_failures = 0
-                    
+                    print("⚠️ Warning: Failed to capture frame")
                     time.sleep(0.1)
                     continue
                 
-                # Reset failure counter on successful frame
-                consecutive_failures = 0
-                
                 # Process the frame with hand detector
+                try:
+                    controls, processed_frame = self.gesture_detector.detect_gestures(frame)
+                    
+                    # Explicitly verify the processed frame
+                    if processed_frame is None:
+                        print("⚠️ Hand detector returned None frame, using original")
+                        processed_frame = frame
+                    
+                    # Save the processed frame
+                    self.latest_frame = processed_frame
+                except Exception as e:
+                    print(f"❌ Error in gesture detection: {e}")
+                    # Use the original frame if processing fails
+                    self.latest_frame = frame
+                
+                # Update other variables
                 controls, processed_frame = self.gesture_detector.detect_gestures(frame)
                 
                 # Update our control values
@@ -280,4 +282,46 @@ class HandCarConnectionManager:
         
     def get_visuals(self):
         """Get the latest frame and data panel"""
-        return self.latest_frame, self.data_panel, self.fps
+        # Debug print to verify this method is being called
+        print("📷 get_visuals() called - checking camera feed")
+        
+        # Check if latest_frame exists and is a valid image
+        if self.latest_frame is not None:
+            # Verify frame is valid and has correct shape
+            if isinstance(self.latest_frame, np.ndarray) and len(self.latest_frame.shape) == 3:
+                print(f"📷 Valid frame available: {self.latest_frame.shape}")
+                
+                # Create a copy to avoid threading issues
+                frame_copy = self.latest_frame.copy()
+                
+                # Add timestamp to verify it's updating
+                timestamp = time.strftime("%H:%M:%S")
+                cv2.putText(
+                    frame_copy, 
+                    f"Time: {timestamp}", 
+                    (10, frame_copy.shape[0] - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 
+                    0.5, 
+                    (0, 255, 0), 
+                    1
+                )
+                
+                return frame_copy, self.data_panel, self.fps
+            else:
+                print(f"❌ Invalid frame format: {type(self.latest_frame)}")
+        else:
+            print("❌ No frame available (None)")
+            
+        # Return a blank colored frame if no valid frame is available
+        blank_frame = np.ones((480, 640, 3), dtype=np.uint8) * 128  # Gray
+        cv2.putText(
+            blank_frame,
+            "Camera Disconnected",
+            (180, 240),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1,
+            (0, 0, 255),
+            2
+        )
+        
+        return blank_frame, self.data_panel, self.fps
