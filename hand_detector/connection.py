@@ -7,6 +7,8 @@ import time
 import threading
 import cv2
 import numpy as np
+import platform
+import subprocess
 
 class HandCarConnectionManager:
     """Manages the connection between hand gesture detection and car control"""
@@ -22,6 +24,7 @@ class HandCarConnectionManager:
         self.camera = None
         self.running = False
         self.thread = None
+        self.simulation_mode = False  # Flag for simulation mode (no camera)
         
         # Control values
         self.controls = {
@@ -50,17 +53,67 @@ class HandCarConnectionManager:
         
         print("🔄 Hand-Car Connection Manager initialized")
         
+    def _check_camera_availability(self):
+        """Check camera availability and print diagnostic information"""
+        print("📷 Checking camera availability...")
+        
+        # Try to get system info
+        camera_info = "Camera info not available"
+        if platform.system() == 'Windows':
+            try:
+                # Run dxdiag to get system info
+                result = subprocess.run(['dxdiag', '/t', 'cameras'], 
+                                       capture_output=True, 
+                                       text=True, 
+                                       timeout=5)
+                camera_info = result.stdout[:300]  # First 300 chars only
+            except (subprocess.SubprocessError, FileNotFoundError):
+                pass
+            
+            print(f"System camera info: {camera_info}")
+        
+        # Try to list available cameras using cv2.VideoCapture
+        for i in range(3):  # Check first 3 indices
+            try:
+                cap = cv2.VideoCapture(i)
+                ret = cap.isOpened()
+                if ret:
+                    print(f"✅ Found camera at index {i}")
+                    # Get camera properties
+                    width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+                    height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+                    print(f"   Resolution: {width}x{height}")
+                    
+                    # Try to read a frame
+                    read_ret, frame = cap.read()
+                    if read_ret:
+                        print(f"   Successfully read frame from camera {i}")
+                    else:
+                        print(f"   ⚠️ Could not read frame from camera {i}")
+                    
+                    cap.release()
+                else:
+                    print(f"❌ Could not open camera at index {i}")
+            except Exception as e:
+                print(f"❌ Error accessing camera {i}: {e}")
+    
     def start(self):
         """Start the camera capture and processing thread"""
         if self.running:
             print("⚠️ Connection already running")
-            return
-            
+            return True
+        
+        # First check camera availability
+        self._check_camera_availability()
+        
         try:
+            # Try to open the camera
             self.camera = cv2.VideoCapture(self.camera_index)
             if not self.camera.isOpened():
                 print(f"❌ Error: Could not open camera at index {self.camera_index}")
+                
                 # Try alternative camera indexes
+                camera_found = False
                 for alt_index in [0, 1, 2]:
                     if alt_index != self.camera_index:
                         print(f"Trying alternative camera index: {alt_index}")
@@ -68,23 +121,41 @@ class HandCarConnectionManager:
                         if self.camera.isOpened():
                             self.camera_index = alt_index
                             print(f"✅ Successfully opened camera at index {alt_index}")
-                            break
+                            
+                            # Test if we can actually read from the camera
+                            ret, test_frame = self.camera.read()
+                            if ret and test_frame is not None:
+                                print(f"✅ Successfully read test frame from camera")
+                                camera_found = True
+                                break
+                            else:
+                                print("⚠️ Camera opened but failed to read test frame")
+                                self.camera.release()
+                                self.camera = None
+                        else:
+                            print(f"❌ Failed to open camera at index {alt_index}")
                 
-                if not self.camera.isOpened():
-                    print("❌ Failed to open any camera")
-                    return False
-                
+                if not camera_found:
+                    print("⚠️ No working camera found, switching to simulation mode")
+                    self.simulation_mode = True
+                    self.start_simulation()
+                    return True
+            else:
+                # Try to read a test frame to ensure the camera is working
+                ret, test_frame = self.camera.read()
+                if not ret or test_frame is None:
+                    print("❌ Camera opened but failed to read frame")
+                    print("⚠️ Switching to simulation mode")
+                    self.simulation_mode = True
+                    self.start_simulation()
+                    return True
+            
+            # If we get here, we have a working camera
             # Set camera properties for better performance
             self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
             self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
             self.camera.set(cv2.CAP_PROP_FPS, 30)
             
-            # Read a test frame to verify camera works
-            ret, test_frame = self.camera.read()
-            if not ret or test_frame is None:
-                print("❌ Camera opened but failed to read frame")
-                return False
-                
             print(f"✅ Camera initialized: {test_frame.shape}")
             
             # Start the processing thread
@@ -93,12 +164,121 @@ class HandCarConnectionManager:
             self.thread.daemon = True
             self.thread.start()
             
-            print("🎮 Hand-Car connection started")
+            print("🎮 Hand-Car connection started with real camera")
             return True
+            
         except Exception as e:
             print(f"❌ Error initializing camera: {e}")
-            return False
-            
+            print("⚠️ Switching to simulation mode")
+            self.simulation_mode = True
+            self.start_simulation()
+            return True
+    
+    def start_simulation(self):
+        """Start a simulation thread when there's no camera available"""
+        print("🎮 Starting hand gesture simulator")
+        
+        # Initialize simulated camera frame (gray with text)
+        self.latest_frame = np.ones((480, 640, 3), dtype=np.uint8) * 100  # Gray
+        cv2.putText(
+            self.latest_frame, 
+            "SIMULATION MODE - NO CAMERA", 
+            (80, 240), 
+            cv2.FONT_HERSHEY_SIMPLEX, 
+            1, 
+            (0, 0, 255), 
+            2
+        )
+        
+        # Start the simulation thread
+        self.running = True
+        self.thread = threading.Thread(target=self._simulate_controls)
+        self.thread.daemon = True
+        self.thread.start()
+        
+        print("🎮 Hand-Car connection started in simulation mode")
+        return True
+    
+    def _simulate_controls(self):
+        """Simulate hand gesture controls when no camera is available"""
+        sim_steering = 0.0
+        sim_throttle = 0.3
+        steering_direction = 0.02  # How fast the steering changes
+        
+        while self.running:
+            try:
+                # Simulate steering that gradually moves left and right
+                sim_steering += steering_direction
+                if abs(sim_steering) > 0.7:
+                    steering_direction *= -1  # Reverse direction
+                
+                # Update time on the simulated frame
+                self.latest_frame = np.ones((480, 640, 3), dtype=np.uint8) * 100  # Gray
+                cv2.putText(
+                    self.latest_frame, 
+                    "SIMULATION MODE - NO CAMERA", 
+                    (80, 240), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 
+                    1, 
+                    (0, 0, 255), 
+                    2
+                )
+                
+                # Add current time
+                timestamp = time.strftime("%H:%M:%S")
+                cv2.putText(
+                    self.latest_frame, 
+                    f"Time: {timestamp}", 
+                    (80, 280),
+                    cv2.FONT_HERSHEY_SIMPLEX, 
+                    0.7, 
+                    (0, 0, 255), 
+                    2
+                )
+                
+                # Add controls info
+                cv2.putText(
+                    self.latest_frame, 
+                    f"Steering: {sim_steering:.2f}  Throttle: {sim_throttle:.2f}", 
+                    (80, 320),
+                    cv2.FONT_HERSHEY_SIMPLEX, 
+                    0.7, 
+                    (0, 0, 255), 
+                    2
+                )
+                
+                # Update controls with simulated values
+                self.controls = {
+                    'steering': sim_steering,
+                    'throttle': sim_throttle,
+                    'braking': False,
+                    'boost': False,
+                    'gesture_name': 'Simulation',
+                    'speed': sim_throttle,
+                    'direction': sim_steering
+                }
+                
+                # Update data panel
+                self._update_data_panel()
+                
+                # Pause to simulate camera frame rate
+                time.sleep(0.033)  # ~30fps
+                
+                # Calculate FPS metrics
+                current_time = time.time()
+                dt = current_time - self.last_frame_time
+                self.last_frame_time = current_time
+                
+                if dt > 0:
+                    instant_fps = 1.0 / dt
+                    self.fps = 0.9 * self.fps + 0.1 * instant_fps if self.fps > 0 else instant_fps
+                
+                self.frames_processed += 1
+                
+            except Exception as e:
+                print(f"❌ Error in simulation: {e}")
+                time.sleep(0.5)  # Avoid spinning on errors
+    
     def stop(self):
         """Stop the camera capture and processing"""
         self.running = False
@@ -282,46 +462,46 @@ class HandCarConnectionManager:
         
     def get_visuals(self):
         """Get the latest frame and data panel"""
-        # Debug print to verify this method is being called
-        print("📷 get_visuals() called - checking camera feed")
-        
-        # Check if latest_frame exists and is a valid image
+        # Create a copy of the latest frame to avoid thread issues
         if self.latest_frame is not None:
-            # Verify frame is valid and has correct shape
-            if isinstance(self.latest_frame, np.ndarray) and len(self.latest_frame.shape) == 3:
-                print(f"📷 Valid frame available: {self.latest_frame.shape}")
-                
-                # Create a copy to avoid threading issues
-                frame_copy = self.latest_frame.copy()
-                
-                # Add timestamp to verify it's updating
-                timestamp = time.strftime("%H:%M:%S")
+            frame_copy = self.latest_frame.copy()
+            
+            # Add simulation mode indicator if in simulation mode
+            if self.simulation_mode:
                 cv2.putText(
                     frame_copy, 
-                    f"Time: {timestamp}", 
-                    (10, frame_copy.shape[0] - 10),
+                    "SIMULATION MODE", 
+                    (10, 30), 
                     cv2.FONT_HERSHEY_SIMPLEX, 
-                    0.5, 
-                    (0, 255, 0), 
-                    1
+                    0.7, 
+                    (0, 0, 255), 
+                    2
                 )
-                
-                return frame_copy, self.data_panel, self.fps
-            else:
-                print(f"❌ Invalid frame format: {type(self.latest_frame)}")
-        else:
-            print("❌ No frame available (None)")
             
-        # Return a blank colored frame if no valid frame is available
-        blank_frame = np.ones((480, 640, 3), dtype=np.uint8) * 128  # Gray
-        cv2.putText(
-            blank_frame,
-            "Camera Disconnected",
-            (180, 240),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            1,
-            (0, 0, 255),
-            2
-        )
-        
-        return blank_frame, self.data_panel, self.fps
+            # Add timestamp
+            timestamp = time.strftime("%H:%M:%S")
+            cv2.putText(
+                frame_copy, 
+                f"Time: {timestamp}", 
+                (10, frame_copy.shape[0] - 10),
+                cv2.FONT_HERSHEY_SIMPLEX, 
+                0.5, 
+                (0, 255, 0), 
+                1
+            )
+            
+            return frame_copy, self.data_panel, self.fps
+        else:
+            # Return a blank frame if no frame is available
+            blank_frame = np.ones((480, 640, 3), dtype=np.uint8) * 128  # Gray
+            cv2.putText(
+                blank_frame,
+                "No Camera Feed Available",
+                (120, 240),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1,
+                (0, 0, 255),
+                2
+            )
+            
+            return blank_frame, self.data_panel, self.fps

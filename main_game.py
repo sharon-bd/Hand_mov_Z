@@ -278,6 +278,9 @@ class GameLauncher:
         # Start the hand-car connection
         if not self.connection.start():
             print("❌ Failed to start hand-car connection")
+            # Display a message to the user
+            self.show_error_message("Failed to initialize camera",
+                                     "The game will continue without hand gesture controls.")
             return
             
         print("🏁 Starting game loop")
@@ -404,6 +407,44 @@ class GameLauncher:
         self.connection.stop()
         cv2.destroyAllWindows()
         pygame.quit()
+    
+    def show_error_message(self, title, message):
+        """Show an error message to the user"""
+        screen = self.screen
+        screen.fill((0, 0, 0))
+        
+        # Create fonts
+        title_font = pygame.font.SysFont(None, 48)
+        message_font = pygame.font.SysFont(None, 32)
+        instruction_font = pygame.font.SysFont(None, 24)
+        
+        # Render text
+        title_surface = title_font.render(title, True, (255, 50, 50))
+        message_surface = message_font.render(message, True, (255, 255, 255))
+        instruction_surface = instruction_font.render("Press any key to continue", True, (200, 200, 200))
+        
+        # Position text
+        title_rect = title_surface.get_rect(center=(self.screen_width//2, self.screen_height//2 - 60))
+        message_rect = message_surface.get_rect(center=(self.screen_width//2, self.screen_height//2))
+        instruction_rect = instruction_surface.get_rect(center=(self.screen_width//2, self.screen_height//2 + 60))
+        
+        # Draw text
+        screen.blit(title_surface, title_rect)
+        screen.blit(message_surface, message_rect)
+        screen.blit(instruction_surface, instruction_rect)
+        
+        # Update the display
+        pygame.display.flip()
+        
+        # Wait for key press
+        waiting = True
+        while waiting:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    self.running = False
+                    waiting = False
+                elif event.type == pygame.KEYDOWN:
+                    waiting = False
     
     def _confirm_exit(self):
         """Ask player for confirmation before exiting before 3 minutes"""
