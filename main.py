@@ -162,9 +162,22 @@ def main():
         print("pip install -r requirements.txt")
         return
     
+    # וידוא שפייגיים מאותחל לפני יצירת המשחק
+    try:
+        pygame.init()
+        print(f"Pygame initialized: {pygame.get_init()}")
+        if not pygame.display.get_init():
+            pygame.display.init()
+            print("Pygame display initialized")
+    except Exception as e:
+        print(f"Error initializing pygame: {e}")
+    
     # Launch the game
     game = GameLauncher()
     try:
+        # פקודת בדיקה לפני הריצה
+        print(f"Display surface exists: {pygame.display.get_surface() is not None}")
+        
         game.run()
     except Exception as e:
         print(f"Error in game: {e}")

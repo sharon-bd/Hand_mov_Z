@@ -116,7 +116,7 @@ class GameLauncher:
         self.last_position = None
         
         print("🎮 Game launcher initialized")
-        
+    
     def _generate_track_segment(self, num_segments=1):
         """Generate new track segments ahead of the car - primarily northward direction"""
         for _ in range(num_segments):
@@ -128,41 +128,29 @@ class GameLauncher:
                 # הגבלת הסטייה המקסימלית ל-±7 מעלות בכל מקטע כדי ליצור מסלול יותר צפוני
                 new_direction = 0 + random.uniform(-7, 7)
                 
-                # וידוא שהמסלול לא יסטה יותר מ-45 מעלות מצפון אחרי סדרת פניות
-                if len(self.track_segments) > 10:
-                    # ככל שהמסלול מתארך, מגבירים את הנטייה לחזור לכיוון צפון
-                    correction_factor = 0.2  # גורם תיקון של 20%
-                    new_direction = new_direction * (1 - correction_factor)  # התקרבות הדרגתית לכיוון 0 (צפון)
+                # אין להגביל יותר את הכיוון צפונה - תמיד לאפשר התקדמות
+                # בטל את שורות התיקון לכיוון צפון
             else:
                 # מקטע ראשון - תמיד צפונה (0 מעלות)
                 new_direction = 0
             
-            # הגדלת אורך המקטע כדי שהמסלול יהיה ארוך יותר
-            # ככל שהזמן למשחק קצר יותר, המקטעים מתארכים יותר
-            if hasattr(self, 'elapsed_time') and hasattr(self, 'game_duration'):
-                # חישוב מקדם הגדלה שגדל ככל שהמשחק מתקדם - למנוע סיום המסלול
-                progress_factor = min(2.5, 1.0 + (self.elapsed_time / self.game_duration))
-                segment_length = self.segment_length * 2.0 * progress_factor
-            else:
-                segment_length = self.segment_length * 2.0
-                
+            # הגדלת אורך המקטע משמעותית
+            segment_length = self.segment_length * 2.5
+                    
             # Calculate end point based on direction and segment length
             direction_rad = math.radians(new_direction)
             end_x = start_x + math.sin(direction_rad) * segment_length
             end_y = start_y - math.cos(direction_rad) * segment_length  # הערה: -cos כי ציר Y הפוך בפיתגון
             
             # חישוב בגבולות העולם - הגדלת העולם אם צריך ולא רק הגבלה
-            # זה יוודא שהמסלול לא "ייתקע" בקצה העולם
             boundary_padding = self.track_width * 2
             
             # בדיקה אם המקטע הבא יוצא מגבולות העולם הנוכחי
             if end_x < boundary_padding or end_x > self.world_width - boundary_padding:
-                # במקום להגביל, נכפה כיוון צפון מוחלט
-                new_direction = 0
-                # חישוב מחדש של נקודת הסיום
-                direction_rad = math.radians(new_direction)
-                end_x = start_x + math.sin(direction_rad) * segment_length
-                end_y = start_y - math.cos(direction_rad) * segment_length
+                # במקום להגביל, פשוט להגדיל את גודל העולם
+                world_expansion = self.world_width * 0.2  # הגדלת העולם ב-20%
+                self.world_width += world_expansion
+                print(f"הגדלת העולם לרוחב {self.world_width}")
             
             # יצירת מקטע מסלול חדש
             new_segment = {
@@ -251,23 +239,23 @@ class GameLauncher:
                 self._generate_track_segment(segments_to_create)
                 print(f"יצירת {segments_to_create} מקטעי מסלול חדשים. סה\"כ: {len(self.track_segments)}")
                 return True
-            
-            # שיפור מינימום המקטעים הנדרשים
-            min_segments_ahead = 25  # הגדלה מ-15 ל-25
-            
-            # כשמתקרבים לסוף המשחק, נדרשים הרבה יותר מקטעים
-            if hasattr(self, 'time_remaining'):
-                if self.time_remaining < 60:  # פחות מדקה
-                    min_segments_ahead = 50
-                elif self.time_remaining < 30:  # פחות מחצי דקה
-                    min_segments_ahead = 80
-            
-            if len(self.track_segments) < min_segments_ahead:
-                segments_to_add = min_segments_ahead - len(self.track_segments)
-                self._generate_track_segment(segments_to_add)
-                print(f"יצירת {segments_to_add} מקטעי מסלול לשמירה על מינימום. סה\"כ: {len(self.track_segments)}")
-                return True
         
+        # שיפור מינימום המקטעים הנדרשים
+        min_segments_ahead = 25  # הגדלה מ-15 ל-25
+        
+        # כשמתקרבים לסוף המשחק, נדרשים הרבה יותר מקטעים
+        if hasattr(self, 'time_remaining'):
+            if self.time_remaining < 60:  # פחות מדקה
+                min_segments_ahead = 50
+            elif self.time_remaining < 30:  # פחות מחצי דקה
+                min_segments_ahead = 80
+        
+        if len(self.track_segments) < min_segments_ahead:
+            segments_to_add = min_segments_ahead - len(self.track_segments)
+            self._generate_track_segment(segments_to_add)
+            print(f"יצירת {segments_to_add} מקטעי מסלול לשמירה על מינימום. סה\"כ: {len(self.track_segments)}")
+            return True
+    
         return False
     
     def _draw_track(self, screen, offset_x, offset_y):
@@ -331,10 +319,21 @@ class GameLauncher:
             print("❌ Failed to start hand-car connection")
             # Display a message to the user
             self.show_error_message("Failed to initialize camera",
-                                     "The game will continue without hand gesture controls.")
+                                    "The game will continue without hand gesture controls.")
             return
-            
+                
         print("🏁 Starting game loop")
+        
+        # וידוא שהמסך אתחל כראוי
+        if not pygame.display.get_surface():
+            print("⚠️ אין משטח תצוגה - יוצר מחדש")
+            pygame.init()
+            self.screen = pygame.display.set_mode((self.screen_width + 320, self.screen_height))
+        
+        # בדיקה אם Pygame פעיל
+        if not pygame.get_init():
+            print("⚠️ Pygame לא מאותחל - מאתחל מחדש")
+            pygame.init()
         
         # Initialize start time
         self.start_time = time.time()
@@ -343,6 +342,10 @@ class GameLauncher:
         # Main game loop
         last_time = time.time()
         track_generation_timer = 0  # טיימר לאכיפת יצירת מקטעים גם ללא התקדמות
+        force_generation_timer = 0  # טיימר נוסף ליצירת מקטעים לפי זמן
+        
+        # יצירה ראשונית של מספר גדול של מקטעים
+        self._generate_track_segment(20)  # יוצר 20 מקטעים מראש
         
         while self.running:
             # Calculate delta time
@@ -381,6 +384,11 @@ class GameLauncher:
                             cv2.resizeWindow(self.opencv_window_name, 640, 480)
                         else:
                             cv2.destroyWindow(self.opencv_window_name)
+                    # הוספה: מקש F לכפיית יצירת מקטעי מסלול נוספים
+                    elif event.key == pygame.K_f:
+                        force_segments = 20
+                        self._generate_track_segment(force_segments)
+                        print(f"כפיית יצירת {force_segments} מקטעי מסלול נוספים")
             
             # Get controls from hand detector
             controls = self.connection.get_controls()
@@ -426,58 +434,19 @@ class GameLauncher:
                 if track_generation_timer > 5.0:  # כל 5 שניות
                     track_generation_timer = 0
                     # יצירת מקטעים נוספים באופן יזום
-                    segments_to_add = max(3, int(15 * (1 - self.time_remaining / self.game_duration)))
+                    segments_to_add = max(5, int(15 * (1 - self.time_remaining / self.game_duration)))
                     self._generate_track_segment(segments_to_add)
                     print(f"יצירה תקופתית: {segments_to_add} מקטעי מסלול נוספים. סה\"כ: {len(self.track_segments)}")
                 
-                # בדיקה נוספת לקראת סוף המשחק (שיפור של הקוד הקיים)
-                if self.elapsed_time >= self.game_duration * 0.8:  # ב-80% מזמן המשחק
-                    # וידוא שיש מספיק מקטעים לסיום
-                    if len(self.track_segments) < 100:  # מספר גבוה מאוד בסוף המשחק
-                        additional_segments = 100 - len(self.track_segments)
-                        self._generate_track_segment(additional_segments)
-                        print(f"קרוב לסיום המשחק! יצירת {additional_segments} מקטעי מסלול. סה\"כ: {len(self.track_segments)}")
-                
-                # Calculate distance traveled (for score)
-                current_pos = (self.car.x, self.car.y)
-                distance = math.sqrt((current_pos[0] - self.last_position[0])**2 + 
-                                    (current_pos[1] - self.last_position[1])**2)
-                self.distance_traveled += distance
-                self.last_position = current_pos
-                
-                # Add to score based on distance and speed
-                self.score += distance * 0.01 * (1 + self.car.speed)
-                
-                # Bonus score for using boost
-                if controls.get('boost', False):
-                    self.score += dt * 5  # Bonus points for boosting
-                
-                # Update world offset to center on car
-                self.world_offset_x = self.car.x - self.screen_width // 2
-                self.world_offset_y = self.car.y - self.screen_height // 2
-                
-                # Update obstacles
-                self.obstacle_manager.update(dt)
-                
-                # Check for collisions with obstacles
-                if current_time - self.last_obstacle_check > 0.1:
-                    self.last_obstacle_check = current_time
-                    collisions = self.obstacle_manager.check_collisions(self.car)
-                    for obstacle in collisions:
-                        self.car.handle_obstacle_collision(obstacle.type)
-                        # Reduce score on collision
-                        self.score = max(0, self.score - 10)
-            
-            # Draw everything
-            self._draw()
-            
-            # Cap the frame rate
-            self.clock.tick(self.target_fps)
-            
-        # Clean up
-        self.connection.stop()
-        cv2.destroyAllWindows()
-        pygame.quit()
+                # מנגנון חדש: יצירה מאוד אגרסיבית של מקטעים לקראת סוף המשחק
+                force_generation_timer += dt
+                if force_generation_timer > 10.0:  # כל 10 שניות
+                    force_generation_timer = 0
+                    time_factor = 1.0 - (self.time_remaining / self.game_duration)
+                    if time_factor > 0.7:  # 70% מהמשחק עבר
+                        forced_segments = int(50 * time_factor)  # הרבה יותר מקטעים ככל שמתקרבים לסוף
+                        self._generate_track_segment(forced_segments)
+                        print(f"יצירה מאסיבית לקראת סוף: {forced_segments} מקטעים. סה\"כ: {len(self.track_segments)}")
     
     def show_error_message(self, title, message):
         """Show an error message to the user"""
@@ -566,20 +535,48 @@ class GameLauncher:
     def _draw(self):
         """Draw the game screen"""
         try:
-            # Clear the screen
-            self.screen.fill(self.background_color)
+            # בדיקה אם המסך אובייקט תקין
+            if not pygame.display.get_surface():
+                print("❌ אין משטח תצוגה תקין! יוצר מחדש את המסך")
+                self.screen = pygame.display.set_mode((self.screen_width + 320, self.screen_height))
+            
+            # Clear the screen - ניקוי המסך עם צבע ברור וגלוי
+            self.screen.fill((200, 200, 255))  # רקע כחול בהיר יותר במקום אפור
+            
+            print(f"🎨 מצייר את המסך. מימדים: {self.screen.get_size()}")
+            
+            # מדפיס את מספר אלמנטי הרקע שמצוירים
+            elements_drawn = 0
             
             # Draw the grid and ground elements
             self._draw_world()
             
-            # Draw the track
-            self._draw_track(self.screen, self.world_offset_x, self.world_offset_y)
+            # Draw the track - וידוא שיש מקטעי מסלול לציור
+            track_segments_count = len(self.track_segments)
+            print(f"🛣️ מצייר מסלול עם {track_segments_count} מקטעים")
+            if track_segments_count > 0:
+                self._draw_track(self.screen, self.world_offset_x, self.world_offset_y)
+            else:
+                # אם אין מקטעי מסלול, צייר משהו ברור במרכז המסך
+                pygame.draw.circle(self.screen, (255, 0, 0), 
+                                 (self.screen_width // 2, self.screen_height // 2), 50)
             
             # Draw obstacles
-            self.obstacle_manager.draw(self.screen, self.world_offset_x, self.world_offset_y)
+            obstacle_count = len(self.obstacle_manager.obstacles) if self.obstacle_manager else 0
+            print(f"🪨 מצייר {obstacle_count} מכשולים")
+            if self.obstacle_manager:
+                self.obstacle_manager.draw(self.screen, self.world_offset_x, self.world_offset_y)
             
-            # Draw the car in center of screen
-            self.car.draw(self.screen, self.world_offset_x, self.world_offset_y)
+            # Draw the car in center of screen - וידוא שהמכונית מצוירת
+            if hasattr(self, 'car') and self.car:
+                print(f"🚗 מצייר מכונית במיקום עולם ({self.car.x}, {self.car.y})")
+                self.car.draw(self.screen, self.world_offset_x, self.world_offset_y)
+            else:
+                print("❌ אין אובייקט מכונית לציור!")
+            
+            # הוספת עיגול אדום בולט במרכז המסך לבדיקה שהמסך מתעדכן
+            pygame.draw.circle(self.screen, (255, 0, 0), 
+                             (self.screen_width // 2, self.screen_height // 2), 5)
             
             # Draw camera feed if available and enabled
             if self.camera_surface is not None and self.show_camera:
@@ -664,11 +661,12 @@ class GameLauncher:
                     
                 self.screen.blit(help_surface, (self.screen_width, help_y))
                 
-            # Update the display
-            pygame.display.flip()
+            # עדכון חשוב: וידוא שהתצוגה מתעדכנת בכל פריים
+            pygame.display.update()  # נסה update במקום flip לראות אם זה עוזר
+            print("🔄 עדכון המסך בוצע")
             
         except Exception as e:
-            print(f"Error in draw: {e}")
+            print(f"❌❌❌ שגיאה קריטית בציור המסך: {e}")
             import traceback
             traceback.print_exc()
     
