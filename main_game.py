@@ -118,30 +118,53 @@ class GameLauncher:
         print("🎮 Game launcher initialized")
         
     def _generate_track_segment(self, num_segments=1):
-        """Generate a new track segment ahead of the car"""
+        """Generate new track segments ahead of the car - primarily northward direction"""
         for _ in range(num_segments):
             # Determine the starting point of the new segment
             start_x, start_y = self.last_segment_end
             
-            # Choose a random direction with slight constraint to avoid sharp turns
+            # קביעת כיוון צפון (0 מעלות) עם סטייה קטנה בלבד
             if self.track_segments:
-                last_direction = self.track_segments[-1]["direction"]
-                # New direction is within ±45° of the last direction to avoid sharp turns
-                new_direction = last_direction + random.uniform(-45, 45)
+                # הגבלת הסטייה המקסימלית ל-±7 מעלות בכל מקטע כדי ליצור מסלול יותר צפוני
+                new_direction = 0 + random.uniform(-7, 7)
+                
+                # וידוא שהמסלול לא יסטה יותר מ-45 מעלות מצפון אחרי סדרת פניות
+                if len(self.track_segments) > 10:
+                    # ככל שהמסלול מתארך, מגבירים את הנטייה לחזור לכיוון צפון
+                    correction_factor = 0.2  # גורם תיקון של 20%
+                    new_direction = new_direction * (1 - correction_factor)  # התקרבות הדרגתית לכיוון 0 (צפון)
             else:
-                # First segment - random direction
-                new_direction = random.uniform(0, 360)
+                # מקטע ראשון - תמיד צפונה (0 מעלות)
+                new_direction = 0
             
+            # הגדלת אורך המקטע כדי שהמסלול יהיה ארוך יותר
+            # ככל שהזמן למשחק קצר יותר, המקטעים מתארכים יותר
+            if hasattr(self, 'elapsed_time') and hasattr(self, 'game_duration'):
+                # חישוב מקדם הגדלה שגדל ככל שהמשחק מתקדם - למנוע סיום המסלול
+                progress_factor = min(2.5, 1.0 + (self.elapsed_time / self.game_duration))
+                segment_length = self.segment_length * 2.0 * progress_factor
+            else:
+                segment_length = self.segment_length * 2.0
+                
             # Calculate end point based on direction and segment length
             direction_rad = math.radians(new_direction)
-            end_x = start_x + math.sin(direction_rad) * self.segment_length
-            end_y = start_y - math.cos(direction_rad) * self.segment_length
+            end_x = start_x + math.sin(direction_rad) * segment_length
+            end_y = start_y - math.cos(direction_rad) * segment_length  # הערה: -cos כי ציר Y הפוך בפיתגון
             
-            # Ensure end point is within world bounds
-            end_x = max(self.track_width, min(self.world_width - self.track_width, end_x))
-            end_y = max(self.track_width, min(self.world_height - self.track_width, end_y))
+            # חישוב בגבולות העולם - הגדלת העולם אם צריך ולא רק הגבלה
+            # זה יוודא שהמסלול לא "ייתקע" בקצה העולם
+            boundary_padding = self.track_width * 2
             
-            # Create a new segment dict
+            # בדיקה אם המקטע הבא יוצא מגבולות העולם הנוכחי
+            if end_x < boundary_padding or end_x > self.world_width - boundary_padding:
+                # במקום להגביל, נכפה כיוון צפון מוחלט
+                new_direction = 0
+                # חישוב מחדש של נקודת הסיום
+                direction_rad = math.radians(new_direction)
+                end_x = start_x + math.sin(direction_rad) * segment_length
+                end_y = start_y - math.cos(direction_rad) * segment_length
+            
+            # יצירת מקטע מסלול חדש
             new_segment = {
                 "start": (start_x, start_y),
                 "end": (end_x, end_y),
@@ -150,14 +173,14 @@ class GameLauncher:
                 "obstacles": []
             }
             
-            # Add segment to the list
+            # הוספת המקטע לרשימת המקטעים
             self.track_segments.append(new_segment)
             self.last_segment_end = (end_x, end_y)
             self.segments_total += 1
             
             # Generate obstacles along the side of the track
             self._generate_obstacles_for_segment(new_segment)
-    
+
     def _generate_obstacles_for_segment(self, segment):
         """Generate obstacles for a track segment"""
         start_x, start_y = segment["start"]
@@ -207,16 +230,44 @@ class GameLauncher:
                     self.obstacle_manager.obstacles.append(obstacle)
     
     def _check_track_generation(self):
-        """Check if new track segments need to be generated"""
+        """בדיקה אם יש צורך לייצר מקטעי מסלול חדשים - עם שיפורים למניעת סיום המסלול"""
         if self.track_segments:
-            # Calculate distance to last segment end
+            # חישוב מרחק מסוף המסלול הנוכחי
             last_end_x, last_end_y = self.last_segment_end
             distance_to_last = math.sqrt((self.car.x - last_end_x)**2 + (self.car.y - last_end_y)**2)
             
-            # Generate more track if we're getting close to the end
-            if distance_to_last < self.segment_length * 2:
-                self._generate_track_segment(2)  # Generate 2 new segments
+            # יצירת מקטעים חדשים אם המכונית מתקרבת לסוף המסלול
+            # הגדלת מרחק הסף להתחיל לייצר מוקדם יותר
+            distance_threshold = self.segment_length * 8  # הגדלת הסף מ-5 ל-8
+            
+            if distance_to_last < distance_threshold:
+                # הגדלת מספר המקטעים החדשים שנוצרים בכל פעם
+                segments_to_create = 8  # הגדלה מ-5 ל-8
+                
+                # תוספת משמעותית יותר של מקטעים כשמתקרבים לסוף המשחק
+                if hasattr(self, 'time_remaining') and self.time_remaining < 60:  # פחות מדקה
+                    segments_to_create = 15  # יצירת הרבה יותר מקטעים בסוף המשחק
+                
+                self._generate_track_segment(segments_to_create)
+                print(f"יצירת {segments_to_create} מקטעי מסלול חדשים. סה\"כ: {len(self.track_segments)}")
                 return True
+            
+            # שיפור מינימום המקטעים הנדרשים
+            min_segments_ahead = 25  # הגדלה מ-15 ל-25
+            
+            # כשמתקרבים לסוף המשחק, נדרשים הרבה יותר מקטעים
+            if hasattr(self, 'time_remaining'):
+                if self.time_remaining < 60:  # פחות מדקה
+                    min_segments_ahead = 50
+                elif self.time_remaining < 30:  # פחות מחצי דקה
+                    min_segments_ahead = 80
+            
+            if len(self.track_segments) < min_segments_ahead:
+                segments_to_add = min_segments_ahead - len(self.track_segments)
+                self._generate_track_segment(segments_to_add)
+                print(f"יצירת {segments_to_add} מקטעי מסלול לשמירה על מינימום. סה\"כ: {len(self.track_segments)}")
+                return True
+        
         return False
     
     def _draw_track(self, screen, offset_x, offset_y):
@@ -291,6 +342,8 @@ class GameLauncher:
         
         # Main game loop
         last_time = time.time()
+        track_generation_timer = 0  # טיימר לאכיפת יצירת מקטעים גם ללא התקדמות
+        
         while self.running:
             # Calculate delta time
             current_time = time.time()
@@ -364,6 +417,27 @@ class GameLauncher:
             if not self.game_completed:
                 self.car.update(controls, dt)
                 
+                # עדכון משופר של יצירת המסלול - מריץ בכל פריים
+                new_segments_created = self._check_track_generation()
+                
+                # מנגנון נוסף: יצירת מקטעים חדשים כל X שניות, ללא תלות במיקום השחקן
+                # זה מבטיח שהמסלול ימשיך להתפתח גם אם השחקן נעצר במקום
+                track_generation_timer += dt
+                if track_generation_timer > 5.0:  # כל 5 שניות
+                    track_generation_timer = 0
+                    # יצירת מקטעים נוספים באופן יזום
+                    segments_to_add = max(3, int(15 * (1 - self.time_remaining / self.game_duration)))
+                    self._generate_track_segment(segments_to_add)
+                    print(f"יצירה תקופתית: {segments_to_add} מקטעי מסלול נוספים. סה\"כ: {len(self.track_segments)}")
+                
+                # בדיקה נוספת לקראת סוף המשחק (שיפור של הקוד הקיים)
+                if self.elapsed_time >= self.game_duration * 0.8:  # ב-80% מזמן המשחק
+                    # וידוא שיש מספיק מקטעים לסיום
+                    if len(self.track_segments) < 100:  # מספר גבוה מאוד בסוף המשחק
+                        additional_segments = 100 - len(self.track_segments)
+                        self._generate_track_segment(additional_segments)
+                        print(f"קרוב לסיום המשחק! יצירת {additional_segments} מקטעי מסלול. סה\"כ: {len(self.track_segments)}")
+                
                 # Calculate distance traveled (for score)
                 current_pos = (self.car.x, self.car.y)
                 distance = math.sqrt((current_pos[0] - self.last_position[0])**2 + 
@@ -381,9 +455,6 @@ class GameLauncher:
                 # Update world offset to center on car
                 self.world_offset_x = self.car.x - self.screen_width // 2
                 self.world_offset_y = self.car.y - self.screen_height // 2
-                
-                # Check if new track segments need to be generated
-                self._check_track_generation()
                 
                 # Update obstacles
                 self.obstacle_manager.update(dt)
