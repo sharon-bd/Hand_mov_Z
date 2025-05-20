@@ -7,8 +7,6 @@ import time
 import threading
 import cv2
 import numpy as np
-import platform
-import subprocess
 
 class HandCarConnectionManager:
     """Manages the connection between hand gesture detection and car control"""
@@ -56,21 +54,6 @@ class HandCarConnectionManager:
     def _check_camera_availability(self):
         """Check camera availability and print diagnostic information"""
         print("📷 Checking camera availability...")
-        
-        # Try to get system info
-        camera_info = "Camera info not available"
-        if platform.system() == 'Windows':
-            try:
-                # Run dxdiag to get system info
-                result = subprocess.run(['dxdiag', '/t', 'cameras'], 
-                                       capture_output=True, 
-                                       text=True, 
-                                       timeout=5)
-                camera_info = result.stdout[:300]  # First 300 chars only
-            except (subprocess.SubprocessError, FileNotFoundError):
-                pass
-            
-            print(f"System camera info: {camera_info}")
         
         # Try to list available cameras using cv2.VideoCapture
         for i in range(3):  # Check first 3 indices
@@ -399,63 +382,33 @@ class HandCarConnectionManager:
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.7,
                 (0, 0, 0),
-                2
+                1
             )
             
+            # Add control details
             control_text = [
-                f"Gesture: {self.controls.get('gesture_name', 'Unknown')}",
-                f"Steering: {self.controls.get('steering', 0):.2f}",
-                f"Throttle: {self.controls.get('throttle', 0):.2f}",
-                f"Braking: {self.controls.get('braking', False)}",
-                f"Boost: {self.controls.get('boost', False)}"
+                f"Steering: {self.controls['steering']:.2f}",
+                f"Throttle: {self.controls['throttle']:.2f}",
+                f"Braking: {'Yes' if self.controls['braking'] else 'No'}",
+                f"Boost: {'Yes' if self.controls['boost'] else 'No'}",
+                f"Gesture: {self.controls['gesture_name']}",
+                f"Speed: {self.controls['speed']:.2f}",
+                f"Direction: {self.controls['direction']:.2f}",
             ]
             
             for i, text in enumerate(control_text):
                 cv2.putText(
                     self.data_panel,
                     text,
-                    (20, 240 + i * 30),
+                    (20, 230 + i * 30),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.6,
                     (0, 0, 0),
                     1
                 )
-                
-            # Add help text
-            help_text = [
-                "Controls:",
-                "- Move hand left/right: Steer",
-                "- Raise/lower hand: Speed up/down",
-                "- Make a fist: Brake",
-                "- Thumb up: Boost",
-                "- Open palm: Stop"
-            ]
-            
-            cv2.putText(
-                self.data_panel,
-                "Help",
-                (320, 200),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.7,
-                (0, 0, 0),
-                2
-            )
-            
-            for i, text in enumerate(help_text):
-                cv2.putText(
-                    self.data_panel,
-                    text,
-                    (320, 240 + i * 30),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.6,
-                    (0, 0, 0),
-                    1
-                )
-                
         except Exception as e:
-            print(f"Error updating data panel: {e}")
-            self.data_panel = None
-            
+            print(f"❌ Error updating data panel: {e}")
+    
     def get_controls(self):
         """Get the current control values"""
         return self.controls

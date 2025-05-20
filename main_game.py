@@ -150,7 +150,7 @@ class GameLauncher:
                 # במקום להגביל, פשוט להגדיל את גודל העולם
                 world_expansion = self.world_width * 0.2  # הגדלת העולם ב-20%
                 self.world_width += world_expansion
-                print(f"הגדלת העולם לרוחב {self.world_width}")
+                print(f"Increasing world width to {self.world_width}")
             
             # יצירת מקטע מסלול חדש
             new_segment = {
@@ -237,7 +237,7 @@ class GameLauncher:
                     segments_to_create = 15  # יצירת הרבה יותר מקטעים בסוף המשחק
                 
                 self._generate_track_segment(segments_to_create)
-                print(f"יצירת {segments_to_create} מקטעי מסלול חדשים. סה\"כ: {len(self.track_segments)}")
+                print(f"Creating {segments_to_create} new track segments. Total: {len(self.track_segments)}")
                 return True
         
         # שיפור מינימום המקטעים הנדרשים
@@ -253,7 +253,7 @@ class GameLauncher:
         if len(self.track_segments) < min_segments_ahead:
             segments_to_add = min_segments_ahead - len(self.track_segments)
             self._generate_track_segment(segments_to_add)
-            print(f"יצירת {segments_to_add} מקטעי מסלול לשמירה על מינימום. סה\"כ: {len(self.track_segments)}")
+            print(f"Creating {segments_to_add} track segments to maintain minimum. Total: {len(self.track_segments)}")
             return True
     
         return False
@@ -326,13 +326,13 @@ class GameLauncher:
         
         # וידוא שהמסך אתחל כראוי
         if not pygame.display.get_surface():
-            print("⚠️ אין משטח תצוגה - יוצר מחדש")
+            print("⚠️ No display surface - recreating")
             pygame.init()
             self.screen = pygame.display.set_mode((self.screen_width + 320, self.screen_height))
         
         # בדיקה אם Pygame פעיל
         if not pygame.get_init():
-            print("⚠️ Pygame לא מאותחל - מאתחל מחדש")
+            print("⚠️ Pygame not initialized - reinitializing")
             pygame.init()
         
         # Initialize start time
@@ -388,7 +388,7 @@ class GameLauncher:
                     elif event.key == pygame.K_f:
                         force_segments = 20
                         self._generate_track_segment(force_segments)
-                        print(f"כפיית יצירת {force_segments} מקטעי מסלול נוספים")
+                        print(f"Forcing creation of {force_segments} additional track segments")
             
             # Get controls from hand detector
             controls = self.connection.get_controls()
@@ -436,7 +436,7 @@ class GameLauncher:
                     # יצירת מקטעים נוספים באופן יזום
                     segments_to_add = max(5, int(15 * (1 - self.time_remaining / self.game_duration)))
                     self._generate_track_segment(segments_to_add)
-                    print(f"יצירה תקופתית: {segments_to_add} מקטעי מסלול נוספים. סה\"כ: {len(self.track_segments)}")
+                    print(f"Periodic creation: {segments_to_add} additional track segments. Total: {len(self.track_segments)}")
                 
                 # מנגנון חדש: יצירה מאוד אגרסיבית של מקטעים לקראת סוף המשחק
                 force_generation_timer += dt
@@ -446,7 +446,11 @@ class GameLauncher:
                     if time_factor > 0.7:  # 70% מהמשחק עבר
                         forced_segments = int(50 * time_factor)  # הרבה יותר מקטעים ככל שמתקרבים לסוף
                         self._generate_track_segment(forced_segments)
-                        print(f"יצירה מאסיבית לקראת סוף: {forced_segments} מקטעים. סה\"כ: {len(self.track_segments)}")
+                        print(f"Massive creation towards end: {forced_segments} segments. Total: {len(self.track_segments)}")
+            
+            # === ADDED DRAWING AND FRAME RATE LIMIT ===
+            self._draw()
+            self.clock.tick(self.target_fps)
     
     def show_error_message(self, title, message):
         """Show an error message to the user"""
@@ -535,63 +539,50 @@ class GameLauncher:
     def _draw(self):
         """Draw the game screen"""
         try:
-            # בדיקה אם המסך אובייקט תקין
+            # Check if the screen object is valid
             if not pygame.display.get_surface():
-                print("❌ אין משטח תצוגה תקין! יוצר מחדש את המסך")
+                print("No valid display surface! Recreating screen")
                 self.screen = pygame.display.set_mode((self.screen_width + 320, self.screen_height))
             
-            # Clear the screen - ניקוי המסך עם צבע ברור וגלוי
-            self.screen.fill((200, 200, 255))  # רקע כחול בהיר יותר במקום אפור
-            
-            print(f"🎨 מצייר את המסך. מימדים: {self.screen.get_size()}")
-            
-            # מדפיס את מספר אלמנטי הרקע שמצוירים
-            elements_drawn = 0
+            # Clear the screen with a light blue background
+            self.screen.fill((200, 200, 255))
+            print(f"Drawing screen. Dimensions: {self.screen.get_size()}")
             
             # Draw the grid and ground elements
             self._draw_world()
             
-            # Draw the track - וידוא שיש מקטעי מסלול לציור
-            track_segments_count = len(self.track_segments)
-            print(f"🛣️ מצייר מסלול עם {track_segments_count} מקטעים")
-            if track_segments_count > 0:
+            # Draw the track
+            print(f"Drawing track with {len(self.track_segments)} segments")
+            if len(self.track_segments) > 0:
                 self._draw_track(self.screen, self.world_offset_x, self.world_offset_y)
             else:
-                # אם אין מקטעי מסלול, צייר משהו ברור במרכז המסך
                 pygame.draw.circle(self.screen, (255, 0, 0), 
                                  (self.screen_width // 2, self.screen_height // 2), 50)
             
             # Draw obstacles
             obstacle_count = len(self.obstacle_manager.obstacles) if self.obstacle_manager else 0
-            print(f"🪨 מצייר {obstacle_count} מכשולים")
+            print(f"Drawing {obstacle_count} obstacles")
             if self.obstacle_manager:
                 self.obstacle_manager.draw(self.screen, self.world_offset_x, self.world_offset_y)
             
-            # Draw the car in center of screen - וידוא שהמכונית מצוירת
+            # Draw the car at the center of the screen
             if hasattr(self, 'car') and self.car:
-                print(f"🚗 מצייר מכונית במיקום עולם ({self.car.x}, {self.car.y})")
+                print(f"Drawing car at world position ({self.car.x}, {self.car.y})")
                 self.car.draw(self.screen, self.world_offset_x, self.world_offset_y)
             else:
-                print("❌ אין אובייקט מכונית לציור!")
+                print("No car object to draw!")
             
-            # הוספת עיגול אדום בולט במרכז המסך לבדיקה שהמסך מתעדכן
             pygame.draw.circle(self.screen, (255, 0, 0), 
                              (self.screen_width // 2, self.screen_height // 2), 5)
             
             # Draw camera feed if available and enabled
             if self.camera_surface is not None and self.show_camera:
-                # Draw the camera feed on the right side
                 self.screen.blit(self.camera_surface, (self.screen_width, 0))
-                
-                # Add label
                 camera_label = self.font.render("Camera Feed (Press C to toggle)", True, (0, 0, 0))
                 self.screen.blit(camera_label, (self.screen_width + 10, 245))
             else:
-                # Draw a placeholder if camera feed is not available
                 camera_rect = pygame.Rect(self.screen_width, 0, 320, 240)
                 pygame.draw.rect(self.screen, (30, 30, 30), camera_rect)
-                
-                # Draw a message
                 no_cam_font = pygame.font.SysFont(None, 30)
                 no_cam_text = no_cam_font.render("Camera Not Available", True, (255, 50, 50))
                 self.screen.blit(no_cam_text, (self.screen_width + 60, 110))
@@ -642,7 +633,6 @@ class GameLauncher:
                     "- V: Toggle separate camera window"
                 ]
                 
-                # Draw help panel on right side, below camera
                 if self.show_camera:
                     help_y = 280
                 else:
@@ -661,12 +651,11 @@ class GameLauncher:
                     
                 self.screen.blit(help_surface, (self.screen_width, help_y))
                 
-            # עדכון חשוב: וידוא שהתצוגה מתעדכנת בכל פריים
-            pygame.display.update()  # נסה update במקום flip לראות אם זה עוזר
-            print("🔄 עדכון המסך בוצע")
+            pygame.display.update()
+            print("Screen updated")
             
         except Exception as e:
-            print(f"❌❌❌ שגיאה קריטית בציור המסך: {e}")
+            print(f"Critical error drawing screen: {e}")
             import traceback
             traceback.print_exc()
     
@@ -689,58 +678,45 @@ class GameLauncher:
             timer_color = (255, 165, 0)  # Orange
         else:  # Less than 10 seconds
             timer_color = (255, 0, 0)  # Red
-            # Make it flash during the last 10 seconds
             if int(self.time_remaining * 2) % 2 == 0:
                 timer_color = (255, 255, 255)
         
-        # Format timer text
         time_text = f"Time: {minutes:02d}:{seconds:02d}"
         score_text = f"Score: {int(self.score)}"
         
-        # Create font objects
         timer_font = pygame.font.SysFont(None, 36)
         timer_render = timer_font.render(time_text, True, timer_color)
         score_render = timer_font.render(score_text, True, (255, 255, 255))
         
-        # Position and draw timer
         self.screen.blit(timer_bg, (10, 10))
         self.screen.blit(timer_render, (20, 20))
         self.screen.blit(score_render, (170, 20))
         
-        # Draw progress bar under timer
         progress_width = 280
         progress_height = 8
         bar_filled = max(0, min(1, 1 - (self.time_remaining / self.game_duration))) * progress_width
         
-        # Background of progress bar
         pygame.draw.rect(self.screen, (100, 100, 100), (20, 45, progress_width, progress_height))
-        # Filled portion of progress bar
         pygame.draw.rect(self.screen, timer_color, (20, 45, int(bar_filled), progress_height))
         
     def _draw_game_completed(self):
         """Draw game completed/over message"""
-        # Create semi-transparent overlay
         overlay = pygame.Surface((self.screen_width, self.screen_height), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 150))  # Semi-transparent black
         
-        # Create font objects
         big_font = pygame.font.SysFont(None, 72)
         medium_font = pygame.font.SysFont(None, 48)
         small_font = pygame.font.SysFont(None, 36)
         
-        # Game over text
         game_over_text = big_font.render("Time's Up!", True, (255, 255, 255))
         final_score_text = medium_font.render(f"Final Score: {int(self.score)}", True, (255, 215, 0))
         
-        # Instructions
         instruction_text = small_font.render("Press ESC to exit", True, (200, 200, 200))
         
-        # Calculate positions
         game_over_rect = game_over_text.get_rect(center=(self.screen_width//2, self.screen_height//2 - 60))
         score_rect = final_score_text.get_rect(center=(self.screen_width//2, self.screen_height//2))
         instruction_rect = instruction_text.get_rect(center=(self.screen_width//2, self.screen_height//2 + 70))
         
-        # Draw overlay and text
         self.screen.blit(overlay, (0, 0))
         self.screen.blit(game_over_text, game_over_rect)
         self.screen.blit(final_score_text, score_rect)
@@ -748,16 +724,14 @@ class GameLauncher:
         
     def _draw_world(self):
         """
-        מצייר את העולם (רקע, רשת, אלמנטים נוספים)
+        Draw the world (background, grid, additional elements)
         """
-        # חישוב הגבולות של החלק הנראה מהעולם
         start_x = max(0, int(self.world_offset_x // self.grid_size * self.grid_size))
         end_x = min(self.world_width, int((self.world_offset_x + self.screen_width) // self.grid_size * self.grid_size + self.grid_size * 2))
         
         start_y = max(0, int(self.world_offset_y // self.grid_size * self.grid_size))
         end_y = min(self.world_height, int((self.world_offset_y + self.screen_height) // self.grid_size * self.grid_size + self.grid_size * 2))
         
-        # ציור קווי רשת אופקיים - המרה ל-int להימנע משגיאה
         for y in range(int(start_y), int(end_y), int(self.grid_size)):
             screen_y = int(y - self.world_offset_y)
             pygame.draw.line(
@@ -767,7 +741,6 @@ class GameLauncher:
                 (self.screen_width, screen_y)
             )
         
-        # ציור קווי רשת אנכיים - המרה ל-int להימנע משגיאה
         for x in range(int(start_x), int(end_x), int(self.grid_size)):
             screen_x = int(x - self.world_offset_x)
             pygame.draw.line(
@@ -777,12 +750,10 @@ class GameLauncher:
                 (screen_x, self.screen_height)
             )
         
-        # ציור אלמנטי קרקע
         for element in self.ground_elements:
             screen_x = int(element['x'] - self.world_offset_x)
             screen_y = int(element['y'] - self.world_offset_y)
             
-            # ציור רק אם האלמנט נראה על המסך
             if (0 <= screen_x <= self.screen_width and 
                 0 <= screen_y <= self.screen_height):
                 pygame.draw.circle(
@@ -792,7 +763,6 @@ class GameLauncher:
                     element['size']
                 )
         
-        # ציור גבולות העולם
         if self.world_offset_x < 0:
             pygame.draw.rect(
                 self.screen,

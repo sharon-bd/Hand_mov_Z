@@ -23,6 +23,8 @@ def check_dependencies():
         except ImportError:
             missing_packages.append(package)
     
+
+    
     return missing_packages
 
 def install_dependencies(packages):
