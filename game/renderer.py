@@ -9,6 +9,7 @@ import pygame
 import math
 import random
 import numpy as np
+from game.moving_road import MovingRoadGenerator  # Import the MovingRoadGenerator class
 
 class GameRenderer:
     """Handles rendering for the game"""
@@ -59,6 +60,9 @@ class GameRenderer:
         
         # Pre-render some common elements
         self._init_prerendered_elements()
+        
+        # Create the moving road generator
+        self.moving_road = MovingRoadGenerator(screen_width, screen_height)
     
     def _init_prerendered_elements(self):
         """Pre-render common elements for performance"""
@@ -73,35 +77,100 @@ class GameRenderer:
     
     def render_game(self, screen, game_state):
         """
-        Render the entire game
+        רנדור המשחק כולו
         
         Args:
-            screen: Pygame surface to render to
-            game_state: Current state of the game
+            screen: משטח Pygame לרנדור
+            game_state: מצב המשחק הנוכחי
         """
-        # Get elements from game state
+        # קבלת אלמנטים ממצב המשחק
         car = game_state.get('car')
         obstacles = game_state.get('obstacles', [])
         power_ups = game_state.get('power_ups', [])
         score = game_state.get('score', 0)
         
-        # Clear the screen
+        # וודא שהעולם ממורכז סביב המכונית - הדגש את ההיסט
+        world_offset_x = game_state.get('world_offset_x', 0)
+        world_offset_y = game_state.get('world_offset_y', 0)
+        
+        # וידוא שערכי ההיסט תקינים - אם הם 0, בדוק אם יש מידע מיקום מהמכונית
+        if world_offset_x == 0 and world_offset_y == 0 and car:
+            if hasattr(car, 'x') and hasattr(car, 'y'):
+                # חישוב היסט מבוסס על המכונית במרכז
+                screen_center_x = self.screen_width // 2
+                screen_center_y = self.screen_height - 100  # קרוב לתחתית המסך
+                
+                world_offset_x = car.x - screen_center_x 
+                world_offset_y = car.y - screen_center_y
+        
+        # Debug - הצג מידע על ההיסט בקונסולה לעזור באבחון
+        if random.random() < 0.01:  # 1% מהפריימים
+            print(f"Movement debug - World offset: ({world_offset_x:.1f}, {world_offset_y:.1f})")
+            print(f"Movement debug - Car position: ({game_state['car'].x:.1f}, {game_state['car'].y:.1f})")
+        
+        # ניקוי המסך
         screen.fill(self.colors['black'])
         
-        # Draw the road with scrolling effect
-        self._draw_scrolling_road(screen, game_state.get('scroll_speed', self.scroll_speed))
+        # שימוש תמידי במסלול הנע
+        if car:
+            # וידוא שיש למכונית מאפייני סיבוב ומהירות
+            car_rotation = getattr(car, 'rotation', 0.0)
+            car_speed = getattr(car, 'speed', 0.0)
+            
+            # נרמול המהירות
+            max_speed = getattr(car, 'max_speed', 100.0)
+            normalized_speed = car_speed / max_speed if max_speed > 0 else 0.0
+            
+            # הגברת השפעת ההיסט לפי מהירות המכונית
+            speed_boost_factor = max(1.0, 1.0 + normalized_speed * 3.0)
+            
+            # עדכון המסלול הנע עם ערכים אלה
+            self.moving_road.update(car_rotation, normalized_speed, game_state.get('dt', 0.016))
+            
+            # הדגשת ההיסט בפי 2 לתחושת תנועה טובה יותר
+            self.moving_road.draw(screen, world_offset_x * speed_boost_factor, world_offset_y * speed_boost_factor)
+            
+            # Create motion blur effect when car is moving fast
+            if normalized_speed > 0.5:
+                # Create a transparent overlay based on speed
+                alpha = int(min(150, normalized_speed * 200))
+                blur_overlay = pygame.Surface((self.screen_width, self.screen_height), pygame.SRCALPHA)
+                blur_overlay.fill((0, 0, 0, alpha))
+                
+                # Create streak lines
+                num_streaks = int(normalized_speed * 30)  # More streaks at higher speeds
+                for _ in range(num_streaks):
+                    start_x = random.randint(0, self.screen_width)
+                    start_y = random.randint(0, self.screen_height)
+                    length = random.randint(20, 100) * normalized_speed
+                    
+                    # Draw streak in direction of movement
+                    angle = math.radians(car_rotation)
+                    end_x = start_x - int(math.sin(angle) * length)
+                    end_y = start_y + int(math.cos(angle) * length)
+                    
+                    # Random white/gray streaks
+                    brightness = random.randint(150, 255)
+                    pygame.draw.line(blur_overlay, (brightness, brightness, brightness, 80), 
+                                   (start_x, start_y), (end_x, end_y), 1)
+                
+                # Apply the motion blur
+                screen.blit(blur_overlay, (0, 0))
+        else:
+            # חזרה למסלול סטטי אם אין מכונית
+            self._draw_scrolling_road(screen, game_state.get('scroll_speed', self.scroll_speed))
         
-        # Draw all game elements
+        # ציור כל אלמנטי המשחק
         self._draw_obstacles(screen, obstacles)
         self._draw_power_ups(screen, power_ups)
         
         if car:
             self._draw_car(screen, car)
         
-        # Draw particles
+        # ציור חלקיקים
         self._update_and_draw_particles(screen, game_state.get('dt', 0.016))
         
-        # Draw HUD elements
+        # ציור אלמנטי HUD
         self._draw_hud(screen, game_state)
     
     def _draw_scrolling_road(self, screen, scroll_speed):

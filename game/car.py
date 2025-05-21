@@ -273,10 +273,10 @@ class Car:
                 self.is_colliding = False
             
             # במשחק העדכני המכונית תישאר במרכז המסך
-            # screen_center_x = self.screen_width // 2
-            # screen_center_y = self.screen_height // 2
-            # self.screen_x = screen_center_x
-            # self.screen_y = screen_center_y
+            screen_center_x = self.screen_width // 2
+            screen_center_y = self.screen_height - 100 
+            self.screen_x = screen_center_x
+            self.screen_y = screen_center_y
             
             # עדכון נקודות התנגשות
             self.update_collision_points()

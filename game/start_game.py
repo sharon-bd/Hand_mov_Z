@@ -25,81 +25,107 @@ class Game:
     """Main Game class that manages the overall game state"""
     
     def __init__(self, screen_width=800, screen_height=600, hand_detector=None):
-        """
-        Initialize the game
-        
-        Args:
-            screen_width: Width of the game screen
-            screen_height: Height of the game screen
-            hand_detector: Hand gesture detector instance to use
-        """
-        # Initialize pygame
-        if not pygame.get_init():
-            pygame.init()
-        
-        # Screen setup
-        self.screen_width = screen_width
-        self.screen_height = screen_height
-        self.screen = pygame.display.set_mode((screen_width, screen_height))
+        """Initialize the game launcher"""
+        pygame.init()
         pygame.display.set_caption("Hand Gesture Car Control")
         
-        # Clock for controlling frame rate
+        # Set up the screen
+        self.screen_width = screen_width
+        self.screen_height = screen_height
+        self.screen = pygame.display.set_mode((self.screen_width + 320, self.screen_height))  # Add width for camera feed
+        
+        # World dimensions (bigger than screen)
+        self.world_width = 6000  # Much larger world
+        self.world_height = 6000  # Much larger world
+        
+        # World offset (for camera that follows car)
+        self.world_offset_x = 0
+        self.world_offset_y = 0
+        
+        # Track generation settings
+        self.track_segments = []
+        self.last_segment_end = (self.world_width // 2, self.world_height // 2)
+        self.track_width = 300
+        self.segment_length = 500
+        self.segments_ahead = 10  # How many segments to generate ahead
+        self.segments_total = 0  # Counter for total segments generated
+        
+        # Set up the clock
         self.clock = pygame.time.Clock()
-        self.fps = 60
+        self.target_fps = 60
+        
+        # Create the car at center of world
+        self.car = Car(self.world_width // 2, self.world_height // 2)
+        self.car.set_screen_dimensions(self.screen_width, self.screen_height)
+        self.car.set_world_dimensions(self.world_width, self.world_height)
+        
+        # Create obstacle manager and generate initial obstacles
+        self.obstacle_manager = ObstacleManager()
+        
+        # Generate initial track
+        self._generate_track_segment(self.segments_ahead)
+        
+        # Create the hand-car connection
+        from hand_detector.connection import HandCarConnectionManager
+        self.connection = HandCarConnectionManager()
         
         # Game state
-        self.running = False
-        self.paused = False
-        self.game_over = False
-        self.current_mode = "normal"  # Default mode
+        self.running = True
+        self.debug_mode = True
+        self.show_help = True
+        self.show_camera = True  # Always show camera feed
+        self.last_obstacle_check = time.time()
         
-        # Time tracking
-        self.start_time = 0
-        self.elapsed_time = 0
-        self.time_limit = None
+        # Camera display
+        self.camera_surface = None
         
-        # Initialize game components
-        self.renderer = GameRenderer(screen_width, screen_height)
-        self.physics = PhysicsEngine()
-        self.audio = AudioManager()
-        self.camera = CameraManager()
-        self.score_manager = ScoreManager()
+        # Grid properties for ground
+        self.grid_size = int(100)  # וודא שזה שלם
+        self.grid_color = (180, 180, 180)
+        self.background_color = (240, 240, 240)
         
-        # Road parameters (for obstacle positioning)
-        self.road_width = self.renderer.road_width
-        self.road_x = self.renderer.road_x
-        
-        # Create managers
-        self.obstacle_manager = ObstacleManager(
-            screen_width, screen_height, self.road_width, self.road_x
-        )
-        self.power_up_manager = PowerUpManager(
-            screen_width, screen_height, self.road_width, self.road_x
-        )
-        
-        # Create the player's car
-        self.car = Car(screen_width // 2, screen_height - 100)
-        
-        # Hand detector
-        self.hand_detector = hand_detector
+        # Generate some random ground elements
+        self.ground_elements = []
+        for _ in range(100):
+            x = random.randint(0, self.world_width)
+            y = random.randint(0, self.world_height)
+            size = random.randint(5, 15)
+            color_value = random.randint(160, 220)
+            self.ground_elements.append({
+                'x': x,
+                'y': y,
+                'size': size,
+                'color': (color_value, color_value, color_value)
+            })
         
         # Fonts
-        self.font_large = pygame.font.Font(None, 48)
-        self.font_medium = pygame.font.Font(None, 36)
-        self.font_small = pygame.font.Font(None, 24)
+        self.font = pygame.font.SysFont(None, 24)
+        self.title_font = pygame.font.SysFont(None, 36)
         
-        # Tutorial state
-        self.show_tutorial = False
-        self.tutorial_step = 0
-        self.tutorial_steps = [
-            "Welcome to Hand Gesture Car Control!",
-            "Move your hand left and right to steer the car.",
-            "Move your hand up and down to control speed.",
-            "Make a fist to brake. Keep your fist raised for boost!",
-            "Show an open palm (stop sign) to emergency stop.",
-            "Avoid obstacles and collect power-ups to score points.",
-            "Ready to begin? Press SPACE to start."
-        ]
+        # Create a separate OpenCV window for the camera feed
+        self.show_opencv_window = True
+        self.opencv_window_name = "Hand Detector Camera"
+        if self.show_opencv_window:
+            import cv2
+            cv2.namedWindow(self.opencv_window_name, cv2.WINDOW_NORMAL)
+            cv2.resizeWindow(self.opencv_window_name, 640, 480)
+        
+        # Game timer settings
+        self.game_duration = 3 * 60  # 3 minutes in seconds
+        self.start_time = None
+        self.elapsed_time = 0
+        self.time_remaining = self.game_duration
+        self.game_completed = False
+        
+        # Score tracking
+        self.score = 0
+        self.distance_traveled = 0
+        self.last_position = None
+        
+        # יצירת מחלקת הרנדור
+        self.renderer = GameRenderer(self.screen_width, self.screen_height)
+        
+        print("🎮 Game launcher initialized")
     
     def set_mode(self, mode, config=None):
         """
@@ -181,27 +207,226 @@ class Game:
         self.run()
     
     def run(self):
-        """Main game loop"""
+        """לולאת המשחק הראשית"""
+        # אתחול חיבור היד-מכונית
+        if not self.connection.start():
+            print("❌ נכשל באתחול חיבור היד-מכונית")
+            self.show_error_message("לא ניתן לאתחל את המצלמה",
+                                  "המשחק ימשיך ללא שליטה במחוות ידיים.")
+            return
+        
+        print("🏁 מתחיל לולאת משחק")
+        
+        # וידוא שהמסך מאותחל כראוי
+        if not pygame.display.get_surface():
+            print("⚠️ אין משטח תצוגה - יוצר מחדש")
+            pygame.init()
+            self.screen = pygame.display.set_mode((self.screen_width + 320, self.screen_height))
+        
+        # אתחול זמנים
+        self.start_time = time.time()
+        self.last_position = (self.car.x, self.car.y)
+        last_time = time.time()
+        
         while self.running:
-            # Calculate time delta
-            dt = self.clock.tick(self.fps) / 1000.0
+            # חישוב זמן דלתא
+            current_time = time.time()
+            dt = min(current_time - last_time, 0.1)  # הגבלת dt ל-0.1 שניות למניעת קפיצות גדולות
+            last_time = current_time
             
-            # Process events
-            self.handle_events()
+            # עדכון טיימר
+            self.elapsed_time = current_time - self.start_time
+            self.time_remaining = max(0, self.game_duration - self.elapsed_time)
             
-            # Skip updates if paused
-            if not self.paused:
-                # Update game state
-                self.update(dt)
+            # בדיקת סיום המשחק
+            if self.elapsed_time >= self.game_duration and not self.game_completed:
+                self.game_completed = True
+                print(f"⏱️ זמן המשחק (3 דקות) הסתיים! ניקוד סופי: {int(self.score)}")
+            
+            # עיבוד אירועים
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    self.running = False
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        if self.game_completed or self._confirm_exit():
+                            self.running = False
+                    elif event.key == pygame.K_h:
+                        self.show_help = not self.show_help
+                    elif event.key == pygame.K_d:
+                        self.debug_mode = not self.debug_mode
+                    elif event.key == pygame.K_c:
+                        self.show_camera = not self.show_camera
+                    elif event.key == pygame.K_v:
+                        self.show_opencv_window = not self.show_opencv_window
+                        if self.show_opencv_window:
+                            import cv2
+                            cv2.namedWindow(self.opencv_window_name, cv2.WINDOW_NORMAL)
+                            cv2.resizeWindow(self.opencv_window_name, 640, 480)
+                        else:
+                            import cv2
+                            cv2.destroyWindow(self.opencv_window_name)
+                    elif event.key == pygame.K_f:
+                        force_segments = 20
+                        self._generate_track_segment(force_segments)
+                        print(f"נוצרו בכוח {force_segments} מקטעי מסלול נוספים")
+            
+            # קבלת פקדים ממחוות הידיים
+            controls = self.connection.get_controls()
+            
+            # קבלת תמונת מצלמה
+            try:
+                import cv2
+                camera_frame, data_panel, fps = self.connection.get_visuals()
+                if camera_frame is not None:
+                    if self.show_opencv_window:
+                        try:
+                            cv2.imshow(self.opencv_window_name, camera_frame)
+                            cv2.waitKey(1)
+                        except Exception as e:
+                            print(f"❌ שגיאה בהצגת חלון OpenCV: {e}")
+                    
+                    # המרת תמונת המצלמה למשטח Pygame
+                    try:
+                        small_frame = cv2.resize(camera_frame, (320, 240))
+                        small_frame_rgb = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
+                        self.camera_surface = pygame.surfarray.make_surface(small_frame_rgb.swapaxes(0, 1))
+                    except Exception as e:
+                        print(f"❌ שגיאה בהמרת תמונת המצלמה: {e}")
+                        self.camera_surface = None
+            except Exception as e:
+                print(f"❌ שגיאה בקבלת תמונת המצלמה: {e}")
+            
+            # עדכון המכונית אם המשחק לא הסתיים
+            if not self.game_completed:
+                self.car.update(controls, dt)
+                self._check_track_generation()
+            
+            # חישוב היסט העולם כדי לשמור על המכונית ממורכזת והדגשת התנועה
+            screen_car_x = self.screen_width // 2
+            screen_car_y = self.screen_height - 100  # קרוב לתחתית המסך
+            
+            # הגדלת פקטור ההיסט כדי להעצים את תחושת התנועה
+            # גורם ההיסט גדל עם מהירות המכונית, מתחיל מ-1.0 עד 5.0
+            movement_factor = 1.0 + min(4.0, self.car.speed * 5.0)
+            self.world_offset_x = (self.car.x - screen_car_x) * movement_factor
+            self.world_offset_y = (self.car.y - screen_car_y) * movement_factor
+            
+            # הוספת רעש אקראי קטן להיסט כדי ליצור תחושת תנועה נוספת
+            if self.car.speed > 0.1:
+                vibration = self.car.speed * 2.0  # רעידות גדלות עם המהירות
+                self.world_offset_x += random.uniform(-vibration, vibration)
+                self.world_offset_y += random.uniform(-vibration, vibration)
+            
+            # עדכון הניקוד בהתבסס על מרחק נסיעה
+            current_position = (self.car.x, self.car.y)
+            if self.last_position:
+                distance = math.hypot(current_position[0] - self.last_position[0],
+                                    current_position[1] - self.last_position[1])
+                self.distance_traveled += distance
+                self.score = self.distance_traveled / 10  # ניקוד פשוט בהתבסס על מרחק
+            self.last_position = current_position
+            
+            # הכנת מצב המשחק לרנדור
+            game_state = {
+                'car': self.car,
+                'obstacles': self.obstacle_manager.obstacles if self.obstacle_manager else [],
+                'power_ups': [],  # אין כוחות כרגע
+                'score': self.score,
+                'health': self.car.health if hasattr(self.car, 'health') else 100,
+                'time_left': self.time_remaining,
+                'scroll_speed': self.car.speed * self.car.max_speed if hasattr(self.car, 'speed') and hasattr(self.car, 'max_speed') else 0,
+                'dt': dt,
+                'world_offset_x': self.world_offset_x,
+                'world_offset_y': self.world_offset_y
+            }
+            
+            # Pass the game state to the renderer
+            self.renderer.render_game(self.screen, game_state)
+            
+            # Draw camera feed if available and enabled
+            if self.camera_surface is not None and self.show_camera:
+                self.screen.blit(self.camera_surface, (self.screen_width, 0))
+                camera_label = self.font.render("Camera Feed (Press C to toggle)", True, (0, 0, 0))
+                self.screen.blit(camera_label, (self.screen_width + 10, 245))
+            else:
+                camera_rect = pygame.Rect(self.screen_width, 0, 320, 240)
+                pygame.draw.rect(self.screen, (30, 30, 30), camera_rect)
+                no_cam_font = pygame.font.SysFont(None, 30)
+                no_cam_text = no_cam_font.render("Camera Not Available", True, (255, 50, 50))
+                self.screen.blit(no_cam_text, (self.screen_width + 60, 110))
+            
+            # Draw timer and score UI elements
+            self._draw_hud()
+            
+            # Draw game over message if completed
+            if self.game_completed:
+                self._draw_game_completed()
+            
+            # Draw debug info if enabled
+            if self.debug_mode:
+                controls = self.connection.get_controls()
+                debug_text = [
+                    f"FPS: {self.clock.get_fps():.1f}",
+                    f"Gesture: {controls.get('gesture_name', 'Unknown')}",
+                    f"Steering: {controls.get('steering', 0):.2f}",
+                    f"Throttle: {controls.get('throttle', 0):.2f}",
+                    f"Braking: {controls.get('braking', False)}",
+                    f"Boost: {controls.get('boost', False)}",
+                    f"World position: ({self.car.x:.1f}, {self.car.y:.1f})",
+                    f"Rotation: {self.car.rotation:.1f}°",
+                    f"Speed: {self.car.speed:.2f}",
+                    f"Health: {self.car.health}",
+                    f"Track segments: {len(self.track_segments)}",
+                    f"Delta Time: {dt:.4f}s"
+                ]
                 
-                # Check for game over conditions
-                self._check_game_over()
+                for i, text in enumerate(debug_text):
+                    text_surface = self.font.render(text, True, (0, 0, 0))
+                    self.screen.blit(text_surface, (10, 10 + i * 25))
+                
+            # Draw help text if enabled
+            if self.show_help:
+                help_text = [
+                    "Controls:",
+                    "- Move hand left/right: Steer",
+                    "- Raise/lower hand: Speed up/down",
+                    "- Make a fist: Brake",
+                    "- Thumb up: Boost",
+                    "- Open palm: Stop",
+                    "",
+                    "Keys:",
+                    "- ESC: Quit",
+                    "- H: Toggle this help",
+                    "- D: Toggle debug info",
+                    "- C: Toggle camera feed in game",
+                    "- V: Toggle separate camera window",
+                    "- F: Generate additional track segments"
+                ]
+                
+                if self.show_camera:
+                    help_y = 280
+                else:
+                    help_y = 10
+                    
+                help_surface = pygame.Surface((320, 320), pygame.SRCALPHA)
+                pygame.draw.rect(help_surface, (255, 255, 255, 200), (0, 0, 320, 320), 0)
+                pygame.draw.rect(help_surface, (0, 0, 0), (0, 0, 320, 320), 2)
+                
+                title_surface = self.title_font.render("Help", True, (0, 0, 0))
+                help_surface.blit(title_surface, (10, 10))
+                
+                for i, text in enumerate(help_text):
+                    text_surface = self.font.render(text, True, (0, 0, 0))
+                    help_surface.blit(text_surface, (10, 50 + i * 20))
+                    
+                self.screen.blit(help_surface, (self.screen_width, help_y))
             
-            # Draw everything
-            self.draw()
-            
-            # Update the display
+            # עדכון התצוגה
             pygame.display.flip()
+            
+            # הגבלת קצב הפריימים
+            self.clock.tick(self.target_fps)
     
     def handle_events(self):
         """Handle pygame events"""
@@ -316,6 +541,199 @@ class Game:
             self._draw_game_over_screen()
         elif self.show_tutorial:
             self._draw_tutorial()
+    
+    def _draw(self):
+        """ציור מסך המשחק"""
+        try:
+            if not pygame.display.get_surface():
+                print("אין משטח תצוגה תקף! יוצר מחדש")
+                self.screen = pygame.display.set_mode((self.screen_width + 320, self.screen_height))
+            
+            # מרכוז המכונית על המסך
+            screen_car_x = self.screen_width // 2
+            screen_car_y = self.screen_height - 100  # קרוב לתחתית המסך
+            
+            # עדכון היסט העולם כדי לשמור על המכונית ממורכזת
+            self.world_offset_x = self.car.x - screen_car_x
+            self.world_offset_y = self.car.y - screen_car_y
+            
+            # הכנת מצב המשחק לרנדור עם היסט מדויק
+            game_state = {
+                'car': self.car,
+                'obstacles': self.obstacle_manager.obstacles if self.obstacle_manager else [],
+                'power_ups': [],  # אין כוחות כרגע
+                'score': self.score,
+                'health': self.car.health if hasattr(self.car, 'health') else 100,
+                'time_left': self.time_remaining,
+                'scroll_speed': self.car.speed * self.car.max_speed if hasattr(self.car, 'speed') and hasattr(self.car, 'max_speed') else 0,
+                'dt': self.clock.get_time() / 1000.0,
+                'world_offset_x': self.world_offset_x,
+                'world_offset_y': self.world_offset_y
+            }
+            
+            # עדכון מיקום המכונית על המסך לרנדור
+            self.car.screen_x = screen_car_x
+            self.car.screen_y = screen_car_y
+            
+            # רנדור המשחק
+            self.renderer.render_game(self.screen, game_state)
+            
+            # ציור תמונת המצלמה אם זמינה ומופעלת
+            if self.camera_surface is not None and self.show_camera:
+                self.screen.blit(self.camera_surface, (self.screen_width, 0))
+                camera_label = self.font.render("תצוגת מצלמה (לחץ C לשינוי)", True, (0, 0, 0))
+                self.screen.blit(camera_label, (self.screen_width + 10, 245))
+            else:
+                camera_rect = pygame.Rect(self.screen_width, 0, 320, 240)
+                pygame.draw.rect(self.screen, (30, 30, 30), camera_rect)
+                no_cam_font = pygame.font.SysFont(None, 30)
+                no_cam_text = no_cam_font.render("מצלמה לא זמינה", True, (255, 50, 50))
+                self.screen.blit(no_cam_text, (self.screen_width + 60, 110))
+            
+            # ציור HUD
+            self._draw_hud()
+            
+            # ציור הודעת סיום משחק אם הסתיים
+            if self.game_completed:
+                self._draw_game_completed()
+            
+            # ציור מידע דיבוג אם מופעל
+            if self.debug_mode:
+                controls = self.connection.get_controls()
+                debug_text = [
+                    f"FPS: {self.clock.get_fps():.1f}",
+                    f"מחווה: {controls.get('gesture_name', 'לא מזוהה')}",
+                    f"היגוי: {controls.get('steering', 0):.2f}",
+                    f"תאוצה: {controls.get('throttle', 0):.2f}",
+                    f"בלימה: {controls.get('braking', False)}",
+                    f"בוסט: {controls.get('boost', False)}",
+                    f"מיקום בעולם: ({self.car.x:.1f}, {self.car.y:.1f})",
+                    f"מיקום על המסך: ({screen_car_x:.1f}, {screen_car_y:.1f})",
+                    f"סיבוב: {self.car.rotation:.1f}°",
+                    f"מהירות: {self.car.speed:.2f}",
+                    f"בריאות: {self.car.health}",
+                    f"מקטעי מסלול: {len(self.track_segments)}"
+                ]
+                
+                for i, text in enumerate(debug_text):
+                    text_surface = self.font.render(text, True, (0, 0, 0))
+                    self.screen.blit(text_surface, (10, 10 + i * 25))
+            
+            # ציור טקסט עזרה אם מופעל
+            if self.show_help:
+                help_text = [
+                    "פקדים:",
+                    "- הזז יד שמאלה/ימינה: היגוי",
+                    "- הרם/הורד יד: האצה/האטה",
+                    "- יד קפוצה: בלימה",
+                    "- אגודל למעלה: בוסט",
+                    "- כף יד פתוחה: עצירה",
+                    "",
+                    "מקשים:",
+                    "- ESC: יציאה",
+                    "- H: הפעל/כבה עזרה זו",
+                    "- D: הפעל/כבה מידע דיבוג",
+                    "- C: הפעל/כבה תצוגת מצלמה במשחק",
+                    "- V: הפעל/כבה חלון מצלמה נפרד"
+                ]
+                
+                help_y = 280 if self.show_camera else 10
+                help_surface = pygame.Surface((320, 300), pygame.SRCALPHA)
+                pygame.draw.rect(help_surface, (255, 255, 255, 200), (0, 0, 320, 300), 0)
+                pygame.draw.rect(help_surface, (0, 0, 0), (0, 0, 320, 300), 2)
+                
+                title_surface = self.title_font.render("עזרה", True, (0, 0, 0))
+                help_surface.blit(title_surface, (10, 10))
+                
+                for i, text in enumerate(help_text):
+                    text_surface = self.font.render(text, True, (0, 0, 0))
+                    help_surface.blit(text_surface, (10, 50 + i * 20))
+                
+                self.screen.blit(help_surface, (self.screen_width, help_y))
+                
+            pygame.display.update()
+            print("המסך עודכן")
+            
+        except Exception as e:
+            print(f"שגיאה קריטית בציור המסך: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def _draw_hud(self):
+        """Draw heads-up display with timer and score"""
+        # Create semi-transparent background for timer
+        timer_bg = pygame.Surface((300, 50), pygame.SRCALPHA)
+        timer_bg.fill((0, 0, 0, 128))  # Semi-transparent black
+        
+        # Convert remaining time to minutes:seconds format
+        minutes = int(self.time_remaining // 60)
+        seconds = int(self.time_remaining % 60)
+        
+        # Choose timer color based on remaining time
+        if self.time_remaining > 60:  # More than 1 minute
+            timer_color = (255, 255, 255)  # White
+        elif self.time_remaining > 30:  # 30-60 seconds
+            timer_color = (255, 255, 0)  # Yellow
+        elif self.time_remaining > 10:  # 10-30 seconds
+            timer_color = (255, 165, 0)  # Orange
+        else:  # Less than 10 seconds
+            timer_color = (255, 0, 0)  # Red
+            # Make it flash during the last 10 seconds
+            if int(self.time_remaining * 2) % 2 == 0:
+                timer_color = (255, 255, 255)
+        
+        # Format timer text
+        time_text = f"Time: {minutes:02d}:{seconds:02d}"
+        score_text = f"Score: {int(self.score)}"
+        
+        # Create font objects
+        timer_font = pygame.font.SysFont(None, 36)
+        timer_render = timer_font.render(time_text, True, timer_color)
+        score_render = timer_font.render(score_text, True, (255, 255, 255))
+        
+        # Position and draw timer
+        self.screen.blit(timer_bg, (10, 10))
+        self.screen.blit(timer_render, (20, 20))
+        self.screen.blit(score_render, (170, 20))
+        
+        # Draw progress bar under timer
+        progress_width = 280
+        progress_height = 8
+        bar_filled = max(0, min(1, 1 - (self.time_remaining / self.game_duration))) * progress_width
+        
+        # Background of progress bar
+        pygame.draw.rect(self.screen, (100, 100, 100), (20, 45, progress_width, progress_height))
+        # Filled portion of progress bar
+        pygame.draw.rect(self.screen, timer_color, (20, 45, int(bar_filled), progress_height))
+        
+    def _draw_game_completed(self):
+        """Draw game completed/over message"""
+        # Create semi-transparent overlay
+        overlay = pygame.Surface((self.screen_width, self.screen_height), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 150))  # Semi-transparent black
+        
+        # Create font objects
+        big_font = pygame.font.SysFont(None, 72)
+        medium_font = pygame.font.SysFont(None, 48)
+        small_font = pygame.font.SysFont(None, 36)
+        
+        # Game over text
+        game_over_text = big_font.render("Time's Up!", True, (255, 255, 255))
+        final_score_text = medium_font.render(f"Final Score: {int(self.score)}", True, (255, 215, 0))
+        
+        # Instructions
+        instruction_text = small_font.render("Press ESC to exit", True, (200, 200, 200))
+        
+        # Calculate positions
+        game_over_rect = game_over_text.get_rect(center=(self.screen_width//2, self.screen_height//2 - 60))
+        score_rect = final_score_text.get_rect(center=(self.screen_width//2, self.screen_height//2))
+        instruction_rect = instruction_text.get_rect(center=(self.screen_width//2, self.screen_height//2 + 70))
+        
+        # Draw overlay and text
+        self.screen.blit(overlay, (0, 0))
+        self.screen.blit(game_over_text, game_over_rect)
+        self.screen.blit(final_score_text, score_rect)
+        self.screen.blit(instruction_text, instruction_rect)
     
     def _get_hand_controls(self):
         """
@@ -513,6 +931,14 @@ class Game:
         self.camera.cleanup()
         pygame.quit()
 
+    def _check_track_generation(self):
+        # השבתת יצירת מקטעי מסלול מאחר ש-MovingRoadGenerator מטפל במסלול
+        pass
+
+    def _generate_track_segment(self, count):
+        # השבתת יצירת מקטעים
+        pass
+
 def run_game(mode="normal", hand_detector=None, show_tutorial=True, config=None):
     """
     Run the game with the specified mode
@@ -545,3 +971,5 @@ def run_game(mode="normal", hand_detector=None, show_tutorial=True, config=None)
     finally:
         # Clean up
         game.cleanup()
+
+
