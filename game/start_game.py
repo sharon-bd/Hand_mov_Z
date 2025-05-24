@@ -122,10 +122,9 @@ class Game:
         self.distance_traveled = 0
         self.last_position = None
         
-        # יצירת מחלקת הרנדור
+        # יצירת מחלקת הרנדור עם מסלול נע
         self.renderer = GameRenderer(self.screen_width, self.screen_height)
-        
-        print("🎮 Game launcher initialized")
+        print("🎮 Game launcher initialized with moving road")
     
     def set_mode(self, mode, config=None):
         """
@@ -357,16 +356,16 @@ class Game:
             game_state = {
                 'car': self.car,
                 'obstacles': self.obstacle_manager.obstacles if self.obstacle_manager else [],
-                'power_ups': [],  # אין כוחות כרגע
+                'power_ups': [],
                 'score': self.score,
                 'health': self.car.health if hasattr(self.car, 'health') else 100,
                 'time_left': self.time_remaining,
-                'scroll_speed': self.car.speed * self.car.max_speed if hasattr(self.car, 'speed') and hasattr(self.car, 'max_speed') else 0,
+                'scroll_speed': self.car.speed * self.car.max_speed,  # חשוב!
                 'dt': dt,
                 'world_offset_x': self.world_offset_x,
                 'world_offset_y': self.world_offset_y
             }
-            
+
             # Pass the game state to the renderer
             self.renderer.render_game(self.screen, game_state)
             

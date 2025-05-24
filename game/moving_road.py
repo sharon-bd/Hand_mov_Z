@@ -56,6 +56,16 @@ class MovingRoadGenerator:
         # Add moving particles for a sense of speed
         self.particles = []
         self._generate_particles(50)  # Generate 50 particles
+
+        # הוספת חלקיקים לאפקט מהירות
+        self.speed_particles = []
+        for _ in range(30):
+            self.speed_particles.append({
+                'x': random.randint(0, screen_width),
+                'y': random.randint(0, screen_height),
+                'speed': random.uniform(1.5, 3.0),
+                'size': random.randint(1, 2)
+            })
     
     def _generate_road_elements(self, count):
         """
@@ -332,6 +342,15 @@ class MovingRoadGenerator:
                 particle['x'] = self.screen_width + wrap_margin
                 particle['y'] = random.randint(-wrap_margin, self.screen_height + wrap_margin)
 
+        # עדכון חלקיקי המהירות
+        for particle in self.speed_particles:
+            # תנועת החלקיקים בכיוון ההפוך לתנועה
+            particle['y'] += base_scroll_speed * particle['speed'] * dt
+            # איפוס חלקיק שיצא מהמסך
+            if particle['y'] > self.screen_height:
+                particle['y'] = -10
+                particle['x'] = random.randint(0, self.screen_width)
+
     def draw(self, screen, world_offset_x=0, world_offset_y=0):
         """
         ציור המסלול הנע על המסך
@@ -343,6 +362,23 @@ class MovingRoadGenerator:
         """
         # מילוי הרקע בצבע דשא
         screen.fill(self.grass_color)
+        
+        # ===== תיקון: הגריד צריך לזוז עם המכונית =====
+        grid_size = 100
+        grid_color = (90, 120, 90)
+        
+        # חישוב היסט הגריד - הגריד זז הפוך לכיוון תנועת המכונית
+        grid_offset_x = int(-self.scroll_x) % grid_size
+        grid_offset_y = int(-self.scroll_y) % grid_size
+        
+        # ציור קווי גריד ישירות על המסך (לפני יצירת משטח המסלול)
+        # קווים אנכיים
+        for x in range(grid_offset_x, screen.get_width(), grid_size):
+            pygame.draw.line(screen, grid_color, (x, 0), (x, screen.get_height()), 2)
+        
+        # קווים אופקיים
+        for y in range(grid_offset_y, screen.get_height(), grid_size):
+            pygame.draw.line(screen, grid_color, (0, y), (screen.get_width(), y), 2)
         
         # יצירת משטח זמני למסלול שניתן לסובב
         road_surface = pygame.Surface((self.screen_width * 3, self.screen_height * 3), pygame.SRCALPHA)
@@ -775,6 +811,14 @@ class MovingRoadGenerator:
                             particle['size']
                         )
 
+        # ציור חלקיקי מהירות (אפקט מהירות)
+        for particle in self.speed_particles:
+            alpha = int(120 + 120 * min(1.0, self.speed))
+            color = (255, 255, 255, alpha)
+            s = pygame.Surface((particle['size'], 12), pygame.SRCALPHA)
+            pygame.draw.rect(s, color, (0, 0, particle['size'], 12))
+            screen.blit(s, (int(particle['x']), int(particle['y'])))
+        
         # סיבוב משטח המסלול כולו
         rotated_road = pygame.transform.rotate(road_surface, self.rotation)
         rotated_rect = rotated_road.get_rect(center=(self.screen_width // 2, self.screen_height // 2))

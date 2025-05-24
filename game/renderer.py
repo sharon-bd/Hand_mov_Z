@@ -89,80 +89,20 @@ class GameRenderer:
         power_ups = game_state.get('power_ups', [])
         score = game_state.get('score', 0)
         
-        # וודא שהעולם ממורכז סביב המכונית - הדגש את ההיסט
+        # וודא שהעולם ממורכז סביב המכונית
         world_offset_x = game_state.get('world_offset_x', 0)
         world_offset_y = game_state.get('world_offset_y', 0)
-        
-        # וידוא שערכי ההיסט תקינים - אם הם 0, בדוק אם יש מידע מיקום מהמכונית
-        if world_offset_x == 0 and world_offset_y == 0 and car:
-            if hasattr(car, 'x') and hasattr(car, 'y'):
-                # חישוב היסט מבוסס על המכונית במרכז
-                screen_center_x = self.screen_width // 2
-                screen_center_y = self.screen_height - 100  # קרוב לתחתית המסך
-                
-                world_offset_x = car.x - screen_center_x 
-                world_offset_y = car.y - screen_center_y
-        
-        # Debug - הצג מידע על ההיסט בקונסולה לעזור באבחון
-        if random.random() < 0.01:  # 1% מהפריימים
-            print(f"Movement debug - World offset: ({world_offset_x:.1f}, {world_offset_y:.1f})")
-            print(f"Movement debug - Car position: ({game_state['car'].x:.1f}, {game_state['car'].y:.1f})")
         
         # ניקוי המסך
         screen.fill(self.colors['black'])
         
-        # שימוש תמידי במסלול הנע
+        # שימוש במסלול הנע
         if car:
             car_rotation = getattr(car, 'rotation', 0.0)
             car_speed = getattr(car, 'speed', 0.0)
-            max_speed = getattr(car, 'max_speed', 100.0)
-            normalized_speed = car_speed / max_speed if max_speed > 0 else 0.0
-
-            # מרכז המסך (נקודת המכונית)
-            screen_center_x = self.screen_width // 2
-            screen_center_y = self.screen_height - 100
-
-            # היסט העולם: כמה המכונית רחוקה מהמרכז
-            # העצמת תחושת התנועה: הכפל את ההיסט בפקטור שתלוי במהירות
-            movement_factor = 1.0 + min(4.0, normalized_speed * 5.0)
-            world_offset_x = (car.x - screen_center_x) * movement_factor
-            world_offset_y = (car.y - screen_center_y) * movement_factor
-
-            # הוסף רעידות קלות לפי מהירות המכונית
-            if normalized_speed > 0.1:
-                vibration = normalized_speed * 2.0
-                world_offset_x += random.uniform(-vibration, vibration)
-                world_offset_y += random.uniform(-vibration, vibration)
-
-            self.moving_road.update(car_rotation, normalized_speed, game_state.get('dt', 0.016))
+            # עדכון ורנדור המסלול הנע
+            self.moving_road.update(car_rotation, car_speed, game_state.get('dt', 0.016))
             self.moving_road.draw(screen, world_offset_x, world_offset_y)
-
-            # Create motion blur effect when car is moving fast
-            if normalized_speed > 0.5:
-                # Create a transparent overlay based on speed
-                alpha = int(min(150, normalized_speed * 200))
-                blur_overlay = pygame.Surface((self.screen_width, self.screen_height), pygame.SRCALPHA)
-                blur_overlay.fill((0, 0, 0, alpha))
-                
-                # Create streak lines
-                num_streaks = int(normalized_speed * 30)  # More streaks at higher speeds
-                for _ in range(num_streaks):
-                    start_x = random.randint(0, self.screen_width)
-                    start_y = random.randint(0, self.screen_height)
-                    length = random.randint(20, 100) * normalized_speed
-                    
-                    # Draw streak in direction of movement
-                    angle = math.radians(car_rotation)
-                    end_x = start_x - int(math.sin(angle) * length)
-                    end_y = start_y + int(math.cos(angle) * length)
-                    
-                    # Random white/gray streaks
-                    brightness = random.randint(150, 255)
-                    pygame.draw.line(blur_overlay, (brightness, brightness, brightness, 80), 
-                                   (start_x, start_y), (end_x, end_y), 1)
-                
-                # Apply the motion blur
-                screen.blit(blur_overlay, (0, 0))
         else:
             # חזרה למסלול סטטי אם אין מכונית
             self._draw_scrolling_road(screen, game_state.get('scroll_speed', self.scroll_speed))
