@@ -300,9 +300,12 @@ class MovingRoadGenerator:
         
         angle_rad = math.radians(rotation)
         
-        # תיקון: עדכון ערכי הגלילה בצורה רציפה
+        # Update internal scroll values
         self.scroll_x += base_scroll_speed * math.sin(angle_rad) * dt
         self.scroll_y += base_scroll_speed * math.cos(angle_rad) * dt
+        
+        # Update car's visual rotation if the road itself is meant to rotate
+        # self.rotation = rotation # Currently, self.rotation seems to stay 0. This is fine if rotation is handled by scroll vectors.
         
         # שמירת מהירות לשימוש בחלקיקים ובגריד
         self.speed = speed
@@ -360,9 +363,8 @@ class MovingRoadGenerator:
         # ציור סימוני נתיבים עם התאמה לגלילה
         for lane in range(2):  # 2 קווי נתיב ל-3 נתיבים
             lane_x = center_x - self.road_width // 2 + self.road_width * (lane + 1) // 3
-            # גלילה הסימונים באופן חלק ועקבי עם תנועת הרכב
-            y_offset = int(self.scroll_y + world_offset_y * 2) % (self.lane_length + self.lane_gap)
-            
+            # Use internal scroll_y for lane markings
+            y_offset = int(self.scroll_y) % (self.lane_length + self.lane_gap)
             for y in range(int(-y_offset), road_surface.get_height(), self.lane_length + self.lane_gap):
                 pygame.draw.rect(
                     road_surface,
@@ -370,24 +372,24 @@ class MovingRoadGenerator:
                     (lane_x - self.lane_width // 2, y, self.lane_width, self.lane_length)
                 )
         
-        # תיקון הגריד: שימוש משולב של גלילה והיסט עולם
+        # ===== Grid drawing using only internal scroll_x and scroll_y =====
         grid_size = 100
         grid_color = (90, 120, 90)
         
-        # שילוב של גלילה פנימית והיסט עולם מהמכונית
-        grid_offset_x = int(self.scroll_x + world_offset_x * 0.5) % grid_size
-        grid_offset_y = int(self.scroll_y + world_offset_y * 0.5) % grid_size
+        # Calculate grid offset based purely on internal scroll values
+        grid_offset_x = int(-self.scroll_x) % grid_size
+        grid_offset_y = int(-self.scroll_y) % grid_size
+
+        for x_coord in range(grid_offset_x - grid_size, road_surface.get_width() + grid_size, grid_size):
+            pygame.draw.line(road_surface, grid_color, (x_coord, 0), (x_coord, road_surface.get_height()), 3)
+        for y_coord in range(grid_offset_y - grid_size, road_surface.get_height() + grid_size, grid_size):
+            pygame.draw.line(road_surface, grid_color, (0, y_coord), (road_surface.get_width(), y_coord), 3)
         
-        # ציור קווי גריד עם עובי גדול יותר לנראות טובה יותר
-        for y in range(-grid_offset_y, road_surface.get_height() + grid_size, grid_size):
-            pygame.draw.line(road_surface, grid_color, (0, y), (road_surface.get_width(), y), 3)
-        
-        for x in range(-grid_offset_x, road_surface.get_width() + grid_size, grid_size):
-            pygame.draw.line(road_surface, grid_color, (x, 0), (x, road_surface.get_height()), 3)
-        
-        # תיקון אלמנטי המסלול: שימוש נכון בהיסט העולם
-        element_offset_x = int(self.scroll_x + world_offset_x * 1.5) % road_surface.get_width()
-        element_offset_y = int(self.scroll_y + world_offset_y * 1.5) % road_surface.get_height()
+        # Road elements can still use world_offset_x/y for parallax if needed
+        # The element_offset calculation below uses world_offset_x/y for parallax.
+        # This is separate from the grid's scrolling.
+        element_world_offset_x = int(self.scroll_x + world_offset_x * 1.5)
+        element_world_offset_y = int(self.scroll_y + world_offset_y * 1.5)
         
         # הוספת רעש דיבוג מדי פעם להראות את ערכי ההיסטים
         if random.random() < 0.01:  # 1% מהפריימים
@@ -399,10 +401,14 @@ class MovingRoadGenerator:
             base_x = center_x + (element['x'] - self.screen_width / 2)
             base_y = center_y + (element['y'] - self.screen_height / 2)
             
-            # החלת היסטי גלילה ועולם - הגדלת אפקט התנועה עם מכפיל
-            movement_multiplier = 1.2  # הגדלת אפקט התנועה
-            element_x = (base_x - element_offset_x * movement_multiplier) % road_surface.get_width()
-            element_y = (base_y - element_offset_y * movement_multiplier) % road_surface.get_height()
+            # Apply scrolling and parallax for road elements
+            # Note: Using element_world_offset_x/y which includes world_offset_x/y for parallax
+            current_element_offset_x = element_world_offset_x % road_surface.get_width()
+            current_element_offset_y = element_world_offset_y % road_surface.get_height()
+
+            movement_multiplier = 1.2
+            element_x = (base_x - current_element_offset_x * movement_multiplier) % road_surface.get_width()
+            element_y = (base_y - current_element_offset_y * movement_multiplier) % road_surface.get_height()
             
             # ציור האלמנט בהתאם לסוג
             if element['type'] == 'rock':
@@ -678,9 +684,13 @@ class MovingRoadGenerator:
             base_x = center_x + (marking['x'] - self.screen_width / 2)
             base_y = center_y + (marking['y'] - self.screen_height / 2)
             
-            # Calculate screen position with offset
-            element_x = (base_x - element_offset_x * movement_multiplier) % road_surface.get_width()
-            element_y = (base_y - element_offset_y * movement_multiplier) % road_surface.get_height()
+            # Calculate screen position with offset, using the same logic as road_elements for consistency
+            current_marking_offset_x = element_world_offset_x % road_surface.get_width() # Using element_world_offset for markings too
+            current_marking_offset_y = element_world_offset_y % road_surface.get_height()
+
+            movement_multiplier_marking = 1.2 # Can be different if needed
+            element_x = (base_x - current_marking_offset_x * movement_multiplier_marking) % road_surface.get_width()
+            element_y = (base_y - current_marking_offset_y * movement_multiplier_marking) % road_surface.get_height()
             
             # Draw different marker styles for left/right sides
             if marking['side'] == 'left':
@@ -731,10 +741,17 @@ class MovingRoadGenerator:
         
         # Draw particles for dynamic motion effect
         for particle in self.particles:
-            # Convert world coordinates to screen coordinates
-            particle_screen_x = (particle['x'] + world_offset_x) % road_surface.get_width()
-            particle_screen_y = (particle['y'] + world_offset_y) % road_surface.get_height()
+            # Convert world coordinates to screen coordinates for particles
+            # Particles are drawn relative to the road_surface, their x,y are already world-like
+            # but need to be mapped onto the potentially larger road_surface and account for its own scrolling.
+            # The particle positions are updated in self.update based on car movement (scroll_x, scroll_y logic).
+            # So, their positions are already "world" positions.
+            # To draw them on the road_surface, they need to be offset by the same amount as other elements.
             
+            particle_on_surface_x = (particle['x'] - element_world_offset_x * particle['speed']) % road_surface.get_width()
+            particle_on_surface_y = (particle['y'] - element_world_offset_y * particle['speed']) % road_surface.get_height()
+
+
             # Make particles fade in/out based on speed
             if hasattr(self, 'speed'):
                 alpha = int(min(255, self.speed * 500))
@@ -745,26 +762,22 @@ class MovingRoadGenerator:
                         pygame.draw.line(
                             road_surface,
                             (*particle['color'], min(255, alpha)),
-                            (int(particle_screen_x), int(particle_screen_y)),
-                            (int(particle_screen_x), int(particle_screen_y + elongation)),
+                            (int(particle_on_surface_x), int(particle_on_surface_y)),
+                            (int(particle_on_surface_x), int(particle_on_surface_y + elongation)),
                             particle['size']
                         )
                     else:
                         # Regular circle for slower speeds
                         pygame.draw.circle(
                             road_surface,
-                            particle['color'],
-                            (int(particle_screen_x), int(particle_screen_y)),
+                            particle['color'], # Alpha already applied if needed
+                            (int(particle_on_surface_x), int(particle_on_surface_y)),
                             particle['size']
                         )
 
         # סיבוב משטח המסלול כולו
         rotated_road = pygame.transform.rotate(road_surface, self.rotation)
-        
-        # מיקום משטח המסלול המסובב במרכז המסך
         rotated_rect = rotated_road.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
-        
-        # ציור המסלול המסובב על המסך
         screen.blit(rotated_road, rotated_rect)
     
     def reset(self):

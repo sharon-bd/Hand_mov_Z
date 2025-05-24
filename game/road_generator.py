@@ -9,7 +9,6 @@ of the screen.
 import pygame
 import math
 import random
-import numpy as np
 
 class MovingRoadGenerator:
     """Class that generates a moving road based on car movement"""
@@ -40,6 +39,9 @@ class MovingRoadGenerator:
         self.scroll_y = 0
         self.scroll_x = 0
         self.rotation = 0
+        
+        # Speed tracking for particles and grid
+        self.speed = 0
         
         # Scroll speed parameters
         self.max_scroll_speed = 500  # Maximum scroll speed in pixels per second
@@ -133,106 +135,7 @@ class MovingRoadGenerator:
                 'side': 'right',
                 'number': i
             })
-        
-        fence_spacing = 50
-        fence_length = self.screen_height * 3
-        num_fence_posts = int(fence_length / fence_spacing)
-        
-        for i in range(num_fence_posts):
-            self.road_elements.append({
-                'x': self.screen_width / 2 - self.road_width / 2 - 45,
-                'y': -500 + i * fence_spacing,
-                'size': 4,
-                'color': (120, 100, 80),
-                'type': 'fence_post'
-            })
-            
-            self.road_elements.append({
-                'x': self.screen_width / 2 + self.road_width / 2 + 45,
-                'y': -500 + i * fence_spacing,
-                'size': 4,
-                'color': (120, 100, 80),
-                'type': 'fence_post'
-            })
-        
-        for i in range(5):
-            self.road_elements.append({
-                'x': self.screen_width / 2 - self.road_width / 2 - 80,
-                'y': -200 + i * 800,
-                'size': 20,
-                'color': (220, 220, 220),
-                'type': 'milestone',
-                'number': i+1
-            })
-            
-            self.road_elements.append({
-                'x': self.screen_width / 2 + self.road_width / 2 + 80,
-                'y': -200 + i * 800 + 400,
-                'size': 20,
-                'color': (220, 220, 220),
-                'type': 'milestone',
-                'number': i+1
-            })
-        
-        for i in range(10):
-            self.road_elements.append({
-                'x': self.screen_width / 2 - self.road_width / 2 - 70 + random.randint(-10, 10),
-                'y': -300 + i * 600 + random.randint(-50, 50),
-                'size': 15,
-                'color': (255, 0, 0),
-                'type': 'stop_sign'
-            })
-            
-            self.road_elements.append({
-                'x': self.screen_width / 2 + self.road_width / 2 + 70 + random.randint(-10, 10),
-                'y': -600 + i * 600 + random.randint(-50, 50),
-                'size': 14,
-                'color': (255, 255, 255),
-                'type': 'speed_sign'
-            })
-        
-        car_colors = [(255, 0, 0), (0, 0, 255), (0, 255, 0), (255, 255, 0), (255, 165, 0)]
-        for i in range(8):
-            side = random.choice([-1, 1])
-            self.road_elements.append({
-                'x': self.screen_width / 2 + side * (self.road_width / 2 + 50 + random.randint(0, 30)),
-                'y': -400 + i * 800 + random.randint(-100, 100),
-                'size': 20,
-                'color': random.choice(car_colors),
-                'type': 'parked_car',
-                'rotation': random.randint(0, 359) if random.random() < 0.3 else 0
-            })
-        
-        building_colors = [(100, 100, 100), (120, 100, 80), (80, 80, 100), (70, 90, 70)]
-        for i in range(15):
-            side = random.choice([-1, 1])
-            distance = random.randint(120, 300)
-            height = random.randint(40, 100)
-            width = random.randint(40, 80)
-            
-            self.road_elements.append({
-                'x': self.screen_width / 2 + side * (self.road_width / 2 + distance),
-                'y': -800 + i * 400 + random.randint(-100, 100),
-                'width': width,
-                'height': height,
-                'color': random.choice(building_colors),
-                'type': 'building'
-            })
-        
-        billboard_texts = ["SALE!", "EAT AT JOE'S", "GAME ON", "DRIVE SAFE", "NEW PHONES"]
-        for i in range(6):
-            side = random.choice([-1, 1])
-            self.road_elements.append({
-                'x': self.screen_width / 2 + side * (self.road_width / 2 + 100),
-                'y': -700 + i * 700 + random.randint(-50, 50),
-                'size': 25,
-                'width': 80,
-                'height': 40,
-                'color': (200, 200, 200),
-                'text': random.choice(billboard_texts),
-                'type': 'billboard'
-            })
-    
+
     def _generate_track_markings(self, count):
         """
         Generate visual markings on the road to emphasize motion
@@ -293,26 +196,18 @@ class MovingRoadGenerator:
             speed: Normalized car speed (0.0 to 1.0)
             dt: Time delta in seconds
         """
-        if random.random() < 0.01:
-            print(f"MovingRoad update: direction={rotation}, speed={speed}, dt={dt}")
+        # Save speed for use in drawing
+        self.speed = speed
         
-        base_scroll_speed = self.max_scroll_speed * speed * (self.car_max_speed / 300.0)
+        # Calculate scroll speed based on car speed
+        base_scroll_speed = self.max_scroll_speed * speed
         
+        # Convert rotation to radians
         angle_rad = math.radians(rotation)
         
-        self.scroll_x -= base_scroll_speed * math.sin(angle_rad) * dt
+        # Update scroll values based on car movement
+        self.scroll_x += base_scroll_speed * math.sin(angle_rad) * dt
         self.scroll_y += base_scroll_speed * math.cos(angle_rad) * dt
-        
-        self.scroll_y %= 10000
-        self.scroll_x %= 10000
-        
-        target_rotation = -rotation
-        
-        rotation_diff = (target_rotation - self.rotation + 180) % 360 - 180
-        
-        self.rotation += rotation_diff * min(1.0, dt * 3)
-        
-        self.rotation %= 360
         
         # Update particles positions based on car movement
         for particle in self.particles:
@@ -321,7 +216,6 @@ class MovingRoadGenerator:
             particle['x'] -= base_scroll_speed * particle['speed'] * math.sin(angle_rad) * dt
             
             # Wrap around screen when they go out of bounds
-            # Make the wrapping area larger than the screen for a smooth effect
             wrap_margin = 500
             if particle['y'] > self.screen_height + wrap_margin:
                 particle['y'] = -wrap_margin
@@ -368,7 +262,7 @@ class MovingRoadGenerator:
         # ציור סימוני נתיבים עם התאמה לגלילה
         for lane in range(2):  # 2 קווי נתיב ל-3 נתיבים
             lane_x = center_x - self.road_width // 2 + self.road_width * (lane + 1) // 3
-            # גלילה הסימונים באופן חלק ועקבי עם תנועת הרכב
+            # גלילת הסימונים באופן חלק ועקבי עם תנועת הרכב
             y_offset = int(self.scroll_y) % (self.lane_length + self.lane_gap)
             
             for y in range(int(-y_offset), road_surface.get_height(), self.lane_length + self.lane_gap):
@@ -378,42 +272,34 @@ class MovingRoadGenerator:
                     (lane_x - self.lane_width // 2, y, self.lane_width, self.lane_length)
                 )
         
-        # הוספת אזור המחשה לתנועה ברורה - גריד ברקע
+        # ===== תיקון קריטי: הגריד צריך לזוז עם המכונית =====
         grid_size = 100
-        grid_color = (90, 120, 90)  # ירוק כהה מעט יותר מהדשא
+        grid_color = (90, 120, 90)
         
-        # יצירת גריד שמגיב להיסט העולם - מדגיש את התנועה
-        # שיפור: הוספת כפל של היסט העולם כדי להפוך את התזוזה לברורה יותר
-        grid_offset_x = int(self.scroll_x * 0.5 - world_offset_x) % grid_size
-        grid_offset_y = int(self.scroll_y * 0.5 - world_offset_y) % grid_size
+        # חישוב היסט הגריד - הגריד זז הפוך מכיוון תנועת המכונית, מבוסס על הגלילה הפנימית בלבד
+        grid_offset_x = int(-self.scroll_x) % grid_size
+        grid_offset_y = int(-self.scroll_y) % grid_size
         
-        # ציור קווי גריד אופקיים
-        for y in range(-grid_offset_y, road_surface.get_height(), grid_size):
-            pygame.draw.line(road_surface, grid_color, (0, y), (road_surface.get_width(), y), 1)
+        # ציור קווי גריד אנכיים - עם כיסוי מלא של המשטח
+        for x in range(grid_offset_x - grid_size, road_surface.get_width() + grid_size, grid_size):
+            pygame.draw.line(road_surface, grid_color, (x, 0), (x, road_surface.get_height()), 3)
         
-        # ציור קווי גריד אנכיים
-        for x in range(-grid_offset_x, road_surface.get_width(), grid_size):
-            pygame.draw.line(road_surface, grid_color, (x, 0), (x, road_surface.get_height()), 1)
+        # ציור קווי גריד אופקיים - עם כיסוי מלא של המשטח
+        for y in range(grid_offset_y - grid_size, road_surface.get_height() + grid_size, grid_size):
+            pygame.draw.line(road_surface, grid_color, (0, y), (road_surface.get_width(), y), 3)
         
-        # ציור אלמנטי המסלול עם גלילה והיסט עולם
-        # שיפור: הפרדת חישוב ההיסט לפי הציר, והדגשת ההיסטים
-        element_offset_x = int(self.scroll_x - world_offset_x * 1.5) % road_surface.get_width()
-        element_offset_y = int(self.scroll_y - world_offset_y * 1.5) % road_surface.get_height()
-        
-        # הוספת רעש דיבוג מדי פעם להראות את ערכי ההיסטים
-        if random.random() < 0.01:  # 1% מהפריימים
-            print(f"Debug: Scroll XY=({self.scroll_x:.1f}, {self.scroll_y:.1f}), World offset=({world_offset_x:.1f}, {world_offset_y:.1f})")
-            print(f"Debug: Element offset=({element_offset_x:.1f}, {element_offset_y:.1f})")
+        # ציור אלמנטי המסלול
+        element_offset_x = int(self.scroll_x) % road_surface.get_width()
+        element_offset_y = int(self.scroll_y) % road_surface.get_height()
         
         for element in self.road_elements:
             # המרת קואורדינטות למערכת הקואורדינטות של משטח המסלול
             base_x = center_x + (element['x'] - self.screen_width / 2)
             base_y = center_y + (element['y'] - self.screen_height / 2)
             
-            # החלת היסטי גלילה ועולם - הגדלת אפקט התנועה עם מכפיל
-            movement_multiplier = 1.2  # הגדלת אפקט התנועה
-            element_x = (base_x - element_offset_x * movement_multiplier) % road_surface.get_width()
-            element_y = (base_y - element_offset_y * movement_multiplier) % road_surface.get_height()
+            # החלת היסטי גלילה
+            element_x = (base_x - element_offset_x) % road_surface.get_width()
+            element_y = (base_y - element_offset_y) % road_surface.get_height()
             
             # ציור האלמנט בהתאם לסוג
             if element['type'] == 'rock':
@@ -464,196 +350,6 @@ class MovingRoadGenerator:
                      element['size'] * 2, 
                      marker_height)
                 )
-                
-                pygame.draw.rect(
-                    road_surface,
-                    (0, 0, 0),
-                    (int(element_x - element['size']), 
-                     int(element_y - marker_height / 2),
-                     element['size'] * 2, 
-                     5)
-                )
-            
-            elif element['type'] == 'fence_post':
-                post_height = element['size'] * 4
-                pygame.draw.rect(
-                    road_surface,
-                    element['color'],
-                    (int(element_x - element['size'] / 2), 
-                     int(element_y - post_height / 2),
-                     element['size'], 
-                     post_height)
-                )
-                
-                pygame.draw.line(
-                    road_surface,
-                    element['color'],
-                    (int(element_x - element['size'] * 3), int(element_y - post_height / 4)),
-                    (int(element_x + element['size'] * 3), int(element_y - post_height / 4)),
-                    2
-                )
-            
-            elif element['type'] == 'milestone':
-                pygame.draw.circle(
-                    road_surface,
-                    element['color'],
-                    (int(element_x), int(element_y)),
-                    element['size']
-                )
-                
-                font_size = max(10, int(element['size'] * 1.2))
-                milestone_font = pygame.font.SysFont(None, font_size)
-                number_text = milestone_font.render(str(element['number']), True, (0, 0, 0))
-                number_rect = number_text.get_rect(center=(int(element_x), int(element_y)))
-                road_surface.blit(number_text, number_rect)
-            
-            elif element['type'] == 'stop_sign':
-                pygame.draw.polygon(
-                    road_surface,
-                    element['color'],
-                    [
-                        (int(element_x), int(element_y - element['size'])),
-                        (int(element_x + element['size'] * 0.7), int(element_y - element['size'] * 0.7)),
-                        (int(element_x + element['size']), int(element_y)),
-                        (int(element_x + element['size'] * 0.7), int(element_y + element['size'] * 0.7)),
-                        (int(element_x), int(element_y + element['size'])),
-                        (int(element_x - element['size'] * 0.7), int(element_y + element['size'] * 0.7)),
-                        (int(element_x - element['size']), int(element_y)),
-                        (int(element_x - element['size'] * 0.7), int(element_y - element['size'] * 0.7))
-                    ]
-                )
-                stop_font = pygame.font.SysFont(None, int(element['size'] * 1.5))
-                stop_text = stop_font.render("STOP", True, (255, 255, 255))
-                stop_rect = stop_text.get_rect(center=(int(element_x), int(element_y)))
-                road_surface.blit(stop_text, stop_rect)
-                
-                pygame.draw.rect(
-                    road_surface,
-                    (100, 100, 100),
-                    (int(element_x - 2), int(element_y + element['size']), 4, element['size'] * 3)
-                )
-                
-            elif element['type'] == 'speed_sign':
-                pygame.draw.circle(
-                    road_surface,
-                    element['color'],
-                    (int(element_x), int(element_y)),
-                    element['size']
-                )
-                pygame.draw.circle(
-                    road_surface,
-                    (255, 0, 0),
-                    (int(element_x), int(element_y)),
-                    element['size'],
-                    2
-                )
-                
-                speed_font = pygame.font.SysFont(None, int(element['size'] * 1.8))
-                speed_text = speed_font.render(str(random.choice([30, 50, 70, 90])), True, (0, 0, 0))
-                speed_rect = speed_text.get_rect(center=(int(element_x), int(element_y)))
-                road_surface.blit(speed_text, speed_rect)
-                
-                pygame.draw.rect(
-                    road_surface,
-                    (100, 100, 100),
-                    (int(element_x - 2), int(element_y + element['size']), 4, element['size'] * 3)
-                )
-                
-            elif element['type'] == 'parked_car':
-                car_width = element['size'] * 2
-                car_height = element['size']
-                
-                pygame.draw.rect(
-                    road_surface,
-                    element['color'],
-                    (int(element_x - car_width/2), int(element_y - car_height/2), car_width, car_height),
-                    0,
-                    3
-                )
-                
-                pygame.draw.rect(
-                    road_surface,
-                    (200, 200, 255),
-                    (int(element_x - car_width/3), int(element_y - car_height/3), car_width/3, car_height/3),
-                    0,
-                    2
-                )
-                
-                wheel_size = element['size'] / 4
-                pygame.draw.circle(
-                    road_surface,
-                    (0, 0, 0),
-                    (int(element_x - car_width/3), int(element_y + car_height/2)),
-                    int(wheel_size)
-                )
-                pygame.draw.circle(
-                    road_surface,
-                    (0, 0, 0),
-                    (int(element_x + car_width/3), int(element_y + car_height/2)),
-                    int(wheel_size)
-                )
-                
-            elif element['type'] == 'building':
-                pygame.draw.rect(
-                    road_surface,
-                    element['color'],
-                    (int(element_x - element['width']/2), int(element_y - element['height']/2), 
-                     element['width'], element['height'])
-                )
-                
-                window_size = min(8, element['width'] / 6)
-                num_floors = int(element['height'] / (window_size * 2))
-                num_columns = int(element['width'] / (window_size * 2))
-                
-                for floor in range(num_floors):
-                    for col in range(num_columns):
-                        window_x = element_x - element['width']/2 + window_size + col * window_size * 2
-                        window_y = element_y - element['height']/2 + window_size + floor * window_size * 2
-                        
-                        if random.random() < 0.3:
-                            window_color = (255, 255, 0)
-                        else:
-                            window_color = (100, 100, 150)
-                            
-                        pygame.draw.rect(
-                            road_surface,
-                            window_color,
-                            (int(window_x), int(window_y), int(window_size), int(window_size))
-                        )
-                        
-            elif element['type'] == 'billboard':
-                pygame.draw.rect(
-                    road_surface,
-                    element['color'],
-                    (int(element_x - element['width']/2), int(element_y - element['height']/2), 
-                     element['width'], element['height'])
-                )
-                
-                pygame.draw.rect(
-                    road_surface,
-                    (0, 0, 0),
-                    (int(element_x - element['width']/2), int(element_y - element['height']/2), 
-                     element['width'], element['height']),
-                    2
-                )
-                
-                billboard_font = pygame.font.SysFont(None, min(24, int(element['width'] / len(element['text']))))
-                billboard_text = billboard_font.render(element['text'], True, (0, 0, 0))
-                billboard_rect = billboard_text.get_rect(center=(int(element_x), int(element_y)))
-                road_surface.blit(billboard_text, billboard_rect)
-                
-                pygame.draw.rect(
-                    road_surface,
-                    (100, 100, 100),
-                    (int(element_x - element['width']/4), int(element_y + element['height']/2), 
-                     4, element['height'] * 1.5)
-                )
-                pygame.draw.rect(
-                    road_surface,
-                    (100, 100, 100),
-                    (int(element_x + element['width']/4 - 4), int(element_y + element['height']/2), 
-                     4, element['height'] * 1.5)
-                )
         
         # Draw animated road markings with distinct visibility
         lanes = 3  # Number of lanes on the road
@@ -690,8 +386,8 @@ class MovingRoadGenerator:
             base_y = center_y + (marking['y'] - self.screen_height / 2)
             
             # Calculate screen position with offset
-            element_x = (base_x - element_offset_x * movement_multiplier) % road_surface.get_width()
-            element_y = (base_y - element_offset_y * movement_multiplier) % road_surface.get_height()
+            element_x = (base_x - element_offset_x) % road_surface.get_width()
+            element_y = (base_y - element_offset_y) % road_surface.get_height()
             
             # Draw different marker styles for left/right sides
             if marking['side'] == 'left':
@@ -720,51 +416,23 @@ class MovingRoadGenerator:
                     (int(element_x), int(element_y - 15)),
                     4
                 )
-            
-            # Draw number on every 10th marker for mile markers
-            if marking['number'] > 0 and marking['number'] % 1 == 0:
-                font_size = 16
-                marker_font = pygame.font.SysFont(None, font_size)
-                number_text = marker_font.render(str(marking['number']), True, (0, 0, 0))
-                
-                # Position the text on a white background square
-                bg_size = max(18, number_text.get_width() + 8)
-                pygame.draw.rect(
-                    road_surface,
-                    (255, 255, 255),
-                    (int(element_x - bg_size/2), int(element_y + 2), bg_size, bg_size)
-                )
-                
-                number_rect = number_text.get_rect(
-                    center=(int(element_x), int(element_y + 2 + bg_size/2))
-                )
-                road_surface.blit(number_text, number_rect)
         
         # Draw particles for dynamic motion effect
         for particle in self.particles:
-            # Convert world coordinates to screen coordinates
-            particle_screen_x = (particle['x'] - world_offset_x) % road_surface.get_width()
-            particle_screen_y = (particle['y'] - world_offset_y) % road_surface.get_height()
+            # Use particle position directly (already updated in update method)
+            particle_screen_x = int(particle['x'])
+            particle_screen_y = int(particle['y'])
             
-            # Make particles fade in/out based on speed
-            alpha = int(min(255, getattr(self, 'speed', 1.0) * 500))
-            if alpha > 0:
-                # Create a temporary surface with alpha
-                particle_surface = pygame.Surface((particle['size'] * 2, particle['size'] * 2), pygame.SRCALPHA)
-                pygame.draw.circle(
-                    particle_surface,
-                    (*particle['color'], alpha),
-                    (particle['size'], particle['size']),
-                    particle['size']
-                )
+            # Make particles more visible based on speed
+            if self.speed > 0.1:
                 # Using elongated particles for higher speeds adds to motion effect
-                if getattr(self, 'speed', 0.0) > 0.3:
-                    elongation = min(5, int(getattr(self, 'speed', 1.0) * 10))
+                if self.speed > 0.3:
+                    elongation = min(5, int(self.speed * 10))
                     pygame.draw.line(
                         road_surface,
-                        (*particle['color'], alpha),
-                        (int(particle_screen_x), int(particle_screen_y)),
-                        (int(particle_screen_x), int(particle_screen_y + elongation)),
+                        particle['color'],
+                        (particle_screen_x, particle_screen_y),
+                        (particle_screen_x, particle_screen_y + elongation),
                         particle['size']
                     )
                 else:
@@ -772,7 +440,7 @@ class MovingRoadGenerator:
                     pygame.draw.circle(
                         road_surface,
                         particle['color'],
-                        (int(particle_screen_x), int(particle_screen_y)),
+                        (particle_screen_x, particle_screen_y),
                         particle['size']
                     )
 
