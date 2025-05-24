@@ -7,9 +7,10 @@ import time
 import threading
 import cv2
 import numpy as np
+import random
 
 class HandCarConnectionManager:
-    """Manages the connection between hand gesture detection and car control"""
+    """מנהל חיבור בין מחוות היד למכונית"""
     
     def __init__(self, camera_index=0):
         """

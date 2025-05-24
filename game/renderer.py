@@ -113,23 +113,30 @@ class GameRenderer:
         
         # שימוש תמידי במסלול הנע
         if car:
-            # וידוא שיש למכונית מאפייני סיבוב ומהירות
             car_rotation = getattr(car, 'rotation', 0.0)
             car_speed = getattr(car, 'speed', 0.0)
-            
-            # נרמול המהירות
             max_speed = getattr(car, 'max_speed', 100.0)
             normalized_speed = car_speed / max_speed if max_speed > 0 else 0.0
-            
-            # הגברת השפעת ההיסט לפי מהירות המכונית
-            speed_boost_factor = max(1.0, 1.0 + normalized_speed * 3.0)
-            
-            # עדכון המסלול הנע עם ערכים אלה
+
+            # מרכז המסך (נקודת המכונית)
+            screen_center_x = self.screen_width // 2
+            screen_center_y = self.screen_height - 100
+
+            # היסט העולם: כמה המכונית רחוקה מהמרכז
+            # העצמת תחושת התנועה: הכפל את ההיסט בפקטור שתלוי במהירות
+            movement_factor = 1.0 + min(4.0, normalized_speed * 5.0)
+            world_offset_x = (car.x - screen_center_x) * movement_factor
+            world_offset_y = (car.y - screen_center_y) * movement_factor
+
+            # הוסף רעידות קלות לפי מהירות המכונית
+            if normalized_speed > 0.1:
+                vibration = normalized_speed * 2.0
+                world_offset_x += random.uniform(-vibration, vibration)
+                world_offset_y += random.uniform(-vibration, vibration)
+
             self.moving_road.update(car_rotation, normalized_speed, game_state.get('dt', 0.016))
-            
-            # הדגשת ההיסט בפי 2 לתחושת תנועה טובה יותר
-            self.moving_road.draw(screen, world_offset_x * speed_boost_factor, world_offset_y * speed_boost_factor)
-            
+            self.moving_road.draw(screen, world_offset_x, world_offset_y)
+
             # Create motion blur effect when car is moving fast
             if normalized_speed > 0.5:
                 # Create a transparent overlay based on speed

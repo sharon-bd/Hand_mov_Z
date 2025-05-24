@@ -211,9 +211,9 @@ class Game:
         # אתחול חיבור היד-מכונית
         if not self.connection.start():
             print("❌ נכשל באתחול חיבור היד-מכונית")
+            # תיקון: אל תצא מהמשחק, המשך עם פקדי מקלדת
             self.show_error_message("לא ניתן לאתחל את המצלמה",
-                                  "המשחק ימשיך ללא שליטה במחוות ידיים.")
-            return
+                                  "המשחק ימשיך עם פקדי מקלדת.")
         
         print("🏁 מתחיל לולאת משחק")
         
@@ -271,31 +271,57 @@ class Game:
                         self._generate_track_segment(force_segments)
                         print(f"נוצרו בכוח {force_segments} מקטעי מסלול נוספים")
             
-            # קבלת פקדים ממחוות הידיים
+            # תיקון: קבלת פקדים עם fallback למקלדת
             controls = self.connection.get_controls()
             
-            # קבלת תמונת מצלמה
+            # הוספת פקדי מקלדת כגיבוי
+            keys = pygame.key.get_pressed()
+            if keys[pygame.K_LEFT] or keys[pygame.K_a]:
+                controls['steering'] = max(-1.0, controls.get('steering', 0) - 1.0)
+            if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
+                controls['steering'] = min(1.0, controls.get('steering', 0) + 1.0)
+            if keys[pygame.K_UP] or keys[pygame.K_w]:
+                controls['throttle'] = min(1.0, controls.get('throttle', 0) + 0.5)
+            if keys[pygame.K_DOWN] or keys[pygame.K_s]:
+                controls['braking'] = True
+            if keys[pygame.K_SPACE]:
+                controls['boost'] = True
+            
+            # תיקון: קבלת תמונת מצלמה עם בדיקות שגיאות מחוזקות
+            camera_frame = None
+            data_panel = None
+            fps = 0
+            
             try:
                 import cv2
-                camera_frame, data_panel, fps = self.connection.get_visuals()
-                if camera_frame is not None:
-                    if self.show_opencv_window:
-                        try:
-                            cv2.imshow(self.opencv_window_name, camera_frame)
-                            cv2.waitKey(1)
-                        except Exception as e:
-                            print(f"❌ שגיאה בהצגת חלון OpenCV: {e}")
+                visuals = self.connection.get_visuals()
+                if visuals and len(visuals) >= 3:
+                    camera_frame, data_panel, fps = visuals
                     
-                    # המרת תמונת המצלמה למשטח Pygame
-                    try:
-                        small_frame = cv2.resize(camera_frame, (320, 240))
-                        small_frame_rgb = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
-                        self.camera_surface = pygame.surfarray.make_surface(small_frame_rgb.swapaxes(0, 1))
-                    except Exception as e:
-                        print(f"❌ שגיאה בהמרת תמונת המצלמה: {e}")
-                        self.camera_surface = None
+                    if camera_frame is not None:
+                        # הצגה בחלון OpenCV
+                        if self.show_opencv_window:
+                            try:
+                                cv2.imshow(self.opencv_window_name, camera_frame)
+                                cv2.waitKey(1)
+                            except Exception as e:
+                                print(f"❌ שגיאה בהצגת חלון OpenCV: {e}")
+                        
+                        # המרה לפורמט Pygame
+                        try:
+                            # שינוי גודל ל-320x240 למסך המשחק
+                            small_frame = cv2.resize(camera_frame, (320, 240))
+                            small_frame_rgb = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
+                            
+                            # יצירת משטח pygame
+                            self.camera_surface = pygame.surfarray.make_surface(small_frame_rgb.swapaxes(0, 1))
+                            
+                        except Exception as e:
+                            print(f"❌ שגיאה בהמרת תמונת המצלמה: {e}")
+                            self.camera_surface = None
+                            
             except Exception as e:
-                print(f"❌ שגיאה בקבלת תמונת המצלמה: {e}")
+                print(f"❌ שגיאה כללית בקבלת תמונת המצלמה: {e}")
             
             # עדכון המכונית אם המשחק לא הסתיים
             if not self.game_completed:
@@ -346,15 +372,40 @@ class Game:
             
             # Draw camera feed if available and enabled
             if self.camera_surface is not None and self.show_camera:
+                # ציור תמונת המצלמה
                 self.screen.blit(self.camera_surface, (self.screen_width, 0))
-                camera_label = self.font.render("Camera Feed (Press C to toggle)", True, (0, 0, 0))
-                self.screen.blit(camera_label, (self.screen_width + 10, 245))
+                
+                # הוספת מידע על מחוות היד
+                camera_info = [
+                    f"Camera Feed (Press C to toggle)",
+                    f"Gesture: {controls.get('gesture_name', 'Unknown')}",
+                    f"Confidence: {controls.get('confidence', 0):.2f}",
+                    f"FPS: {fps:.1f}"
+                ]
+                
+                for i, info in enumerate(camera_info):
+                    info_surface = self.font.render(info, True, (255, 255, 255))
+                    self.screen.blit(info_surface, (self.screen_width + 10, 245 + i * 20))
+                    
             else:
+                # הצגת הודעה כשהמצלמה לא זמינה
                 camera_rect = pygame.Rect(self.screen_width, 0, 320, 240)
                 pygame.draw.rect(self.screen, (30, 30, 30), camera_rect)
-                no_cam_font = pygame.font.SysFont(None, 30)
-                no_cam_text = no_cam_font.render("Camera Not Available", True, (255, 50, 50))
-                self.screen.blit(no_cam_text, (self.screen_width + 60, 110))
+                
+                no_cam_messages = [
+                    "Camera Not Available",
+                    "Using Keyboard Controls:",
+                    "Arrow Keys / WASD: Steer & Speed",
+                    "Space: Boost",
+                    "Down/S: Brake"
+                ]
+                
+                for i, msg in enumerate(no_cam_messages):
+                    font_size = 16 if i > 0 else 20
+                    font = pygame.font.SysFont(None, font_size)
+                    color = (255, 50, 50) if i == 0 else (200, 200, 200)
+                    text = font.render(msg, True, color)
+                    self.screen.blit(text, (self.screen_width + 10, 50 + i * 25))
             
             # Draw timer and score UI elements
             self._draw_hud()
@@ -734,6 +785,37 @@ class Game:
         self.screen.blit(game_over_text, game_over_rect)
         self.screen.blit(final_score_text, score_rect)
         self.screen.blit(instruction_text, instruction_rect)
+    
+    def show_error_message(self, title, message):
+        """הצגת הודעת שגיאה למשתמש"""
+        print(f"⚠️ {title}: {message}")
+        
+        # יצירת חלון הודעה פשוט
+        error_surface = pygame.Surface((400, 200))
+        error_surface.fill((50, 50, 50))
+        pygame.draw.rect(error_surface, (255, 255, 255), (0, 0, 400, 200), 2)
+        
+        title_font = pygame.font.SysFont(None, 24)
+        msg_font = pygame.font.SysFont(None, 18)
+        
+        title_text = title_font.render(title, True, (255, 255, 255))
+        msg_text = msg_font.render(message, True, (200, 200, 200))
+        
+        error_surface.blit(title_text, (20, 20))
+        error_surface.blit(msg_text, (20, 60))
+        
+        continue_text = msg_font.render("Press any key to continue...", True, (255, 255, 0))
+        error_surface.blit(continue_text, (20, 150))
+        
+        # הצגת ההודעה עד שמקישים על מקש
+        self.screen.blit(error_surface, (200, 200))
+        pygame.display.flip()
+        
+        waiting = True
+        while waiting:
+            for event in pygame.event.get():
+                if event.type == pygame.KEYDOWN or event.type == pygame.QUIT:
+                    waiting = False
     
     def _get_hand_controls(self):
         """
