@@ -363,9 +363,6 @@ class MovingRoadGenerator:
         # מילוי הרקע בצבע דשא
         screen.fill(self.grass_color)
         
-             
-
-        
         # יצירת משטח זמני למסלול שניתן לסובב
         road_surface = pygame.Surface((self.screen_width * 3, self.screen_height * 3), pygame.SRCALPHA)
         
@@ -394,19 +391,10 @@ class MovingRoadGenerator:
                     (lane_x - self.lane_width // 2, y, self.lane_width, self.lane_length)
                 )
         
-        # ===== הסרת קווי הגריד =====
-        # (הסרתי את כל הקוד של ציור הגריד)
-        
         # Road elements can still use world_offset_x/y for parallax if needed
         # The element_offset calculation below uses world_offset_x/y for parallax.
-        # This is separate from the grid's scrolling.
         element_world_offset_x = int(self.scroll_x + world_offset_x * 1.5)
         element_world_offset_y = int(self.scroll_y + world_offset_y * 1.5)
-        
-        # הוספת רעש דיבוג מדי פעם להראות את ערכי ההיסטים
-        if random.random() < 0.01:  # 1% מהפריימים
-            print(f"Debug: Scroll XY=({self.scroll_x:.1f}, {self.scroll_y:.1f}), World offset=({world_offset_x:.1f}, {world_offset_y:.1f})")
-            print(f"Debug: Grid offset=({grid_offset_x:.1f}, {grid_offset_y:.1f})")
         
         for element in self.road_elements:
             # המרת קואורדינטות למערכת הקואורדינטות של משטח המסלול

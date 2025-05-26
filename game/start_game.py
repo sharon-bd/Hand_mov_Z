@@ -79,10 +79,7 @@ class Game:
         # Camera display
         self.camera_surface = None
         
-        # ===== הסרת הגדרות הגריד =====
-        # (הסרתי את כל המשתנים הקשורים לגריד)
-        
-        # Generate some random ground elements
+        # Generate some random ground elements (without grid)
         self.ground_elements = []
         for _ in range(100):
             x = random.randint(0, self.world_width)
@@ -1018,6 +1015,10 @@ class Game:
         # השבתת יצירת מקטעים
         pass
 
+    def _confirm_exit(self):
+        """Confirm if user wants to exit the game"""
+        return True  # For simplicity, always confirm exit
+
 def run_game(mode="normal", hand_detector=None, show_tutorial=True, config=None):
     """
     Run the game with the specified mode
@@ -1050,5 +1051,3 @@ def run_game(mode="normal", hand_detector=None, show_tutorial=True, config=None)
     finally:
         # Clean up
         game.cleanup()
-
-
