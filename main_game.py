@@ -711,10 +711,57 @@ class GameLauncher:
         
     def _draw_world(self):
         """
-        Draw the world (background only, no static dots or elements)
+        Draw the world (background and road elements)
         """
-        # Fill with simple background color (no grid, no dots, no ground elements)
+        # מילוי הרקע בצבע רקע אחיד
         self.screen.fill(self.background_color)
+        
+        # מאפייני הכביש
+        road_width = 400  # רוחב הכביש הכולל
+        lane_width = road_width / 2  # רוחב נתיב (2 נתיבים)
+        center_line_width = 10  # רוחב קו ההפרדה במרכז
+        road_color = (80, 80, 80)  # צבע אפור לכביש
+        grass_color = (76, 153, 0)  # צבע ירוק לדשא
+        center_line_color = (255, 240, 200)  # צבע קו הפרדה
+        
+        # מיקום הכביש במרכז המסך
+        road_x = (self.screen_width - road_width) // 2
+        
+        # ציור משטח הדשא משני צדדי הכביש (כל המסך)
+        pygame.draw.rect(self.screen, grass_color, (0, 0, self.screen_width, self.screen_height))
+        
+        # ציור הכביש האפור במרכז
+        pygame.draw.rect(self.screen, road_color, (road_x, 0, road_width, self.screen_height))
+        
+        # ציור קו ההפרדה האמצעי (צהבהב) בין הנתיבים
+        center_x = self.screen_width // 2 - center_line_width // 2
+        
+        # קו הפרדה מקוטע באמצע הכביש
+        dash_length = 30
+        gap_length = 20
+        y = 0
+        while y < self.screen_height:
+            pygame.draw.rect(
+                self.screen,
+                center_line_color,
+                (center_x, y, center_line_width, dash_length)
+            )
+            y += dash_length + gap_length
+        
+        # ציור קווי שוליים רציפים בצדדים (לבנים)
+        edge_line_width = 5
+        # קו שוליים שמאלי
+        pygame.draw.rect(
+            self.screen,
+            (255, 255, 255),
+            (road_x, 0, edge_line_width, self.screen_height)
+        )
+        # קו שוליים ימני
+        pygame.draw.rect(
+            self.screen,
+            (255, 255, 255),
+            (road_x + road_width - edge_line_width, 0, edge_line_width, self.screen_height)
+        )
         
     def cleanup(self):
         """Clean up resources"""
