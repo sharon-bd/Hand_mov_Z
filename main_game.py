@@ -73,24 +73,11 @@ class GameLauncher:
         # Camera display
         self.camera_surface = None
         
-        # Grid properties for ground
-        self.grid_size = int(100)  # וודא שזה שלם
-        self.grid_color = (180, 180, 180)
+        # Background properties (without grid or static elements)
         self.background_color = (240, 240, 240)
         
-        # Generate some random ground elements
+        # Remove static ground elements completely
         self.ground_elements = []
-        for _ in range(100):
-            x = random.randint(0, self.world_width)
-            y = random.randint(0, self.world_height)
-            size = random.randint(5, 15)
-            color_value = random.randint(160, 220)
-            self.ground_elements.append({
-                'x': x,
-                'y': y,
-                'size': size,
-                'color': (color_value, color_value, color_value)
-            })
         
         # Fonts
         self.font = pygame.font.SysFont(None, 24)
@@ -548,7 +535,7 @@ class GameLauncher:
             self.screen.fill((200, 200, 255))
             print(f"Drawing screen. Dimensions: {self.screen.get_size()}")
             
-            # Draw the grid and ground elements
+            # Draw the world background (without grid)
             self._draw_world()
             
             # Draw the track
@@ -724,82 +711,11 @@ class GameLauncher:
         
     def _draw_world(self):
         """
-        Draw the world (background, grid, additional elements)
+        Draw the world (background only, no static dots or elements)
         """
-        # מילוי הרקע בצבע רקע אחיד
+        # Fill with simple background color (no grid, no dots, no ground elements)
         self.screen.fill(self.background_color)
         
-        # הסרת קוד ציור הגריד
-        # start_x = max(0, int(self.world_offset_x // self.grid_size * self.grid_size))
-        # end_x = min(self.world_width, int((self.world_offset_x + self.screen_width) // self.grid_size * self.grid_size + self.grid_size * 2))
-        
-        # start_y = max(0, int(self.world_offset_y // self.grid_size * self.grid_size))
-        # end_y = min(self.world_height, int((self.world_offset_y + self.screen_height) // self.grid_size * self.grid_size + self.grid_size * 2))
-        
-        # for y in range(int(start_y), int(end_y), int(self.grid_size)):
-        #     screen_y = int(y - self.world_offset_y)
-        #     pygame.draw.line(
-        #         self.screen,
-        #         self.grid_color,
-        #         (0, screen_y),
-        #         (self.screen_width, screen_y)
-        #     )
-        
-        # for x in range(int(start_x), int(end_x), int(self.grid_size)):
-        #     screen_x = int(x - self.world_offset_x)
-        #     pygame.draw.line(
-        #         self.screen,
-        #         self.grid_color,
-        #         (screen_x, 0),
-        #         (screen_x, self.screen_height)
-        #     )
-        
-        # ציור אלמנטי הקרקע (ללא גריד)
-        for element in self.ground_elements:
-            screen_x = int(element['x'] - self.world_offset_x)
-            screen_y = int(element['y'] - self.world_offset_y)
-            
-            if (0 <= screen_x <= self.screen_width and 
-                0 <= screen_y <= self.screen_height):
-                pygame.draw.circle(
-                    self.screen,
-                    element['color'],
-                    (screen_x, screen_y),
-                    element['size']
-                )
-        
-        if self.world_offset_x < 0:
-            pygame.draw.rect(
-                self.screen,
-                (100, 100, 100),
-                (0, 0, -self.world_offset_x, self.screen_height)
-            )
-        
-        if self.world_offset_x + self.screen_width > self.world_width:
-            pygame.draw.rect(
-                self.screen,
-                (100, 100, 100),
-                (self.world_width - self.world_offset_x, 0, 
-                 self.screen_width - (self.world_width - self.world_offset_x), 
-                 self.screen_height)
-            )
-        
-        if self.world_offset_y < 0:
-            pygame.draw.rect(
-                self.screen,
-                (100, 100, 100),
-                (0, 0, self.screen_width, -self.world_offset_y)
-            )
-        
-        if self.world_offset_y + self.screen_height > self.world_height:
-            pygame.draw.rect(
-                self.screen,
-                (100, 100, 100),
-                (0, self.world_height - self.world_offset_y,
-                 self.screen_width,
-                 self.screen_height - (self.world_height - self.world_offset_y))
-            )
-            
     def cleanup(self):
         """Clean up resources"""
         try:

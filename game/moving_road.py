@@ -314,10 +314,7 @@ class MovingRoadGenerator:
         self.scroll_x += base_scroll_speed * math.sin(angle_rad) * dt
         self.scroll_y += base_scroll_speed * math.cos(angle_rad) * dt
         
-        # Update car's visual rotation if the road itself is meant to rotate
-        # self.rotation = rotation # Currently, self.rotation seems to stay 0. This is fine if rotation is handled by scroll vectors.
-        
-        # שמירת מהירות לשימוש בחלקיקים ובגריד
+        # שמירת מהירות לשימוש בחלקיקים
         self.speed = speed
         
         # Update particles positions based on car movement
@@ -353,14 +350,14 @@ class MovingRoadGenerator:
 
     def draw(self, screen, world_offset_x=0, world_offset_y=0):
         """
-        ציור המסלול הנע על המסך
+        ציור המסלול הנע על המסך - ללא גריד
         
         Args:
             screen: משטח Pygame לציור
             world_offset_x: היסט בעולם בכיוון x
             world_offset_y: היסט בעולם בכיוון y
         """
-        # מילוי הרקע בצבע דשא
+        # מילוי הרקע בצבע דשא נקי
         screen.fill(self.grass_color)
         
         # יצירת משטח זמני למסלול שניתן לסובב
@@ -391,8 +388,7 @@ class MovingRoadGenerator:
                     (lane_x - self.lane_width // 2, y, self.lane_width, self.lane_length)
                 )
         
-        # Road elements can still use world_offset_x/y for parallax if needed
-        # The element_offset calculation below uses world_offset_x/y for parallax.
+        # Road elements with parallax effect (no grid)
         element_world_offset_x = int(self.scroll_x + world_offset_x * 1.5)
         element_world_offset_y = int(self.scroll_y + world_offset_y * 1.5)
         
@@ -402,7 +398,6 @@ class MovingRoadGenerator:
             base_y = center_y + (element['y'] - self.screen_height / 2)
             
             # Apply scrolling and parallax for road elements
-            # Note: Using element_world_offset_x/y which includes world_offset_x/y for parallax
             current_element_offset_x = element_world_offset_x % road_surface.get_width()
             current_element_offset_y = element_world_offset_y % road_surface.get_height()
 
@@ -684,11 +679,11 @@ class MovingRoadGenerator:
             base_x = center_x + (marking['x'] - self.screen_width / 2)
             base_y = center_y + (marking['y'] - self.screen_height / 2)
             
-            # Calculate screen position with offset, using the same logic as road_elements for consistency
-            current_marking_offset_x = element_world_offset_x % road_surface.get_width() # Using element_world_offset for markings too
+            # Calculate screen position with offset
+            current_marking_offset_x = element_world_offset_x % road_surface.get_width()
             current_marking_offset_y = element_world_offset_y % road_surface.get_height()
 
-            movement_multiplier_marking = 1.2 # Can be different if needed
+            movement_multiplier_marking = 1.2
             element_x = (base_x - current_marking_offset_x * movement_multiplier_marking) % road_surface.get_width()
             element_y = (base_y - current_marking_offset_y * movement_multiplier_marking) % road_surface.get_height()
             
@@ -741,16 +736,8 @@ class MovingRoadGenerator:
         
         # Draw particles for dynamic motion effect
         for particle in self.particles:
-            # Convert world coordinates to screen coordinates for particles
-            # Particles are drawn relative to the road_surface, their x,y are already world-like
-            # but need to be mapped onto the potentially larger road_surface and account for its own scrolling.
-            # The particle positions are updated in self.update based on car movement (scroll_x, scroll_y logic).
-            # So, their positions are already "world" positions.
-            # To draw them on the road_surface, they need to be offset by the same amount as other elements.
-            
             particle_on_surface_x = (particle['x'] - element_world_offset_x * particle['speed']) % road_surface.get_width()
             particle_on_surface_y = (particle['y'] - element_world_offset_y * particle['speed']) % road_surface.get_height()
-
 
             # Make particles fade in/out based on speed
             if hasattr(self, 'speed'):
@@ -770,7 +757,7 @@ class MovingRoadGenerator:
                         # Regular circle for slower speeds
                         pygame.draw.circle(
                             road_surface,
-                            particle['color'], # Alpha already applied if needed
+                            particle['color'],
                             (int(particle_on_surface_x), int(particle_on_surface_y)),
                             particle['size']
                         )
