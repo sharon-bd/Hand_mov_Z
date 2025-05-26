@@ -262,9 +262,8 @@ class MovingRoadGenerator:
         # ציור סימוני נתיבים עם התאמה לגלילה
         for lane in range(2):  # 2 קווי נתיב ל-3 נתיבים
             lane_x = center_x - self.road_width // 2 + self.road_width * (lane + 1) // 3
-            # גלילת הסימונים באופן חלק ועקבי עם תנועת הרכב
+            # Use internal scroll_y for lane markings
             y_offset = int(self.scroll_y) % (self.lane_length + self.lane_gap)
-            
             for y in range(int(-y_offset), road_surface.get_height(), self.lane_length + self.lane_gap):
                 pygame.draw.rect(
                     road_surface,
@@ -272,21 +271,9 @@ class MovingRoadGenerator:
                     (lane_x - self.lane_width // 2, y, self.lane_width, self.lane_length)
                 )
         
-        # ===== תיקון קריטי: הגריד צריך לזוז עם המכונית =====
-        grid_size = 100
-        grid_color = (90, 120, 90)
-        
-        # חישוב היסט הגריד - הגריד זז הפוך מכיוון תנועת המכונית, מבוסס על הגלילה הפנימית בלבד
-        grid_offset_x = int(-self.scroll_x) % grid_size
-        grid_offset_y = int(-self.scroll_y) % grid_size
-        
-        # ציור קווי גריד אנכיים - עם כיסוי מלא של המשטח
-        for x in range(grid_offset_x - grid_size, road_surface.get_width() + grid_size, grid_size):
-            pygame.draw.line(road_surface, grid_color, (x, 0), (x, road_surface.get_height()), 3)
-        
-        # ציור קווי גריד אופקיים - עם כיסוי מלא של המשטח
-        for y in range(grid_offset_y - grid_size, road_surface.get_height() + grid_size, grid_size):
-            pygame.draw.line(road_surface, grid_color, (0, y), (road_surface.get_width(), y), 3)
+        # Road elements can still use world_offset_x/y for parallax if needed
+        element_world_offset_x = int(self.scroll_x + world_offset_x * 1.5)
+        element_world_offset_y = int(self.scroll_y + world_offset_y * 1.5)
         
         # ציור אלמנטי המסלול
         element_offset_x = int(self.scroll_x) % road_surface.get_width()

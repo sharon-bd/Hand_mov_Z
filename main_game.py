@@ -726,30 +726,35 @@ class GameLauncher:
         """
         Draw the world (background, grid, additional elements)
         """
-        start_x = max(0, int(self.world_offset_x // self.grid_size * self.grid_size))
-        end_x = min(self.world_width, int((self.world_offset_x + self.screen_width) // self.grid_size * self.grid_size + self.grid_size * 2))
+        # מילוי הרקע בצבע רקע אחיד
+        self.screen.fill(self.background_color)
         
-        start_y = max(0, int(self.world_offset_y // self.grid_size * self.grid_size))
-        end_y = min(self.world_height, int((self.world_offset_y + self.screen_height) // self.grid_size * self.grid_size + self.grid_size * 2))
+        # הסרת קוד ציור הגריד
+        # start_x = max(0, int(self.world_offset_x // self.grid_size * self.grid_size))
+        # end_x = min(self.world_width, int((self.world_offset_x + self.screen_width) // self.grid_size * self.grid_size + self.grid_size * 2))
         
-        for y in range(int(start_y), int(end_y), int(self.grid_size)):
-            screen_y = int(y - self.world_offset_y)
-            pygame.draw.line(
-                self.screen,
-                self.grid_color,
-                (0, screen_y),
-                (self.screen_width, screen_y)
-            )
+        # start_y = max(0, int(self.world_offset_y // self.grid_size * self.grid_size))
+        # end_y = min(self.world_height, int((self.world_offset_y + self.screen_height) // self.grid_size * self.grid_size + self.grid_size * 2))
         
-        for x in range(int(start_x), int(end_x), int(self.grid_size)):
-            screen_x = int(x - self.world_offset_x)
-            pygame.draw.line(
-                self.screen,
-                self.grid_color,
-                (screen_x, 0),
-                (screen_x, self.screen_height)
-            )
+        # for y in range(int(start_y), int(end_y), int(self.grid_size)):
+        #     screen_y = int(y - self.world_offset_y)
+        #     pygame.draw.line(
+        #         self.screen,
+        #         self.grid_color,
+        #         (0, screen_y),
+        #         (self.screen_width, screen_y)
+        #     )
         
+        # for x in range(int(start_x), int(end_x), int(self.grid_size)):
+        #     screen_x = int(x - self.world_offset_x)
+        #     pygame.draw.line(
+        #         self.screen,
+        #         self.grid_color,
+        #         (screen_x, 0),
+        #         (screen_x, self.screen_height)
+        #     )
+        
+        # ציור אלמנטי הקרקע (ללא גריד)
         for element in self.ground_elements:
             screen_x = int(element['x'] - self.world_offset_x)
             screen_y = int(element['y'] - self.world_offset_y)

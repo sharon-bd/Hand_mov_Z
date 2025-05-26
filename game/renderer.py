@@ -83,33 +83,23 @@ class GameRenderer:
             screen: משטח Pygame לרנדור
             game_state: מצב המשחק הנוכחי
         """
-        # קבלת אלמנטים ממצב המשחק
-        car = game_state.get('car')
-        obstacles = game_state.get('obstacles', [])
-        power_ups = game_state.get('power_ups', [])
-        score = game_state.get('score', 0)
-        
-        # וודא שהעולם ממורכז סביב המכונית
-        world_offset_x = game_state.get('world_offset_x', 0)
-        world_offset_y = game_state.get('world_offset_y', 0)
-        
-        # ניקוי המסך
+        # ניקוי המסך לצבע אחיד
         screen.fill(self.colors['black'])
         
         # שימוש במסלול הנע
-        if car:
+        if car := game_state.get('car'):
             car_rotation = getattr(car, 'rotation', 0.0)
             car_speed = getattr(car, 'speed', 0.0)
-            # עדכון ורנדור המסלול הנע
+            # עדכון ורנדור המסלול הנע - ללא גריד
             self.moving_road.update(car_rotation, car_speed, game_state.get('dt', 0.016))
-            self.moving_road.draw(screen, world_offset_x, world_offset_y)
+            self.moving_road.draw(screen, game_state.get('world_offset_x', 0), game_state.get('world_offset_y', 0))
         else:
-            # חזרה למסלול סטטי אם אין מכונית
+            # חזרה למסלול סטטי אם אין מכונית - ללא גריד
             self._draw_scrolling_road(screen, game_state.get('scroll_speed', self.scroll_speed))
         
         # ציור כל אלמנטי המשחק
-        self._draw_obstacles(screen, obstacles)
-        self._draw_power_ups(screen, power_ups)
+        self._draw_obstacles(screen, game_state.get('obstacles', []))
+        self._draw_power_ups(screen, game_state.get('power_ups', []))
         
         if car:
             self._draw_car(screen, car)
