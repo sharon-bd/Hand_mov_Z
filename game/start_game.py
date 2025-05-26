@@ -79,10 +79,8 @@ class Game:
         # Camera display
         self.camera_surface = None
         
-        # Grid properties for ground
-        self.grid_size = int(100)  # וודא שזה שלם
-        self.grid_color = (180, 180, 180)
-        self.background_color = (240, 240, 240)
+        # ===== הסרת הגדרות הגריד =====
+        # (הסרתי את כל המשתנים הקשורים לגריד)
         
         # Generate some random ground elements
         self.ground_elements = []

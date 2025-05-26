@@ -363,22 +363,8 @@ class MovingRoadGenerator:
         # מילוי הרקע בצבע דשא
         screen.fill(self.grass_color)
         
-        # ===== תיקון: הגריד צריך לזוז עם המכונית =====
-        grid_size = 100
-        grid_color = (90, 120, 90)
-        
-        # חישוב היסט הגריד - הגריד זז הפוך לכיוון תנועת המכונית
-        grid_offset_x = int(-self.scroll_x) % grid_size
-        grid_offset_y = int(-self.scroll_y) % grid_size
-        
-        # ציור קווי גריד ישירות על המסך (לפני יצירת משטח המסלול)
-        # קווים אנכיים
-        for x in range(grid_offset_x, screen.get_width(), grid_size):
-            pygame.draw.line(screen, grid_color, (x, 0), (x, screen.get_height()), 2)
-        
-        # קווים אופקיים
-        for y in range(grid_offset_y, screen.get_height(), grid_size):
-            pygame.draw.line(screen, grid_color, (0, y), (screen.get_width(), y), 2)
+             
+
         
         # יצירת משטח זמני למסלול שניתן לסובב
         road_surface = pygame.Surface((self.screen_width * 3, self.screen_height * 3), pygame.SRCALPHA)
@@ -408,18 +394,8 @@ class MovingRoadGenerator:
                     (lane_x - self.lane_width // 2, y, self.lane_width, self.lane_length)
                 )
         
-        # ===== Grid drawing using only internal scroll_x and scroll_y =====
-        grid_size = 100
-        grid_color = (90, 120, 90)
-        
-        # Calculate grid offset based purely on internal scroll values
-        grid_offset_x = int(-self.scroll_x) % grid_size
-        grid_offset_y = int(-self.scroll_y) % grid_size
-
-        for x_coord in range(grid_offset_x - grid_size, road_surface.get_width() + grid_size, grid_size):
-            pygame.draw.line(road_surface, grid_color, (x_coord, 0), (x_coord, road_surface.get_height()), 3)
-        for y_coord in range(grid_offset_y - grid_size, road_surface.get_height() + grid_size, grid_size):
-            pygame.draw.line(road_surface, grid_color, (0, y_coord), (road_surface.get_width(), y_coord), 3)
+        # ===== הסרת קווי הגריד =====
+        # (הסרתי את כל הקוד של ציור הגריד)
         
         # Road elements can still use world_offset_x/y for parallax if needed
         # The element_offset calculation below uses world_offset_x/y for parallax.
