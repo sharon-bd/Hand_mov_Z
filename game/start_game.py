@@ -1,5 +1,5 @@
 """
-Enhanced game/start_game.py - CLEAN AND FIXED VERSION
+Enhanced game/start_game.py - SYNCHRONIZED VERSION
 Fixed road direction, proper syntax, and clean structure
 """
 import os
@@ -329,7 +329,7 @@ class Obstacle:
                         (self.x + self.width // 4, self.y), 3)
 
 class Game:
-    """Main game class - CLEAN AND FIXED VERSION"""
+    """Main game class - SYNCHRONIZED VERSION"""
     
     def __init__(self, mode="normal", screen_width=800, screen_height=600, hand_detector=None):
         """Initialize the game"""
@@ -1105,7 +1105,7 @@ class Game:
         logger.info("✅ Game resources cleaned up")
     
     def run(self):
-        """Main game loop - CLEAN AND FIXED VERSION"""
+        """Main game loop - SYNCHRONIZED VERSION"""
         self.running = True
         last_time = time.time()
         
@@ -1155,7 +1155,7 @@ class Game:
 # Export functions for compatibility
 def run_game(mode="normal", hand_detector=None, show_tutorial=True, config=None):
     """
-    Run the game - CLEAN AND FIXED VERSION
+    Run the game - SYNCHRONIZED VERSION
     
     Args:
         mode: Game mode ("easy", "normal", "hard")
