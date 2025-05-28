@@ -1,317 +1,364 @@
+#!/usr/bin/env python
 """
-Obstacle module for the Hand Gesture Car Control Game.
+Obstacle Module for Hand Gesture Car Control Game
+
+This module implements various types of obstacles that appear in the game.
 """
+
 import pygame
 import random
 import math
 
 class Obstacle:
     """
-    מייצג מכשול במשחק
+    Represents an obstacle in the game
     """
     
-    def __init__(self, x, y, obstacle_type="rock", width=40, height=40):
+    def __init__(self, x, y, obstacle_type="cone", speed=200):
         """
-        יוצר מכשול חדש
+        Initialize an obstacle
         
         Args:
-            x, y: מיקום המכשול
-            obstacle_type: סוג המכשול ("rock", "tree", "cone", "puddle")
-            width, height: גודל המכשול
+            x, y: Initial position
+            obstacle_type: Type of obstacle ('cone', 'barrier', 'rock', 'puddle')
+            speed: Speed at which obstacle moves
         """
         self.x = x
         self.y = y
-        self.width = width
-        self.height = height
-        self.type = obstacle_type
-        self.rotation = 0
+        self.initial_x = x
+        self.initial_y = y
+        self.obstacle_type = obstacle_type
+        self.speed = speed
+        self.hit = False
+        self.animation_frame = 0
+        self.creation_time = pygame.time.get_ticks()
         
-        # מאפיינים ויזואליים לפי סוג המכשול
-        if obstacle_type == "rock":
-            self.color = (100, 100, 100)  # אפור
-            self.shape = "circle"
-            # גודל אקראי לסלעים
-            size_factor = random.uniform(0.7, 1.5)
-            self.width = int(width * size_factor)
-            self.height = int(height * size_factor)
-            
-        elif obstacle_type == "tree":
-            self.color = (0, 100, 0)  # ירוק כהה
-            self.trunk_color = (101, 67, 33)  # חום
-            self.shape = "tree"
-            self.width = width
-            self.height = height * 2  # עצים גבוהים יותר
-            
-        elif obstacle_type == "cone":
-            self.color = (255, 140, 0)  # כתום
-            self.shape = "triangle"
-            self.width = width // 2  # קונוסים צרים יותר
-            
-        elif obstacle_type == "puddle":
-            self.color = (0, 0, 150, 150)  # כחול עם שקיפות
-            self.shape = "ellipse"
-            # שלוליות יותר רחבות מגבוהות
-            self.width = width * 2
-            self.height = height
-            
-        else:  # סוג ברירת מחדל
-            self.color = (200, 200, 0)  # צהוב
-            self.shape = "rect"
+        # Set dimensions and color based on type
+        self._setup_obstacle_properties()
         
-        # היקף ההתנגשות (פשוט עיגול)
-        self.collision_radius = max(self.width, self.height) // 2
-        
-        # תנועה (עבור מכשולים דינמיים)
-        self.is_dynamic = False
-        self.speed = 0
-        self.direction = 0
-        
+        # Create collision rectangle
+        self.rect = pygame.Rect(
+            self.x - self.width // 2,
+            self.y - self.height // 2,
+            self.width,
+            self.height
+        )
+    
+    def _setup_obstacle_properties(self):
+        """Setup obstacle properties based on type"""
+        if self.obstacle_type == "cone":
+            self.width = 30
+            self.height = 40
+            self.color = (255, 140, 0)  # Orange
+            self.damage = 10
+        elif self.obstacle_type == "barrier":
+            self.width = 80
+            self.height = 30
+            self.color = (255, 0, 0)  # Red
+            self.damage = 20
+        elif self.obstacle_type == "rock":
+            self.width = 40
+            self.height = 40
+            self.color = (120, 120, 120)  # Gray
+            self.damage = 15
+        elif self.obstacle_type == "puddle":
+            self.width = 60
+            self.height = 60
+            self.color = (0, 100, 150)  # Blue
+            self.damage = 0  # No damage, just slip effect
+        else:
+            # Default obstacle
+            self.width = 30
+            self.height = 30
+            self.color = (100, 100, 100)
+            self.damage = 5
+    
     def update(self, dt):
         """
-        מעדכן את מצב המכשול
+        Update obstacle position and animation
         
         Args:
-            dt: זמן שעבר מהעדכון האחרון
+            dt: Time delta in seconds
         """
-        if self.is_dynamic:
-            # חישוב וקטור תנועה
-            rad = math.radians(self.direction)
-            dx = math.sin(rad) * self.speed * dt
-            dy = -math.cos(rad) * self.speed * dt
-            
-            # עדכון מיקום
-            self.x += dx
-            self.y += dy
-            
-            # סיבוב (אם המכשול מסתובב)
-            self.rotation += dt * 10  # סיבוב איטי
-            
-    def draw(self, screen, offset_x, offset_y):
+        # Move obstacle down the screen
+        self.y += self.speed * dt
+        
+        # Update collision rectangle
+        self.rect.centerx = self.x
+        self.rect.centery = self.y
+        
+        # Update animation frame
+        self.animation_frame += dt * 10  # Animation speed
+    
+    def draw(self, screen):
         """
-        מצייר את המכשול על המסך
+        Draw the obstacle on the screen
         
         Args:
-            screen: משטח pygame לציור
-            offset_x, offset_y: היסט העולם (מיקום הרכב)
+            screen: Pygame surface to draw on
         """
-        # חישוב מיקום המכשול על המסך לפי היסט העולם
-        screen_x = self.x - offset_x
-        screen_y = self.y - offset_y
+        # Choose color based on hit state
+        color = (255, 0, 0) if self.hit else self.color
         
-        # בדיקה אם המכשול בכלל נראה על המסך
-        screen_width, screen_height = screen.get_size()
-        if (screen_x + self.width < 0 or screen_x - self.width > screen_width or
-            screen_y + self.height < 0 or screen_y - self.height > screen_height):
-            return  # המכשול מחוץ למסך, אין צורך לצייר
+        if self.obstacle_type == "cone":
+            self._draw_cone(screen, color)
+        elif self.obstacle_type == "barrier":
+            self._draw_barrier(screen, color)
+        elif self.obstacle_type == "rock":
+            self._draw_rock(screen, color)
+        elif self.obstacle_type == "puddle":
+            self._draw_puddle(screen, color)
+        else:
+            self._draw_default(screen, color)
+    
+    def _draw_cone(self, screen, color):
+        """Draw a traffic cone"""
+        # Draw cone shape
+        points = [
+            (self.x, self.y - self.height // 2),
+            (self.x - self.width // 2, self.y + self.height // 2),
+            (self.x + self.width // 2, self.y + self.height // 2)
+        ]
+        pygame.draw.polygon(screen, color, points)
         
-        if self.shape == "circle":
-            # ציור סלע (עיגול)
-            pygame.draw.circle(
-                screen,
-                self.color,
-                (int(screen_x), int(screen_y)),
-                self.width // 2
-            )
-            
-            # הוספת קווי טקסטורה לסלע
-            for i in range(3):
-                angle = math.radians(random.randint(0, 360))
-                length = random.randint(5, self.width // 3)
-                start_x = screen_x + math.cos(angle) * (self.width // 4)
-                start_y = screen_y + math.sin(angle) * (self.width // 4)
-                end_x = start_x + math.cos(angle) * length
-                end_y = start_y + math.sin(angle) * length
-                
-                pygame.draw.line(
-                    screen,
-                    (70, 70, 70),  # אפור כהה יותר
-                    (int(start_x), int(start_y)),
-                    (int(end_x), int(end_y)),
-                    2
-                )
-                
-        elif self.shape == "tree":
-            # ציור גזע העץ
-            trunk_width = self.width // 3
-            trunk_height = self.height // 2
-            trunk_rect = pygame.Rect(
-                screen_x - trunk_width // 2,
-                screen_y - trunk_height // 2 + self.height // 4,  # קצת למטה
-                trunk_width,
-                trunk_height
-            )
-            pygame.draw.rect(screen, self.trunk_color, trunk_rect)
-            
-            # ציור צמרת העץ (עיגול ירוק)
-            pygame.draw.circle(
-                screen,
-                self.color,
-                (int(screen_x), int(screen_y - self.height // 4)),
-                self.width // 2 + 5
-            )
-            
-        elif self.shape == "triangle":
-            # ציור קונוס (משולש)
-            points = [
-                (screen_x, screen_y - self.height // 2),  # קודקוד עליון
-                (screen_x - self.width // 2, screen_y + self.height // 2),  # פינה שמאלית תחתונה
-                (screen_x + self.width // 2, screen_y + self.height // 2)   # פינה ימנית תחתונה
-            ]
-            pygame.draw.polygon(screen, self.color, points)
-            
-            # פס לבן במרכז הקונוס
-            pygame.draw.polygon(
-                screen, 
-                (255, 255, 255),
-                [
-                    (screen_x, screen_y - self.height // 4),
-                    (screen_x - self.width // 4, screen_y + self.height // 4),
-                    (screen_x + self.width // 4, screen_y + self.height // 4)
-                ]
-            )
-            
-        elif self.shape == "ellipse":
-            # ציור שלולית (אליפסה)
-            ellipse_rect = pygame.Rect(
-                screen_x - self.width // 2,
-                screen_y - self.height // 2,
-                self.width,
+        # Draw white stripe
+        pygame.draw.line(
+            screen,
+            (255, 255, 255),
+            (self.x - self.width // 4, self.y),
+            (self.x + self.width // 4, self.y),
+            3
+        )
+        
+        # Draw base
+        pygame.draw.ellipse(
+            screen,
+            (50, 50, 50),
+            (self.x - self.width // 2, self.y + self.height // 2 - 5, self.width, 10)
+        )
+    
+    def _draw_barrier(self, screen, color):
+        """Draw a barrier with stripes"""
+        # Draw main barrier
+        barrier_rect = pygame.Rect(
+            self.x - self.width // 2,
+            self.y - self.height // 2,
+            self.width,
+            self.height
+        )
+        pygame.draw.rect(screen, color, barrier_rect)
+        
+        # Draw diagonal stripes
+        stripe_width = 10
+        for i in range(0, self.width, stripe_width * 2):
+            stripe_rect = pygame.Rect(
+                self.x - self.width // 2 + i,
+                self.y - self.height // 2,
+                stripe_width,
                 self.height
             )
+            pygame.draw.rect(screen, (255, 255, 255), stripe_rect)
+    
+    def _draw_rock(self, screen, color):
+        """Draw a rock obstacle"""
+        # Draw main rock circle
+        pygame.draw.circle(
+            screen,
+            color,
+            (int(self.x), int(self.y)),
+            self.width // 2
+        )
+        
+        # Add texture with smaller circles
+        pygame.draw.circle(
+            screen,
+            (max(0, color[0] - 30), max(0, color[1] - 30), max(0, color[2] - 30)),
+            (int(self.x + 5), int(self.y - 5)),
+            self.width // 4
+        )
+        
+        pygame.draw.circle(
+            screen,
+            (min(255, color[0] + 20), min(255, color[1] + 20), min(255, color[2] + 20)),
+            (int(self.x - 3), int(self.y + 3)),
+            self.width // 6
+        )
+    
+    def _draw_puddle(self, screen, color):
+        """Draw a water puddle with animation"""
+        # Animate puddle with sine wave
+        animation_offset = math.sin(self.animation_frame) * 3
+        
+        # Draw multiple ellipses for water effect
+        for i in range(3):
+            alpha = 150 - i * 30
+            size_mult = 1 - i * 0.1
             
-            # צור משטח שקוף עם אליפסה
-            surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-            pygame.draw.ellipse(surface, self.color, (0, 0, self.width, self.height))
-            
-            # הוספת "גלים" קטנים בשלולית
-            for i in range(2):
-                pygame.draw.ellipse(
-                    surface,
-                    (100, 100, 255, 100),  # כחול בהיר שקוף
-                    (
-                        self.width // 4 + i * 10,
-                        self.height // 4 + i * 5,
-                        self.width // 2 - i * 20,
-                        self.height // 2 - i * 10
-                    ),
-                    1  # רק קו (לא מילוי)
-                )
-            
-            # הצגת המשטח על המסך
-            screen.blit(surface, ellipse_rect)
-            
-        else:  # מלבן כברירת מחדל
-            rect = pygame.Rect(
-                screen_x - self.width // 2,
-                screen_y - self.height // 2,
-                self.width,
-                self.height
+            # Create surface with alpha
+            puddle_surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+            pygame.draw.ellipse(
+                puddle_surface,
+                (*color, alpha),
+                (0, 0, int(self.width * size_mult), int(self.height * size_mult))
             )
-            pygame.draw.rect(screen, self.color, rect)
             
-    def check_collision(self, car):
+            screen.blit(
+                puddle_surface,
+                (self.x - (self.width * size_mult) // 2 + animation_offset,
+                 self.y - (self.height * size_mult) // 2)
+            )
+    
+    def _draw_default(self, screen, color):
+        """Draw default obstacle as a rectangle"""
+        obstacle_rect = pygame.Rect(
+            self.x - self.width // 2,
+            self.y - self.height // 2,
+            self.width,
+            self.height
+        )
+        pygame.draw.rect(screen, color, obstacle_rect)
+        pygame.draw.rect(screen, (255, 255, 255), obstacle_rect, 2)
+    
+    def is_off_screen(self, screen_height):
         """
-        בודק התנגשות עם מכונית
+        Check if obstacle is off screen
         
         Args:
-            car: אובייקט מכונית לבדיקה
+            screen_height: Height of the screen
             
         Returns:
-            Boolean המציין אם יש התנגשות
+            Boolean indicating if obstacle is off screen
         """
-        # חישוב מרחק בין מרכז המכונית למרכז המכשול
-        distance = math.sqrt((car.x - self.x)**2 + (car.y - self.y)**2)
+        return self.y > screen_height + self.height
+    
+    def get_collision_damage(self):
+        """
+        Get damage this obstacle inflicts on collision
         
-        # התנגשות מתרחשת אם המרחק קטן מסכום רדיוסי ההתנגשות
-        car_radius = max(car.width, car.height) // 2
-        return distance < (car_radius + self.collision_radius)
-
+        Returns:
+            Damage amount
+        """
+        return self.damage
+    
+    def get_collision_effect(self):
+        """
+        Get special effect this obstacle has on collision
+        
+        Returns:
+            String describing the effect
+        """
+        if self.obstacle_type == "puddle":
+            return "slip"
+        elif self.obstacle_type == "barrier":
+            return "stop"
+        else:
+            return "damage"
 
 class ObstacleManager:
-    """
-    מנהל את כל המכשולים במשחק
-    """
+    """Manages creation and updating of obstacles"""
     
-    def __init__(self):
+    def __init__(self, screen_width, screen_height):
         """
-        מאתחל את מנהל המכשולים
-        """
-        self.obstacles = []
-        self.obstacle_types = ["rock", "tree", "cone", "puddle"]
-        
-    def generate_obstacles(self, num_obstacles, world_width, world_height, car_pos_x, car_pos_y, min_distance=150):
-        """
-        יוצר מספר מכשולים אקראיים בעולם
+        Initialize obstacle manager
         
         Args:
-            num_obstacles: מספר המכשולים ליצירה
-            world_width, world_height: מימדי העולם
-            car_pos_x, car_pos_y: מיקום המכונית
-            min_distance: מרחק מינימלי בין מכשולים למכונית
+            screen_width: Width of game screen
+            screen_height: Height of game screen
         """
+        self.screen_width = screen_width
+        self.screen_height = screen_height
         self.obstacles = []
+        self.spawn_timer = 0
+        self.spawn_interval = 2.0  # Seconds between spawns
         
-        for _ in range(num_obstacles):
-            # ניסיון למצוא מיקום מתאים למכשול
-            for attempt in range(10):  # מקסימום 10 ניסיונות למכשול
-                # בחירת מיקום אקראי
-                x = random.randint(50, world_width - 50)
-                y = random.randint(50, world_height - 50)
-                
-                # וידוא מרחק מינימלי מהמכונית
-                distance_to_car = math.sqrt((x - car_pos_x)**2 + (y - car_pos_y)**2)
-                
-                # בדיקה שהמכשול לא קרוב מדי למכשולים אחרים
-                too_close = False
-                for obstacle in self.obstacles:
-                    distance = math.sqrt((x - obstacle.x)**2 + (y - obstacle.y)**2)
-                    if distance < min_distance // 2:
-                        too_close = True
-                        break
-                
-                if distance_to_car >= min_distance and not too_close:
-                    # מצאנו מיקום מתאים, יצירת מכשול
-                    obstacle_type = random.choice(self.obstacle_types)
-                    size = random.randint(30, 60)
-                    self.obstacles.append(Obstacle(x, y, obstacle_type, size, size))
-                    break
-        
-        print(f"נוצרו {len(self.obstacles)} מכשולים")
+        # Obstacle type probabilities
+        self.obstacle_types = [
+            ("cone", 0.4),
+            ("rock", 0.3),
+            ("barrier", 0.2),
+            ("puddle", 0.1)
+        ]
     
-    def update(self, dt):
+    def update(self, dt, difficulty_multiplier=1.0):
         """
-        מעדכן את כל המכשולים
+        Update all obstacles
         
         Args:
-            dt: זמן שעבר מהעדכון האחרון
+            dt: Time delta in seconds
+            difficulty_multiplier: Multiplier for spawn rate
         """
-        for obstacle in self.obstacles:
+        # Update spawn timer
+        self.spawn_timer += dt
+        
+        # Spawn new obstacles
+        spawn_rate = self.spawn_interval / difficulty_multiplier
+        if self.spawn_timer >= spawn_rate:
+            self.spawn_obstacle()
+            self.spawn_timer = 0
+        
+        # Update existing obstacles
+        for obstacle in self.obstacles[:]:
             obstacle.update(dt)
+            
+            # Remove obstacles that are off screen
+            if obstacle.is_off_screen(self.screen_height):
+                self.obstacles.remove(obstacle)
     
-    def draw(self, screen, offset_x, offset_y):
+    def spawn_obstacle(self):
+        """Spawn a new obstacle"""
+        # Choose random position
+        margin = 50
+        x = random.randint(margin, self.screen_width - margin)
+        y = -50  # Start above screen
+        
+        # Choose obstacle type based on probabilities
+        rand_val = random.random()
+        cumulative_prob = 0
+        obstacle_type = "cone"  # Default
+        
+        for obs_type, prob in self.obstacle_types:
+            cumulative_prob += prob
+            if rand_val <= cumulative_prob:
+                obstacle_type = obs_type
+                break
+        
+        # Create obstacle
+        speed = random.randint(150, 250)
+        obstacle = Obstacle(x, y, obstacle_type, speed)
+        self.obstacles.append(obstacle)
+    
+    def draw_all(self, screen):
         """
-        מצייר את כל המכשולים
+        Draw all obstacles
         
         Args:
-            screen: משטח pygame לציור
-            offset_x, offset_y: היסט העולם
+            screen: Pygame surface to draw on
         """
         for obstacle in self.obstacles:
-            obstacle.draw(screen, offset_x, offset_y)
+            obstacle.draw(screen)
     
-    def check_collisions(self, car):
+    def check_collisions(self, car_rect):
         """
-        בודק התנגשויות עם מכונית
+        Check collisions with car
         
         Args:
-            car: אובייקט מכונית לבדיקה
+            car_rect: Car's collision rectangle
             
         Returns:
-            רשימת מכשולים שהתנגשו במכונית
+            List of obstacles that collided with car
         """
         collisions = []
         for obstacle in self.obstacles:
-            if obstacle.check_collision(car):
+            if not obstacle.hit and obstacle.rect.colliderect(car_rect):
+                obstacle.hit = True
                 collisions.append(obstacle)
         
         return collisions
+    
+    def clear_all(self):
+        """Clear all obstacles"""
+        self.obstacles.clear()
+    
+    def get_obstacle_count(self):
+        """Get number of active obstacles"""
+        return len(self.obstacles)
