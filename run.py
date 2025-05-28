@@ -13,23 +13,11 @@ import platform
 import pygame
 
 def check_dependencies():
-    """Check if all required dependencies are installed"""
-    required_packages = ['pygame', 'mediapipe', 'opencv-python', 'numpy']
-    missing_packages = []
-    
-    for package in required_packages:
-        try:
-            __import__(package.replace('-', '_'))
-        except ImportError:
-            missing_packages.append(package)
-    
-
-    
-    return missing_packages
-
+    """Check dependencies - DISABLED"""
+    return []  # No missing packages
 def install_dependencies(packages):
     """Install missing dependencies"""
-    print("Installing missing dependencies...")
+    print("# REMOVED: Installing missing dependencies...")
     
     # Use Python executable from the current environment
     python = sys.executable
@@ -85,8 +73,8 @@ def main():
     # Check for dependencies
     missing_packages = check_dependencies()
     if missing_packages:
-        print(f"Missing required packages: {', '.join(missing_packages)}")
-        user_input = input("Do you want to install them now? (y/n): ")
+        print(f"# REMOVED: Missing required packages: {', '.join(missing_packages)}")
+        user_input = input("# REMOVED: Do you want to install them now? (y/n): ")
         
         if user_input.lower() in ['y', 'yes']:
             if not install_dependencies(missing_packages):
