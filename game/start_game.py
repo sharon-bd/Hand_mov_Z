@@ -727,31 +727,30 @@ class Game:
         pygame.display.flip()
     
     def draw_built_in_road(self):
-        """Draw built-in road with FIXED animation direction"""
+        """Draw built-in road with CORRECTLY FIXED animation direction"""
         # Road surface
         road_color = (80, 80, 80)
         road_width = self.screen_width - 100
         pygame.draw.rect(self.screen, road_color, (50, 0, road_width, self.screen_height))
         
-        # Center line animation - FIXED DIRECTION
+        # Center line animation - CORRECTLY FIXED DIRECTION
         center_x = self.screen_width // 2
         line_width = 5
         
-        # FIXED: For forward movement, use positive road_offset
-        start_y = self.road_offset % self.total_dash_cycle
+        # CORRECTLY FIXED: Start from negative offset to make dashes move down
+        start_y = -self.road_offset % self.total_dash_cycle
         
         y = start_y
         while y < self.screen_height + self.total_dash_cycle:
-            cycle_pos = y % self.total_dash_cycle
+            cycle_pos = (y + self.road_offset) % self.total_dash_cycle
             if cycle_pos < self.dash_length:
-                dash_end = min(y + self.dash_length, self.screen_height)
-                if y >= -self.dash_length and dash_end > 0:
-                    dash_start = max(y, 0)
-                    dash_height = min(dash_end - dash_start, self.dash_length)
-                    if dash_height > 0:
-                        pygame.draw.rect(self.screen, WHITE, 
-                                         (center_x - line_width // 2, dash_start, 
-                                          line_width, dash_height))
+                dash_start = max(0, y)
+                dash_end = min(self.screen_height, y + self.dash_length)
+                
+                if dash_end > dash_start:
+                    pygame.draw.rect(self.screen, WHITE, 
+                                     (center_x - line_width // 2, dash_start, 
+                                      line_width, dash_end - dash_start))
             
             y += self.total_dash_cycle
         
@@ -761,14 +760,14 @@ class Game:
         self.draw_animated_edge_line(self.screen_width - 50 - line_width, edge_color, line_width)
     
     def draw_animated_edge_line(self, x, color, width):
-        """Draw animated edge line - FIXED DIRECTION"""
+        """Draw animated edge line - CORRECTLY FIXED DIRECTION"""
         pygame.draw.rect(self.screen, color, (x, 0, width, self.screen_height))
         
         dot_spacing = 40
         dot_size = 3
         
-        # FIXED: For forward movement, use positive offset
-        start_y = (self.road_offset * 0.5) % dot_spacing
+        # CORRECTLY FIXED: Negative offset to make dots move down
+        start_y = -(self.road_offset * 0.5) % dot_spacing
         
         y = start_y
         while y < self.screen_height + dot_spacing:

@@ -1,8 +1,8 @@
 """
-Moving Road Module for Hand Gesture Car Control Game - SYNCHRONIZED VERSION
+Moving Road Module for Hand Gesture Car Control Game - ALL OBJECTS FIXED VERSION
 
-This module implements a moving road background that responds to car movement,
-creating the illusion of forward movement with FIXED DIRECTION animation.
+This module implements a moving road background where ALL objects move in the 
+correct direction like the speed particles.
 """
 
 import pygame
@@ -11,11 +11,11 @@ import random
 import numpy as np
 
 class MovingRoadGenerator:
-    """SYNCHRONIZED Moving Road Generator with Fixed Direction Animation"""
+    """ALL OBJECTS FIXED Moving Road Generator - Everything moves like speed particles"""
     
     def __init__(self, screen_width, screen_height):
         """
-        Initialize the moving road generator - SYNCHRONIZED VERSION
+        Initialize the moving road generator - ALL OBJECTS FIXED VERSION
         
         Args:
             screen_width: Width of the game screen
@@ -35,7 +35,7 @@ class MovingRoadGenerator:
         self.lane_color = (240, 240, 240)
         self.grass_color = (0, 100, 0)
         
-        # Scrolling state - FIXED FOR CORRECT DIRECTION
+        # Scrolling state - ALL OBJECTS NOW MOVE CORRECTLY
         self.scroll_y = 0
         self.scroll_x = 0
         self.rotation = 0
@@ -59,7 +59,7 @@ class MovingRoadGenerator:
         self._generate_particles(50)
         self._generate_speed_particles(30)
         
-        print("✅ MovingRoadGenerator initialized - SYNCHRONIZED VERSION")
+        print("✅ MovingRoadGenerator initialized - ALL OBJECTS FIXED VERSION")
     
     def _generate_road_elements(self, count):
         """Generate road side elements with enhanced variety"""
@@ -205,7 +205,7 @@ class MovingRoadGenerator:
 
     def update(self, rotation, speed, dt):
         """
-        Update the moving road state - FIXED DIRECTION FOR FORWARD MOVEMENT
+        Update the moving road state - ALL OBJECTS NOW MOVE LIKE SPEED PARTICLES
         
         Args:
             rotation: Car rotation in degrees
@@ -215,30 +215,32 @@ class MovingRoadGenerator:
         # Store current speed for effects
         self.speed = speed
         
-        # Calculate scroll speed
+        # Calculate scroll speed - SAME AS SPEED PARTICLES
         base_scroll_speed = self.max_scroll_speed * speed
         angle_rad = math.radians(rotation)
         
-        # Update scroll values - FIXED FOR FORWARD MOVEMENT
-        # For forward movement, road elements should move DOWN and TOWARDS the car
+        # Update scroll values - SAME DIRECTION AS SPEED PARTICLES
         self.scroll_x += base_scroll_speed * math.sin(angle_rad) * dt
         self.scroll_y += base_scroll_speed * math.cos(angle_rad) * dt  # Positive = forward
         
-        # Update particles - FIXED DIRECTION
+        # Update particles - NOW SAME AS SPEED PARTICLES BEHAVIOR
         for particle in self.particles:
-            # Particles move down for forward movement
+            # FIXED: Now move exactly like speed particles
             particle['y'] += base_scroll_speed * particle['speed'] * dt
-            particle['x'] += random.uniform(-10, 10) * dt  # Small random movement
+            particle['x'] += random.uniform(-5, 5) * dt  # Small random movement
             
-            # Wrap around screen
-            if particle['y'] > self.screen_height + 100:
-                particle['y'] = -100
+            # Reset when off screen - SAME AS SPEED PARTICLES
+            if particle['y'] > self.screen_height + 20:
+                particle['y'] = -20
                 particle['x'] = random.randint(0, self.screen_width)
             
-            if particle['x'] < -50 or particle['x'] > self.screen_width + 50:
-                particle['x'] = random.randint(0, self.screen_width)
+            # Also handle side wrapping
+            if particle['x'] < -20:
+                particle['x'] = self.screen_width + 20
+            elif particle['x'] > self.screen_width + 20:
+                particle['x'] = -20
         
-        # Update speed particles - FIXED DIRECTION
+        # Update speed particles - KEEP ORIGINAL BEHAVIOR (IT'S CORRECT)
         for particle in self.speed_particles:
             # Speed particles move down faster for forward movement
             particle['y'] += base_scroll_speed * particle['speed'] * dt
@@ -250,7 +252,7 @@ class MovingRoadGenerator:
 
     def draw(self, screen, world_offset_x=0, world_offset_y=0):
         """
-        Draw the moving road - SYNCHRONIZED VERSION with FIXED DIRECTION
+        Draw the moving road - ALL OBJECTS NOW MOVE CORRECTLY
         
         Args:
             screen: Pygame surface to draw on
@@ -263,13 +265,13 @@ class MovingRoadGenerator:
         # Draw main road surface
         self._draw_road_surface(screen)
         
-        # Draw lane markings with animation
+        # Draw lane markings with animation - FIXED DIRECTION
         self._draw_lane_markings(screen)
         
-        # Draw road elements
+        # Draw road elements - FIXED DIRECTION
         self._draw_road_elements(screen, world_offset_x, world_offset_y)
         
-        # Draw particles and effects
+        # Draw particles and effects - FIXED DIRECTION
         self._draw_particles(screen)
         
         # Draw speed effects if moving fast
@@ -287,55 +289,56 @@ class MovingRoadGenerator:
         pygame.draw.rect(screen, self.road_color, road_rect)
     
     def _draw_lane_markings(self, screen):
-        """Draw animated lane markings - FIXED DIRECTION"""
-        # Center line - animated dashes
+        """Draw smooth moving center line pattern - NO flickering"""
         center_x = self.screen_width // 2
+        line_width = 6
         
-        # FIXED: For forward movement, use positive scroll_y
-        dash_cycle = self.lane_length + self.lane_gap
-        y_offset = self.scroll_y % dash_cycle
+        # Draw main solid line
+        pygame.draw.rect(screen, self.lane_color,
+                        (center_x - line_width // 2, 0, 
+                         line_width, self.screen_height))
         
-        y = -y_offset
-        while y < self.screen_height + dash_cycle:
-            if y % dash_cycle < self.lane_length:
-                dash_start = max(0, y)
-                dash_end = min(self.screen_height, y + self.lane_length)
-                
-                if dash_end > dash_start:
-                    pygame.draw.rect(screen, self.lane_color,
-                                   (center_x - self.lane_width // 2, dash_start,
-                                    self.lane_width, dash_end - dash_start))
-            y += dash_cycle
-        
-        # Side lane markings
-        for lane in [1, 2]:  # Two additional lanes
-            lane_x = (self.screen_width // 2 - self.road_width // 2 + 
-                     self.road_width * lane // 3)
+        # Add smooth moving highlights when car is moving
+        if self.speed > 0.1:
+            # Create smooth flowing effect
+            highlight_spacing = 30
+            highlight_height = 15
             
-            y = -y_offset
-            while y < self.screen_height + dash_cycle:
-                if y % dash_cycle < self.lane_length:
-                    dash_start = max(0, y)
-                    dash_end = min(self.screen_height, y + self.lane_length)
+            # Use scroll_y for smooth movement
+            offset = int(self.scroll_y * 0.5) % highlight_spacing
+            
+            for i in range(-highlight_spacing, self.screen_height + highlight_spacing, highlight_spacing):
+                y_pos = i + offset
+                if 0 <= y_pos <= self.screen_height - highlight_height:
+                    # Draw moving highlight
+                    highlight_intensity = int(150 + 105 * self.speed)
+                    highlight_color = (highlight_intensity, highlight_intensity, highlight_intensity)
                     
-                    if dash_end > dash_start:
-                        pygame.draw.rect(screen, self.lane_color,
-                                       (lane_x - self.lane_width // 2, dash_start,
-                                        self.lane_width, dash_end - dash_start))
-                y += dash_cycle
-    
+                    pygame.draw.rect(screen, highlight_color,
+                                   (center_x - line_width // 2, y_pos,
+                                    line_width, highlight_height))
     def _draw_road_elements(self, screen, world_offset_x, world_offset_y):
-        """Draw road side elements with parallax"""
+        """Draw road side elements - FIXED TO MOVE LIKE SPEED PARTICLES"""
         for element in self.road_elements:
-            # Calculate position with scroll offset
-            element_x = element['x'] - self.scroll_x * 0.8
-            element_y = element['y'] - self.scroll_y * 0.8
+            # FIXED: Calculate position using same method as speed particles
+            # Instead of using different parallax, use direct scroll offset
+            element_x = element['x'] - self.scroll_x
+            element_y = element['y'] + self.scroll_y  # FIXED: Positive scroll_y moves elements down
             
-            # Only draw if visible
-            if (-100 < element_x < self.screen_width + 100 and
-                -100 < element_y < self.screen_height + 100):
+            # Only draw if visible (with bigger margin for smooth appearance)
+            if (-200 < element_x < self.screen_width + 200 and
+                -200 < element_y < self.screen_height + 200):
                 
                 self._draw_single_element(screen, element, element_x, element_y)
+                
+            # FIXED: Reset elements that moved off screen (like speed particles)
+            if element_y > self.screen_height + 500:
+                # Move element back to top with random X position
+                element['y'] = -500 - random.randint(0, 1000)
+                # Keep same side but add some variation
+                side = -1 if element['x'] < self.screen_width / 2 else 1
+                x_offset = side * (self.road_width / 2 + random.randint(20, 100))
+                element['x'] = self.screen_width / 2 + x_offset
     
     def _draw_single_element(self, screen, element, x, y):
         """Draw a single road element"""
@@ -401,14 +404,12 @@ class MovingRoadGenerator:
                                    (window_x, window_y, window_size, window_size))
     
     def _draw_particles(self, screen):
-        """Draw motion particles"""
+        """Draw motion particles - NOW BEHAVE LIKE SPEED PARTICLES"""
         for particle in self.particles:
             if 0 <= particle['x'] <= self.screen_width and 0 <= particle['y'] <= self.screen_height:
-                # Draw particle with alpha based on speed
-                alpha = int(100 + 155 * min(1.0, self.speed))
-                
+                # FIXED: Now draw particles with trails like speed particles when fast
                 if self.speed > 0.4:
-                    # Draw elongated particles for high speed
+                    # Draw elongated particles for high speed (like speed particles)
                     trail_length = int(self.speed * 20)
                     pygame.draw.line(screen, particle['color'],
                                    (int(particle['x']), int(particle['y'])),
@@ -421,7 +422,7 @@ class MovingRoadGenerator:
                                      particle['size'])
     
     def _draw_speed_effects(self, screen):
-        """Draw speed-based visual effects"""
+        """Draw speed-based visual effects - KEEP ORIGINAL (IT'S CORRECT)"""
         for particle in self.speed_particles:
             if 0 <= particle['x'] <= self.screen_width and 0 <= particle['y'] <= self.screen_height:
                 # Speed lines that get longer with higher speed
@@ -465,11 +466,12 @@ class MovingRoadGenerator:
                 screen.blit(blur_surface, (self.screen_width - blur_width, 0))
     
     def draw_chevrons(self, screen):
-        """Draw chevron patterns for enhanced motion effect"""
+        """Draw chevron patterns for enhanced motion effect - FIXED DIRECTION"""
         if self.speed < 0.2:
             return
             
         chevron_spacing = 80
+        # FIXED: Use same scroll direction as speed particles
         chevron_offset = int(self.scroll_y * 3) % chevron_spacing
         
         center_x = self.screen_width // 2
@@ -504,7 +506,7 @@ class MovingRoadGenerator:
         self._generate_particles(50)
         self._generate_speed_particles(30)
         
-        print("✅ MovingRoad reset - SYNCHRONIZED VERSION")
+        print("✅ MovingRoad reset - ALL OBJECTS FIXED VERSION")
     
     def get_road_bounds(self):
         """Get road boundaries for collision detection"""
@@ -556,61 +558,24 @@ class MovingRoadGenerator:
             'elements_count': len(self.road_elements),
             'particles_count': len(self.particles),
             'speed_particles_count': len(self.speed_particles),
-            'version': 'SYNCHRONIZED'
+            'version': 'ALL_OBJECTS_FIXED'
         }
 
-# Utility functions for road generation
-def create_curved_road_section(start_x, start_y, end_x, end_y, curve_intensity=50):
-    """Create a curved road section (for future use)"""
-    points = []
-    steps = 20
-    
-    for i in range(steps + 1):
-        t = i / steps
-        
-        # Quadratic bezier curve
-        mid_x = (start_x + end_x) / 2 + curve_intensity
-        mid_y = (start_y + end_y) / 2
-        
-        x = (1-t)**2 * start_x + 2*(1-t)*t * mid_x + t**2 * end_x
-        y = (1-t)**2 * start_y + 2*(1-t)*t * mid_y + t**2 * end_y
-        
-        points.append((x, y))
-    
-    return points
-
-def generate_road_texture(width, height, road_color=(80, 80, 80)):
-    """Generate a textured road surface (for future use)"""
-    surface = pygame.Surface((width, height))
-    surface.fill(road_color)
-    
-    # Add texture noise
-    for _ in range(width * height // 100):
-        x = random.randint(0, width - 1)
-        y = random.randint(0, height - 1)
-        
-        # Slight color variation
-        variation = random.randint(-10, 10)
-        color = tuple(max(0, min(255, c + variation)) for c in road_color)
-        surface.set_at((x, y), color)
-    
-    return surface
-
 # Export main class
-__all__ = ['MovingRoadGenerator', 'create_curved_road_section', 'generate_road_texture']
+__all__ = ['MovingRoadGenerator']
 
 if __name__ == "__main__":
     # Test the moving road generator
     pygame.init()
     screen = pygame.display.set_mode((800, 600))
-    pygame.display.set_caption("MovingRoad Test - SYNCHRONIZED VERSION")
+    pygame.display.set_caption("MovingRoad Test - ALL OBJECTS FIXED VERSION")
     clock = pygame.time.Clock()
     
     road = MovingRoadGenerator(800, 600)
     running = True
     speed = 0.0
     
-    print("🎮 Testing MovingRoad - SYNCHRONIZED VERSION")
+    print("🎮 Testing MovingRoad - ALL OBJECTS FIXED VERSION")
     print("Use UP/DOWN arrows to control speed")
     
     while running:
@@ -639,10 +604,10 @@ if __name__ == "__main__":
         screen.blit(speed_text, (10, 10))
         
         debug_info = road.get_debug_info()
-        info_text = font.render(f"Scroll Y: {debug_info['scroll_y']:.1f}", True, (255, 255, 255))
+        info_text = font.render(f"All Objects Fixed: {debug_info['version']}", True, (0, 255, 0))
         screen.blit(info_text, (10, 50))
         
         pygame.display.flip()
     
     pygame.quit()
-    print("👋 MovingRoad test ended")
+    print("👋 ALL OBJECTS FIXED test ended")

@@ -429,6 +429,15 @@ class GameLauncher:
         """Show game result"""
         self.logger.info(f"Game ended with score: {score}")
         
+        # Simple message instead of complex overlay
+        print(f"🎉 Game Over! Final Score: {int(score)}")
+        print("Press any key to continue...")
+        return  # Skip the problematic pygame rendering
+        
+        # Ensure font is initialized
+        if not pygame.font.get_init():
+            pygame.font.init()
+        
         # Create a simple result display overlay
         overlay = pygame.Surface((400, 200))
         overlay.fill((50, 50, 50))
@@ -457,6 +466,15 @@ class GameLauncher:
     def show_error_message(self, title, message):
         """Show error message"""
         self.logger.error(f"{title}: {message}")
+        
+        # Simple console message instead of pygame overlay
+        print(f"❌ {title}: {message}")
+        print("Check console for details.")
+        return  # Skip the problematic pygame rendering
+        
+        # Ensure font is initialized
+        if not pygame.font.get_init():
+            pygame.font.init()
         
         # Create error message overlay
         overlay = pygame.Surface((600, 350))
@@ -508,6 +526,10 @@ class GameLauncher:
     def show_info_message(self, title, message):
         """Show info message"""
         self.logger.info(f"{title}: {message}")
+        
+        # Ensure font is initialized
+        if not pygame.font.get_init():
+            pygame.font.init()
         
         # Create info message overlay
         overlay = pygame.Surface((400, 200))
