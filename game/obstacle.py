@@ -16,6 +16,7 @@ class Obstacle:
         """Initialize an obstacle"""
         self.x = x
         self.y = y
+        self.world_x = x  # Position in world coordinates
         self.obstacle_type = obstacle_type
         self.speed = speed
         self.hit = False
@@ -49,17 +50,34 @@ class Obstacle:
             self.width,
             self.height
         )
-    
+
     def update(self, dt):
         """Update obstacle position - moving DOWN the screen"""
         self.y += self.speed * dt  # POSITIVE direction = moving down
         self.rect.centerx = self.x
         self.rect.centery = self.y
-    
-    def draw(self, screen):
-        """Draw the obstacle"""
-        color = (255, 0, 0) if self.hit else self.color
-        pygame.draw.rect(screen, color, self.rect)
+
+    def draw(self, screen, world_offset_x=0):
+        """Draw the obstacle with world offset"""
+        # Calculate screen position based on world offset
+        screen_x = self.x  # כבר מכיל את המיקום על המסך אחרי החישובים
+        
+        # Only draw if visible on screen
+        if -50 <= screen_x <= screen.get_width() + 50:
+            color = (255, 0, 0) if self.hit else self.color
+            
+            # Draw cone shape
+            points = [
+                (screen_x, self.y - self.height // 2),
+                (screen_x - self.width // 2, self.y + self.height // 2),
+                (screen_x + self.width // 2, self.y + self.height // 2)
+            ]
+            pygame.draw.polygon(screen, color, points)
+            
+            # White stripe
+            pygame.draw.line(screen, (255, 255, 255),
+                            (screen_x - self.width // 4, self.y),
+                            (screen_x + self.width // 4, self.y), 3)
 
 class ObstacleManager:
     """Manages creation and updating of obstacles"""
@@ -75,36 +93,48 @@ class ObstacleManager:
         self.screen_height = 600
         self.road_width = 600
         self.road_x = 100
-    
+        
+        # World offset for steering effect
+        self.world_offset_x = 0
+
     def set_road_parameters(self, screen_width, screen_height, road_width, road_x):
         """Set road parameters after initialization"""
         self.screen_width = screen_width
         self.screen_height = screen_height
         self.road_width = road_width
         self.road_x = road_x
-    
+
+    def update_world_offset(self, offset_x):
+        """Update world offset for steering effect"""
+        self.world_offset_x = offset_x
+
     def update(self, dt, score):
         """Update all obstacles"""
         active_obstacles = []
         for obstacle in self.obstacles:
             obstacle.update(dt)
-            if obstacle.y < self.screen_height + 100:  # Keep if still on screen
+            
+            # Check if obstacle is still on screen considering world offset
+            screen_x = obstacle.world_x - self.world_offset_x
+            if obstacle.y < self.screen_height + 100 and -100 <= screen_x <= self.screen_width + 100:
                 active_obstacles.append(obstacle)
         
         self.obstacles = active_obstacles
         return active_obstacles
-    
+
     def spawn_obstacle(self):
-        """Spawn a new obstacle"""
+        """Spawn a new obstacle at world position"""
         if len(self.obstacles) < 10:  # Limit number of obstacles
-            x = random.randint(self.road_x + 50, self.road_x + self.road_width - 50)
+            # Spawn at world coordinates (not screen coordinates)
+            world_x = random.randint(self.road_x + 50, self.road_x + self.road_width - 50) + self.world_offset_x
             y = -50
             obstacle_type = random.choice(["cone", "rock", "barrier"])
-            new_obstacle = Obstacle(x, y, obstacle_type, self.obstacle_speed)
+            new_obstacle = Obstacle(world_x, y, obstacle_type, self.obstacle_speed)
+            new_obstacle.world_x = world_x  # Store world position
             self.obstacles.append(new_obstacle)
             return True
         return False
-    
+
     def clear_obstacles(self):
         """Clear all obstacles"""
         self.obstacles = []

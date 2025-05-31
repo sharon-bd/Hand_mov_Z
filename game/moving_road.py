@@ -34,16 +34,17 @@ class MovingRoadGenerator:
         
         # Scrolling state
         self.scroll_y = 0
+        self.scroll_x = 0
         self.speed = 0.0
         
         print("✅ MovingRoadGenerator initialized - SIMPLE VERSION")
     
     def update(self, rotation, speed, dt):
         """
-        Update the moving road state - SIMPLE VERSION
+        Update the moving road state - WITH STRONGER STEERING OFFSET
         
         Args:
-            rotation: Car rotation in degrees (ignored)
+            rotation: Car rotation in degrees
             speed: Normalized car speed (0.0 to 1.0)
             dt: Time delta in seconds
         """
@@ -53,36 +54,47 @@ class MovingRoadGenerator:
         # Calculate scroll speed
         base_scroll_speed = 500 * speed
         
-        # Update scroll position
+        # Update vertical scroll position
         self.scroll_y += base_scroll_speed * dt
+        
+        # ENHANCED: Stronger horizontal scroll based on car rotation
+        # Convert rotation to steering effect with more sensitivity
+        steering_factor = rotation / 30.0  # 30 degrees = full steering (more sensitive)
+        steering_factor = max(-1.5, min(1.5, steering_factor))  # Allow more extreme values
+        
+        # Move background horizontally opposite to car direction with stronger effect
+        horizontal_speed = steering_factor * 150 * speed  # Increased from 100 to 150
+        self.scroll_x += horizontal_speed * dt
 
     def draw(self, screen, world_offset_x=0, world_offset_y=0):
         """
-        Draw the simple moving road
+        Draw the simple moving road with horizontal offset
         
         Args:
             screen: Pygame surface to draw on
-            world_offset_x: World offset X (ignored)
-            world_offset_y: World offset Y (ignored)
+            world_offset_x: Additional world offset X
+            world_offset_y: Additional world offset Y
         """
         # Fill background with grass
         screen.fill(self.grass_color)
         
-        # Draw main road surface
+        # Calculate road position with horizontal offset
+        road_center_x = self.screen_width // 2 - int(self.scroll_x)
+        
+        # Draw main road surface with offset
         road_rect = pygame.Rect(
-            self.screen_width // 2 - self.road_width // 2,
+            road_center_x - self.road_width // 2,
             0,
             self.road_width,
             self.screen_height
         )
         pygame.draw.rect(screen, self.road_color, road_rect)
         
-        # Draw moving center line
-        self._draw_center_line(screen)
+        # Draw moving center line with offset
+        self._draw_center_line(screen, road_center_x)
     
-    def _draw_center_line(self, screen):
-        """Draw simple moving center line - FIXED to match orange cones direction"""
-        center_x = self.screen_width // 2
+    def _draw_center_line(self, screen, center_x):
+        """Draw simple moving center line with horizontal offset"""
         line_width = 6
         
         # Moving dashed line - REVERSED direction to match cones
@@ -95,15 +107,27 @@ class MovingRoadGenerator:
                 dash_start = max(0, y)
                 dash_end = min(self.screen_height, y + self.lane_length)
                 
-                pygame.draw.rect(screen, self.lane_color,
-                               (center_x - line_width // 2, dash_start,
-                                line_width, dash_end - dash_start))
+                # Only draw if line is within screen bounds
+                if center_x - line_width // 2 >= 0 and center_x + line_width // 2 <= self.screen_width:
+                    pygame.draw.rect(screen, self.lane_color,
+                                   (center_x - line_width // 2, dash_start,
+                                    line_width, dash_end - dash_start))
             
             y += dash_spacing
+    
+    def get_debug_info(self):
+        """Get debug information for testing"""
+        return {
+            'version': 'Simple Road 1.0',
+            'scroll_y': self.scroll_y,
+            'scroll_x': self.scroll_x,
+            'speed': self.speed
+        }
     
     def reset(self):
         """Reset the road to initial state"""
         self.scroll_y = 0
+        self.scroll_x = 0
         self.speed = 0.0
         
         print("✅ MovingRoad reset - SIMPLE VERSION")

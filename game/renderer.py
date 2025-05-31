@@ -53,6 +53,9 @@ class GameRenderer:
         self.line_length = 30
         self.line_width = 10
         
+        # Add horizontal scrolling for steering effect
+        self.scroll_x = 0
+
         # Pre-render some common elements
         self._init_prerendered_elements()
         
@@ -76,7 +79,7 @@ class GameRenderer:
     
     def render_game(self, screen, game_state):
         """
-        Render the complete game
+        Render the complete game with enhanced steering-based background movement
         
         Args:
             screen: Pygame surface to render to
@@ -85,26 +88,40 @@ class GameRenderer:
         # Clear screen
         screen.fill(self.colors['black'])
         
-        # Use simple moving road
-        if self.moving_road and (car := game_state.get('car')):
+        # Update horizontal scroll based on car steering with stronger effect
+        if car := game_state.get('car'):
             car_rotation = getattr(car, 'rotation', 0.0)
             car_speed = getattr(car, 'speed', 0.0)
-            # Update and render the simple moving road
-            self.moving_road.update(car_rotation, car_speed, game_state.get('dt', 0.016))
-            self.moving_road.draw(screen)
+            dt = game_state.get('dt', 0.016)
+            
+            # ENHANCED: Stronger steering effect for background movement
+            steering_factor = car_rotation / 25.0  # More sensitive (25 degrees instead of 45)
+            steering_factor = max(-2.0, min(2.0, steering_factor))  # Allow stronger movement
+            horizontal_speed = steering_factor * 200 * car_speed  # Increased from 100 to 200
+            self.scroll_x += horizontal_speed * dt
+            
+            # Use simple moving road with enhanced steering
+            if self.moving_road:
+                self.moving_road.update(car_rotation, car_speed, dt)
+                self.moving_road.draw(screen)
+            else:
+                # Update built-in scroll for fallback
+                self.scroll_y += 500 * car_speed * dt
+                self._draw_static_road_with_enhanced_steering(screen)
         else:
             # Fallback to static road
             self._draw_static_road(screen)
         
-        # Draw game objects
-        self._draw_obstacles(screen, game_state.get('obstacles', []))
+        # Draw game objects with enhanced world offset
+        world_offset_x = int(self.scroll_x)
+        self._draw_obstacles(screen, game_state.get('obstacles', []), world_offset_x)
         
         if car := game_state.get('car'):
             self._draw_car(screen, car)
         
         # Draw HUD elements
         self._draw_hud(screen, game_state)
-    
+
     def _draw_static_road(self, screen):
         """Draw simple static road with moving center line"""
         # Draw grass background
@@ -141,24 +158,75 @@ class GameRenderer:
             
             y += dash_spacing
 
+    def _draw_static_road_with_steering(self, screen):
+        """Draw static road with steering-based horizontal movement"""
+        # Draw grass background
+        screen.fill(self.colors['grass'])
+        
+        # Calculate road position with horizontal offset
+        road_center_x = self.screen_width // 2 - int(self.scroll_x)
+        
+        # Draw road surface with offset
+        road_rect = pygame.Rect(
+            road_center_x - 150,  # Half of road width (300/2)
+            0,
+            300,
+            self.screen_height
+        )
+        pygame.draw.rect(screen, self.colors['road'], road_rect)
+        
+        # Draw moving center line with horizontal offset
+        line_width = 6
+        dash_length = 30
+        gap_length = 20
+        dash_spacing = dash_length + gap_length
+        
+        # Use negative scroll to match cone direction
+        offset = int(-self.scroll_y) % dash_spacing
+        
+        y = -offset
+        while y < self.screen_height + dash_spacing:
+            if y + dash_length > 0 and y < self.screen_height:
+                dash_start = max(0, y)
+                dash_end = min(self.screen_height, y + dash_length)
+                
+                # Only draw if line is within screen bounds
+                if road_center_x - line_width // 2 >= 0 and road_center_x + line_width // 2 <= self.screen_width:
+                    pygame.draw.rect(screen, self.colors['lane'],
+                                   (road_center_x - line_width // 2, dash_start,
+                                    line_width, dash_end - dash_start))
+            
+            y += dash_spacing
     
-    def _draw_obstacles(self, screen, obstacles):
-        """Draw all obstacles"""
+    def _draw_obstacles(self, screen, obstacles, world_offset_x=0):
+        """Draw all obstacles with world offset for steering effect"""
         for obstacle in obstacles:
-            self._draw_obstacle(screen, obstacle)
+            self._draw_obstacle(screen, obstacle, world_offset_x)
     
-    def _draw_obstacle(self, screen, obstacle):
-        """Draw a single obstacle"""
+    def _draw_obstacle(self, screen, obstacle, world_offset_x=0):
+        """Draw a single obstacle with world offset"""
+        # Apply world offset to obstacle position
+        screen_x = obstacle.get('x', 0) - world_offset_x
+        screen_y = obstacle.get('y', 0)
+        
         color = self.colors['red'] if obstacle.get('hit', False) else obstacle.get('color', self.colors['gray'])
         
         if hasattr(obstacle, 'draw'):
-            obstacle.draw(screen)
+            # If obstacle has custom draw method, we need to temporarily adjust its position
+            original_x = getattr(obstacle, 'x', 0)
+            if hasattr(obstacle, 'x'):
+                obstacle.x = screen_x
+                obstacle.draw(screen)
+                obstacle.x = original_x  # Restore original position
         else:
-            # Fallback drawing
+            # Fallback drawing with offset
+            width = obstacle.get('width', 30)
+            height = obstacle.get('height', 30)
             pygame.draw.rect(screen, color, 
-                           (obstacle['x'] - obstacle['width'] // 2,
-                            obstacle['y'] - obstacle['height'] // 2,
-                            obstacle['width'], obstacle['height']))
+                           (screen_x - width // 2,
+                            screen_y - height // 2,
+                            width, height))
+
     
     def _draw_car(self, screen, car):
         """Draw the player's car"""

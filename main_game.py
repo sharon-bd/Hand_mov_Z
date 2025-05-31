@@ -82,12 +82,31 @@ class GameLauncher:
         print("🎮 Starting game...")
         
         try:
-            from game.start_game import Game
-            
-            # Create and run the game
-            game = Game()
-            game.run()
-            
+            # First try to import the run_game function
+            try:
+                from game.start_game import run_game
+                # Run game with the default normal mode
+                run_game("normal")
+                
+            except ImportError as e:
+                print(f"⚠️ Warning: Some game modules could not be imported: {e}")
+                
+                # Fallback to importing Game class directly
+                try:
+                    from game.start_game import Game
+                    
+                    # Create and run the game
+                    game = Game()
+                    try:
+                        game.run()
+                    finally:
+                        # Make sure to call cleanup if it exists
+                        if hasattr(game, 'cleanup'):
+                            game.cleanup()
+                            
+                except ImportError:
+                    print("❌ Critical: Could not load core game modules")
+                
         except Exception as e:
             print(f"❌ Error starting game: {e}")
             import traceback
