@@ -727,38 +727,40 @@ class Game:
         pygame.display.flip()
     
     def draw_built_in_road(self):
-        """Draw built-in road with CORRECTLY FIXED animation direction"""
+        """Draw built-in road with moving lane markings that match cone direction"""
         # Road surface
         road_color = (80, 80, 80)
         road_width = self.screen_width - 100
         pygame.draw.rect(self.screen, road_color, (50, 0, road_width, self.screen_height))
         
-        # Center line animation - CORRECTLY FIXED DIRECTION
+        # Moving center line - FIXED to match orange cones direction
         center_x = self.screen_width // 2
         line_width = 5
         
-        # CORRECTLY FIXED: Start from negative offset to make dashes move down
-        start_y = -self.road_offset % self.total_dash_cycle
+        # Draw moving dashed center line - REVERSED direction
+        dash_length = 30
+        gap_length = 20
+        total_cycle = dash_length + gap_length
         
-        y = start_y
-        while y < self.screen_height + self.total_dash_cycle:
-            cycle_pos = (y + self.road_offset) % self.total_dash_cycle
-            if cycle_pos < self.dash_length:
+        # NEGATIVE road_offset to move in same direction as cones
+        offset = int(-self.road_offset) % total_cycle
+        
+        y = -offset
+        while y < self.screen_height + total_cycle:
+            if y + dash_length > 0 and y < self.screen_height:
                 dash_start = max(0, y)
-                dash_end = min(self.screen_height, y + self.dash_length)
+                dash_end = min(self.screen_height, y + dash_length)
                 
-                if dash_end > dash_start:
-                    pygame.draw.rect(self.screen, WHITE, 
-                                     (center_x - line_width // 2, dash_start, 
-                                      line_width, dash_end - dash_start))
-            
-            y += self.total_dash_cycle
+                pygame.draw.rect(self.screen, (255, 255, 255), 
+                               (center_x - line_width // 2, dash_start, 
+                                line_width, dash_end - dash_start))
+            y += total_cycle
         
-        # Edge lines
+        # Simple edge lines
         edge_color = (255, 255, 0)
-        self.draw_animated_edge_line(50, edge_color, line_width)
-        self.draw_animated_edge_line(self.screen_width - 50 - line_width, edge_color, line_width)
-    
+        pygame.draw.rect(self.screen, edge_color, (50, 0, line_width, self.screen_height))
+        pygame.draw.rect(self.screen, edge_color, (self.screen_width - 50 - line_width, 0, line_width, self.screen_height))
+
     def draw_animated_edge_line(self, x, color, width):
         """Draw animated edge line - CORRECTLY FIXED DIRECTION"""
         pygame.draw.rect(self.screen, color, (x, 0, width, self.screen_height))
