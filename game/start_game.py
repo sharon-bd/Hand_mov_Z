@@ -1192,7 +1192,11 @@ class Game:
         pygame.draw.rect(self.screen, edge_color, (road_x + road_width - 5, 0, 5, self.screen_height))
 
     def update_obstacles(self, current_time, delta_time):
-        """Update obstacles with world offset"""
+        """Update obstacles with world offset - only when car is moving"""
+        # Don't spawn or move obstacles if the car is stopped
+        if self._car.speed <= 0.05:  # Add a small threshold for determining "stopped"
+            return
+            
         if self.settings["obstacle_frequency"] > 0:
             if current_time >= self.next_obstacle_time:
                 obstacle_world_x = random.randint(100, self.screen_width - 100) + self.road_offset_x
