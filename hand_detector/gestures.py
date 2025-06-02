@@ -222,7 +222,6 @@ class HandGestureDetector:
         self.prev_steering = steering
         controls['steering'] = steering
         
-<<<<<<< HEAD
         # ==================== THROTTLE DETECTION WITH CONTINUOUS CONTROL ====================
         # FIXED: Use wrist position directly for throttle control
         # Get normalized hand height (0 at top of frame, 1 at bottom)
@@ -230,13 +229,16 @@ class HandGestureDetector:
         
         # Debug: Print the actual hand position with more detail
         if self.debug_mode:
-            print(f"[THROTTLE DEBUG] Wrist Y: {normalized_y:.3f} (0=top, 1=bottom)")
-            print(f"[THROTTLE DEBUG] Wrist coords: x={wrist[0]:.3f}, y={wrist[1]:.3f}")
-            
-            # Also check other key points for comparison
-            thumb_y = thumb_tip[1]
-            index_y = index_tip[1]
-            print(f"[THROTTLE DEBUG] Thumb tip Y: {thumb_y:.3f}, Index tip Y: {index_y:.3f}")
+            current_time = time.time()
+            if not hasattr(self, '_last_throttle_debug') or current_time - self._last_throttle_debug > 2.0:
+                print(f"[THROTTLE DEBUG] Wrist Y: {normalized_y:.3f} (0=top, 1=bottom)")
+                print(f"[THROTTLE DEBUG] Wrist coords: x={wrist[0]:.3f}, y={wrist[1]:.3f}")
+                
+                # Also check other key points for comparison
+                thumb_y = thumb_tip[1]
+                index_y = index_tip[1]
+                print(f"[THROTTLE DEBUG] Thumb tip Y: {thumb_y:.3f}, Index tip Y: {index_y:.3f}")
+                self._last_throttle_debug = current_time
         
         # Validate that we have a reasonable wrist position
         if normalized_y <= 0.01:  # If wrist is at very top (suspicious)
@@ -289,31 +291,6 @@ class HandGestureDetector:
         # Apply smoothing to the final throttle value
         throttle = self.prev_throttle * self.throttle_smoothing + self.current_throttle * (1 - self.throttle_smoothing)
         throttle = max(0.2, min(1.0, throttle))
-=======
-        # ==================== THROTTLE DETECTION ====================
-        # Get normalized hand height (0 at top of frame, 1 at bottom)
-        normalized_y = wrist[1] / h
-        
-        # Update height calibration range with smoothing
-        if normalized_y < self.min_hand_height:
-            self.min_hand_height = (1 - self.height_calibration_alpha) * self.min_hand_height + self.height_calibration_alpha * normalized_y
-        if normalized_y > self.max_hand_height:
-            self.max_hand_height = (1 - self.height_calibration_alpha) * self.max_hand_height + self.height_calibration_alpha * normalized_y
-        
-        # Calculate throttle based on calibrated range
-        height_range = self.max_hand_height - self.min_hand_height
-        if height_range > 0:
-            raw_throttle = 1.0 - (normalized_y - self.min_hand_height) / height_range
-        else:
-            raw_throttle = 1.0 - normalized_y  # Fallback if range not established
-            
-        # Apply non-linear mapping for better control
-        raw_throttle = raw_throttle ** 1.5  # More precise control at lower speeds
-        
-        # Apply smoothing
-        throttle = self.prev_throttle * self.throttle_smoothing + raw_throttle * (1 - self.throttle_smoothing)
-        throttle = max(0.0, min(1.0, throttle))
->>>>>>> f26a73d3399892a1a4f5f83641e4396fdf8a7c09
         self.prev_throttle = throttle
         controls['throttle'] = throttle
         
@@ -434,7 +411,6 @@ class HandGestureDetector:
                    (frame.shape[1]//2 - 100, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
                 
         return controls
-<<<<<<< HEAD
 
     def _is_thumb_extended_improved(self, thumb_tip, thumb_ip, thumb_mcp, wrist):
         """
@@ -471,8 +447,6 @@ class HandGestureDetector:
         except Exception as e:
             print(f"⚠️ Error in thumb extension detection: {e}")
             return False
-=======
->>>>>>> f26a73d3399892a1a4f5f83641e4396fdf8a7c09
     
     def _update_command_stability(self, command):
         """Track command stability to avoid jitter."""
@@ -491,21 +465,13 @@ class HandGestureDetector:
     def _add_control_visualization(self, frame, controls):
         """Add visualization of current controls to the frame."""
         h, w, _ = frame.shape
+        
         # Draw throttle bar on the right side
         bar_height = int(h * 0.6)
         bar_width = 20
         bar_x = w - 50
         bar_y = int(h * 0.2)
         
-<<<<<<< HEAD
-=======
-        # Draw throttle bar on the right side
-        bar_height = int(h * 0.6)
-        bar_width = 20
-        bar_x = w - 50
-        bar_y = int(h * 0.2)
-        
->>>>>>> f26a73d3399892a1a4f5f83641e4396fdf8a7c09
         # Draw background bar
         cv2.rectangle(frame, 
                      (bar_x, bar_y),
@@ -522,14 +488,34 @@ class HandGestureDetector:
                          (0, 255, 0),
                          -1)
         
-        # Draw calibration marks
-        min_y = int(bar_y + bar_height * (1 - self.min_hand_height))
-        max_y = int(bar_y + bar_height * (1 - self.max_hand_height))
-        cv2.line(frame, (bar_x - 5, min_y), (bar_x + bar_width + 5, min_y), (255, 0, 0), 2)
-        cv2.line(frame, (bar_x - 5, max_y), (bar_x + bar_width + 5, max_y), (0, 0, 255), 2)
+        # Draw steering indicator
+        steering_bar_width = 200
+        steering_bar_height = 20
+        steering_bar_x = w // 2 - steering_bar_width // 2
+        steering_bar_y = h - 50
+        
+        # Background
+        cv2.rectangle(frame,
+                     (steering_bar_x, steering_bar_y),
+                     (steering_bar_x + steering_bar_width, steering_bar_y + steering_bar_height),
+                     (100, 100, 100),
+                     -1)
+        
+        # Steering position
+        steering_pos = int(steering_bar_width / 2 + (controls['steering'] * steering_bar_width / 2))
+        cv2.circle(frame,
+                  (steering_bar_x + steering_pos, steering_bar_y + steering_bar_height // 2),
+                  8,
+                  (0, 0, 255),
+                  -1)
         
         # Add labels
         cv2.putText(frame, "Throttle", (bar_x - 30, bar_y - 10),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
         cv2.putText(frame, f"{controls['throttle']:.2f}", (bar_x - 30, bar_y + bar_height + 20),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        
+        cv2.putText(frame, "Steering", (steering_bar_x, steering_bar_y - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        cv2.putText(frame, f"{controls['steering']:.2f}", (steering_bar_x, steering_bar_y + steering_bar_height + 20),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
