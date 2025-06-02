@@ -222,6 +222,7 @@ class HandGestureDetector:
         self.prev_steering = steering
         controls['steering'] = steering
         
+<<<<<<< HEAD
         # ==================== THROTTLE DETECTION WITH CONTINUOUS CONTROL ====================
         # FIXED: Use wrist position directly for throttle control
         # Get normalized hand height (0 at top of frame, 1 at bottom)
@@ -288,6 +289,31 @@ class HandGestureDetector:
         # Apply smoothing to the final throttle value
         throttle = self.prev_throttle * self.throttle_smoothing + self.current_throttle * (1 - self.throttle_smoothing)
         throttle = max(0.2, min(1.0, throttle))
+=======
+        # ==================== THROTTLE DETECTION ====================
+        # Get normalized hand height (0 at top of frame, 1 at bottom)
+        normalized_y = wrist[1] / h
+        
+        # Update height calibration range with smoothing
+        if normalized_y < self.min_hand_height:
+            self.min_hand_height = (1 - self.height_calibration_alpha) * self.min_hand_height + self.height_calibration_alpha * normalized_y
+        if normalized_y > self.max_hand_height:
+            self.max_hand_height = (1 - self.height_calibration_alpha) * self.max_hand_height + self.height_calibration_alpha * normalized_y
+        
+        # Calculate throttle based on calibrated range
+        height_range = self.max_hand_height - self.min_hand_height
+        if height_range > 0:
+            raw_throttle = 1.0 - (normalized_y - self.min_hand_height) / height_range
+        else:
+            raw_throttle = 1.0 - normalized_y  # Fallback if range not established
+            
+        # Apply non-linear mapping for better control
+        raw_throttle = raw_throttle ** 1.5  # More precise control at lower speeds
+        
+        # Apply smoothing
+        throttle = self.prev_throttle * self.throttle_smoothing + raw_throttle * (1 - self.throttle_smoothing)
+        throttle = max(0.0, min(1.0, throttle))
+>>>>>>> f26a73d3399892a1a4f5f83641e4396fdf8a7c09
         self.prev_throttle = throttle
         controls['throttle'] = throttle
         
@@ -408,6 +434,7 @@ class HandGestureDetector:
                    (frame.shape[1]//2 - 100, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
                 
         return controls
+<<<<<<< HEAD
 
     def _is_thumb_extended_improved(self, thumb_tip, thumb_ip, thumb_mcp, wrist):
         """
@@ -444,6 +471,8 @@ class HandGestureDetector:
         except Exception as e:
             print(f"⚠️ Error in thumb extension detection: {e}")
             return False
+=======
+>>>>>>> f26a73d3399892a1a4f5f83641e4396fdf8a7c09
     
     def _update_command_stability(self, command):
         """Track command stability to avoid jitter."""
@@ -458,7 +487,7 @@ class HandGestureDetector:
         if self.command_stability_count >= self.stability_threshold:
             return self.last_command
         return None
-
+    
     def _add_control_visualization(self, frame, controls):
         """Add visualization of current controls to the frame."""
         h, w, _ = frame.shape
@@ -468,6 +497,15 @@ class HandGestureDetector:
         bar_x = w - 50
         bar_y = int(h * 0.2)
         
+<<<<<<< HEAD
+=======
+        # Draw throttle bar on the right side
+        bar_height = int(h * 0.6)
+        bar_width = 20
+        bar_x = w - 50
+        bar_y = int(h * 0.2)
+        
+>>>>>>> f26a73d3399892a1a4f5f83641e4396fdf8a7c09
         # Draw background bar
         cv2.rectangle(frame, 
                      (bar_x, bar_y),
