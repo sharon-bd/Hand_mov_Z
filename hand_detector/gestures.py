@@ -37,6 +37,11 @@ class HandGestureDetector:
         self.last_log_time = time.time()
         self.log_interval = 2.0  # Log every 2 seconds
         
+        # Throttle calibration
+        self.min_hand_height = 1.0  # Will be updated during detection
+        self.max_hand_height = 0.0  # Will be updated during detection
+        self.height_calibration_alpha = 0.1  # Smoothing factor for height range updates
+        
         # Fallback controls in case of detection issues
         self.fallback_controls = {
             'steering': 0.0,
@@ -204,42 +209,40 @@ class HandGestureDetector:
         self.prev_steering = steering
         controls['steering'] = steering
         
-        if self.debug_mode:
-            center = (wrist[0], wrist[1])
-            radius = 50
-            cv2.ellipse(frame, center, (radius, radius), 0, -100, -80, (0, 255, 255), 2)
-            cv2.ellipse(frame, center, (radius, radius), 0, -80, -45, (0, 255, 0), 2)
-            cv2.ellipse(frame, center, (radius, radius), 0, -135, -100, (0, 0, 255), 2)
-            
-            angle_rad = np.radians(-thumb_angle)
-            end_point = (
-                int(center[0] + radius * np.cos(angle_rad)),
-                int(center[1] + radius * np.sin(angle_rad))
-            )
-            cv2.line(frame, center, end_point, (255, 255, 255), 2)
-            
-            cv2.putText(frame, f"Thumb: {thumb_angle:.1f}°", (10, 30), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-            cv2.putText(frame, f"Steering: {raw_steering:.2f}", (10, 60), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-        
         # ==================== THROTTLE DETECTION ====================
-        normalized_y = 1.0 - (wrist[1] / h)
-        raw_throttle = normalized_y ** 1.5
+        # Get normalized hand height (0 at top of frame, 1 at bottom)
+        normalized_y = wrist[1] / h
         
+        # Update height calibration range with smoothing
+        if normalized_y < self.min_hand_height:
+            self.min_hand_height = (1 - self.height_calibration_alpha) * self.min_hand_height + self.height_calibration_alpha * normalized_y
+        if normalized_y > self.max_hand_height:
+            self.max_hand_height = (1 - self.height_calibration_alpha) * self.max_hand_height + self.height_calibration_alpha * normalized_y
+        
+        # Calculate throttle based on calibrated range
+        height_range = self.max_hand_height - self.min_hand_height
+        if height_range > 0:
+            raw_throttle = 1.0 - (normalized_y - self.min_hand_height) / height_range
+        else:
+            raw_throttle = 1.0 - normalized_y  # Fallback if range not established
+            
+        # Apply non-linear mapping for better control
+        raw_throttle = raw_throttle ** 1.5  # More precise control at lower speeds
+        
+        # Apply smoothing
         throttle = self.prev_throttle * self.throttle_smoothing + raw_throttle * (1 - self.throttle_smoothing)
         throttle = max(0.0, min(1.0, throttle))
         self.prev_throttle = throttle
         controls['throttle'] = throttle
         
         # ==================== GESTURE DETECTION ====================
-        index_curled = self._is_finger_curled(index_tip, index_mcp, wrist)
-        middle_curled = self._is_finger_curled(middle_tip, middle_mcp, wrist)
-        ring_curled = self._is_finger_curled(ring_tip, ring_mcp, wrist)
-        pinky_curled = self._is_finger_curled(pinky_tip, pinky_mcp, wrist)
+        index_curled = index_tip[1] > index_mcp[1]
+        middle_curled = middle_tip[1] > middle_mcp[1]
+        ring_curled = ring_tip[1] > ring_mcp[1]
+        pinky_curled = pinky_tip[1] > pinky_mcp[1]
         
         # בדיקה משופרת של האגודל
-        thumb_extended = self._is_thumb_extended_improved(thumb_tip, thumb_mcp, wrist)
+        thumb_extended = self._is_thumb_extended_improved(thumb_tip, thumb_ip, thumb_mcp, wrist)
         thumb_curled = not thumb_extended
         
         # חישוב המרחק בין האגודל לאצבע המורה - סימן מובהק שהאגודל אינו חלק מאגרוף
@@ -339,188 +342,54 @@ class HandGestureDetector:
                 
         return controls
     
-    def _is_finger_curled(self, finger_tip, finger_mcp, wrist):
-        """בדיקה משופרת לזיהוי אצבע מכופפת שעובדת בכל זווית של היד"""
-        # חישוב אורך האצבע המקסימלי במצב פרוש
-        max_finger_length = np.sqrt((finger_mcp[0] - wrist[0])**2 + (finger_mcp[1] - wrist[1])**2) * 1.5
-        
-        # חישוב המרחק בפועל בין קצה האצבע למפרק
-        tip_to_mcp_dist = np.sqrt((finger_tip[0] - finger_mcp[0])**2 + (finger_tip[1] - finger_mcp[1])**2)
-        
-        # חישוב מרחק ממרכז כף היד משוער
-        palm_center_x = wrist[0] + (finger_mcp[0] - wrist[0]) * 0.4
-        palm_center_y = wrist[1] + (finger_mcp[1] - wrist[1]) * 0.4
-        tip_to_palm_dist = np.sqrt((finger_tip[0] - palm_center_x)**2 + (finger_tip[1] - palm_center_y)**2)
-        
-        # אצבע מכופפת אם:
-        # 1. המרחק בין הקצה למפרק קטן משמעותית מהאורך המקסימלי האפשרי, או
-        # 2. האצבע קרובה מאוד למרכז כף היד
-        small_extension = tip_to_mcp_dist < max_finger_length * 0.5
-        close_to_palm = tip_to_palm_dist < max_finger_length * 0.5
-        
-        return small_extension or close_to_palm
-    
-    def _is_finger_extended(self, finger_tip, finger_mcp, wrist):
-        """בדיקה מתקדמת האם האצבע מושטת"""
-        tip_to_mcp = np.sqrt((finger_tip[0] - finger_mcp[0])**2 + (finger_tip[1] - finger_mcp[1])**2)
-        mcp_to_wrist = np.sqrt((finger_mcp[0] - wrist[0])**2 + (finger_mcp[1] - wrist[1])**2)
-        
-        if mcp_to_wrist > 0:
-            extension_ratio = tip_to_mcp / mcp_to_wrist
-            return extension_ratio > 1.3
-        return False
-    
-    def _is_thumb_extended(self, thumb_tip, thumb_mcp, wrist):
-        """
-        בדיקה משופרת האם האגודל מוארך, מתמודדת עם בעיית זיהוי גם כשהאגודל מוסתר
-        """
-        # מרחק בין קצה האגודל לשורש כף היד
-        tip_to_wrist = np.sqrt((thumb_tip[0] - wrist[0])**2 + (thumb_tip[1] - wrist[1])**2)
-        
-        # מרחק בין בסיס האגודל לשורש כף היד
-        mcp_to_wrist = np.sqrt((thumb_mcp[0] - wrist[0])**2 + (thumb_mcp[1] - wrist[1])**2)
-        
-        # יחס מרחקים - אם האגודל באמת מוארך, הקצה שלו אמור להיות רחוק משמעותית מהבסיס
-        distance_ratio = tip_to_wrist / mcp_to_wrist if mcp_to_wrist > 0 else 0
-        
-        # וקטור מהשורש לבסיס האגודל
-        wrist_to_mcp_x = thumb_mcp[0] - wrist[0]
-        wrist_to_mcp_y = thumb_mcp[1] - wrist[1]
-        
-        # וקטור מבסיס האגודל לקצה האגודל
-        mcp_to_tip_x = thumb_tip[0] - thumb_mcp[0]
-        mcp_to_tip_y = thumb_tip[1] - thumb_mcp[1]
-        
-        # חישוב מכפלה סקלרית (דוט פרודקט)
-        dot_product = wrist_to_mcp_x * mcp_to_tip_x + wrist_to_mcp_y * mcp_to_tip_y
-        
-        # חישוב גודל הווקטורים
-        wrist_to_mcp_length = np.sqrt(wrist_to_mcp_x**2 + wrist_to_mcp_y**2)
-        mcp_to_tip_length = np.sqrt(mcp_to_tip_x**2 + mcp_to_tip_y**2)
-        
-        # בדיקה אם האגודל נמצא בצד המתאים של כף היד
-        # כלומר, אם האגודל באמת יוצא החוצה או שהוא מוסתר/מכופף
-        thumb_position_x_relative = thumb_tip[0] - wrist[0]  # מיקום אופקי יחסי לשורש כף היד
-        
-        # גם אם האגודל מוסתר, הוא בדרך כלל עדיין קרוב לכף היד
-        thumb_close_to_palm = tip_to_wrist < 1.7 * mcp_to_wrist
-        
-        # בדיקה משופרת האם האגודל באמת מוארך
-        if wrist_to_mcp_length > 0 and mcp_to_tip_length > 0:
-            cos_angle = dot_product / (wrist_to_mcp_length * mcp_to_tip_length)
-            cos_angle = max(min(cos_angle, 1.0), -1.0)  # הגבלה למנוע שגיאות מספריות
-            angle = np.degrees(np.arccos(cos_angle))
-            
-            # האגודל נחשב מוארך רק אם:
-            # 1. הזווית בין הווקטורים גדולה מספיק (אגודל פונה לכיוון שונה מהיד)
-            # 2. היחס בין המרחקים מעיד על אגודל מושט
-            # 3. האגודל לא קרוב מדי לכף היד (אחרת הוא כנראה מוסתר)
-            thumb_extended = (angle > 60 and           # זווית גדולה בין השורש לאאגודל
-                             distance_ratio > 1.5 and  # קצה האגודל רחוק יותר מהבסיס
-                             not thumb_close_to_palm)  # האגודל לא צמוד/מוסתר בכף היד
-            
-            return thumb_extended
-        
-        return False
-    
-    def _is_thumb_extended_improved(self, thumb_tip, thumb_mcp, wrist):
-        """
-        גרסה משופרת של בדיקת האגודל המוארך, המתחשבת בזוויות שונות ומצבים שונים של האגודל.
-        """
-        # מרחק בין קצה האגודל לשורש כף היד
-        tip_to_wrist = np.sqrt((thumb_tip[0] - wrist[0])**2 + (thumb_tip[1] - wrist[1])**2)
-        
-        # מרחק בין בסיס האגודל לשורש כף היד
-        mcp_to_wrist = np.sqrt((thumb_mcp[0] - wrist[0])**2 + (thumb_mcp[1] - wrist[1])**2)
-        
-        # מרחק בין קצה האגודל לבסיס האגודל
-        tip_to_mcp = np.sqrt((thumb_tip[0] - thumb_mcp[0])**2 + (thumb_tip[1] - thumb_mcp[1])**2)
-        
-        # בדיקה 1: האם האגודל נמצא בקצה החיצוני של כף היד (בהתאם לתמונה)
-        thumb_outside_palm = (thumb_tip[0] - wrist[0]) * (thumb_mcp[0] - wrist[0]) > 0  # האם האגודל בכיוון הנכון
-        
-        # בדיקה 2: האם האגודל ארוך מספיק ביחס לכף היד
-        extended_length = tip_to_mcp > 0.5 * mcp_to_wrist
-        
-        # בדיקה 3: האם האגודל רחוק מספיק משורש כף היד
-        away_from_wrist = tip_to_wrist > 1.2 * mcp_to_wrist
-        
-        # זיהוי משופר - האגודל מוארך אם הוא עומד בחלק מהתנאים
-        thumb_extended = (thumb_outside_palm and extended_length) or away_from_wrist
-        
-        return thumb_extended
-        
     def _update_command_stability(self, command):
+        """Track command stability to avoid jitter."""
         if command == self.last_command:
             self.command_stability_count += 1
         else:
             self.last_command = command
             self.command_stability_count = 1
-            
+    
     def get_stable_command(self):
+        """Get current command only if stable enough."""
         if self.command_stability_count >= self.stability_threshold:
             return self.last_command
         return None
-
+    
     def _add_control_visualization(self, frame, controls):
+        """Add visualization of current controls to the frame."""
         h, w, _ = frame.shape
         
-        panel_height = 120
-        panel_y = h - panel_height - 10
-        panel_width = 250
-        cv2.rectangle(frame, (10, panel_y), (panel_width + 10, h - 10), (230, 230, 230), -1)
-        cv2.rectangle(frame, (10, panel_y), (panel_width + 10, h - 10), (0, 0, 0), 1)
+        # Draw throttle bar on the right side
+        bar_height = int(h * 0.6)
+        bar_width = 20
+        bar_x = w - 50
+        bar_y = int(h * 0.2)
         
-        steering = controls['steering']
-        cv2.putText(frame, "Steering:", (20, panel_y + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2)
-        
-        steer_center_x = 130
-        steer_width = 100
-        steer_y = panel_y + 30
-        
+        # Draw background bar
         cv2.rectangle(frame, 
-                      (steer_center_x - steer_width//2, steer_y - 15), 
-                      (steer_center_x + steer_width//2, steer_y + 15), 
-                      (200, 200, 200), -1)
-        cv2.rectangle(frame, 
-                      (steer_center_x - steer_width//2, steer_y - 15), 
-                      (steer_center_x + steer_width//2, steer_y + 15), 
-                      (0, 0, 0), 1)
+                     (bar_x, bar_y),
+                     (bar_x + bar_width, bar_y + bar_height),
+                     (100, 100, 100),
+                     -1)
         
-        steer_pos = int(steer_center_x + steering * steer_width/2)
-        cv2.circle(frame, (steer_pos, steer_y), 10, (0, 0, 255), -1)
+        # Draw throttle level
+        throttle_height = int(bar_height * controls['throttle'])
+        if throttle_height > 0:
+            cv2.rectangle(frame,
+                         (bar_x, bar_y + bar_height - throttle_height),
+                         (bar_x + bar_width, bar_y + bar_height),
+                         (0, 255, 0),
+                         -1)
         
-        throttle = controls['throttle']
-        cv2.putText(frame, "Throttle:", (20, panel_y + 70), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2)
+        # Draw calibration marks
+        min_y = int(bar_y + bar_height * (1 - self.min_hand_height))
+        max_y = int(bar_y + bar_height * (1 - self.max_hand_height))
+        cv2.line(frame, (bar_x - 5, min_y), (bar_x + bar_width + 5, min_y), (255, 0, 0), 2)
+        cv2.line(frame, (bar_x - 5, max_y), (bar_x + bar_width + 5, max_y), (0, 0, 255), 2)
         
-        throttle_x = 130
-        throttle_height = 50
-        throttle_width = 30
-        throttle_y = panel_y + 50
-        
-        cv2.rectangle(frame, 
-                     (throttle_x, throttle_y), 
-                     (throttle_x + throttle_width, throttle_y + throttle_height), 
-                     (200, 200, 200), -1)
-        cv2.rectangle(frame, 
-                     (throttle_x, throttle_y), 
-                     (throttle_x + throttle_width, throttle_y + throttle_height), 
-                     (0, 0, 0), 1)
-        
-        filled_height = int(throttle_height * throttle)
-        cv2.rectangle(frame, 
-                     (throttle_x, throttle_y + throttle_height - filled_height), 
-                     (throttle_x + throttle_width, throttle_y + throttle_height), 
-                     (0, 255, 0), -1)
-        
-        brake_color = (0, 0, 255) if controls['braking'] else (200, 200, 200)
-        cv2.circle(frame, (50, panel_y + 110), 15, brake_color, -1)
-        cv2.putText(frame, "Brake", (30, panel_y + 140), cv2.FONT_HERSHEY_SIMPLEX, 0.6, brake_color, 2)
-        
-        boost_color = (255, 165, 0) if controls['boost'] else (200, 200, 200)
-        cv2.circle(frame, (120, panel_y + 110), 15, boost_color, -1)
-        cv2.putText(frame, "Boost", (100, panel_y + 140), cv2.FONT_HERSHEY_SIMPLEX, 0.6, boost_color, 2)
-        
-        stability_x = panel_width - 40
-        cv2.putText(frame, f"Stability: {self.command_stability_count}/{self.stability_threshold}", 
-                   (stability_x - 80, panel_y + 110), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+        # Add labels
+        cv2.putText(frame, "Throttle", (bar_x - 30, bar_y - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        cv2.putText(frame, f"{controls['throttle']:.2f}", (bar_x - 30, bar_y + bar_height + 20),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
