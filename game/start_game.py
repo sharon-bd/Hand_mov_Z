@@ -168,6 +168,14 @@ class GestureRecognizer:
         self.throttle_sensitivity = 1.2
         self.gesture_confidence_threshold = 0.7
         
+        # Add current throttle state for continuous control
+        self.current_throttle = 0.5  # Start at medium throttle
+        self.last_throttle_time = time.time()
+        
+        # Throttle change rates
+        self.acceleration_rate = 0.8  # Units per second when accelerating
+        self.deceleration_rate = 1.0  # Units per second when decelerating
+        
         print("✅ Enhanced GestureRecognizer initialized")
     
     def recognize_gestures(self, landmarks, frame_height):
@@ -209,14 +217,19 @@ class GestureRecognizer:
             pinky_mcp = landmarks[17]     # Pinky MCP joint
             wrist = landmarks[0]          # Wrist
             
-            # Calculate hand center and orientation
-            hand_center_x = (wrist[0] + index_mcp[0]) / 2
-            hand_center_y = (wrist[1] + index_mcp[1]) / 2
+            # FIXED: Calculate hand center properly using wrist and middle finger MCP
+            hand_center_x = (wrist[0] + middle_mcp[0]) / 2
+            hand_center_y = (wrist[1] + middle_mcp[1]) / 2
+            
+            # Additional debug for hand center calculation
+            if not hasattr(self, '_last_center_log') or current_time - self._last_center_log > 2.0:
+                print(f"🎯 Hand center calculation: wrist_y={wrist[1]:.3f}, middle_mcp_y={middle_mcp[1]:.3f}, center_y={hand_center_y:.3f}")
+                self._last_center_log = current_time
             
             # 1. STEERING - Hand tilt for left/right
             steering = self._calculate_steering(landmarks, wrist, index_mcp)
             
-            # 2. THROTTLE - Hand height for speed
+            # 2. THROTTLE - Hand height for speed (use calculated hand center)
             throttle = self._calculate_throttle(landmarks, frame_height, hand_center_y)
             
             # 3. BRAKE - Fist gesture detection
@@ -314,19 +327,59 @@ class GestureRecognizer:
             return 0.0
     
     def _calculate_throttle(self, landmarks, frame_height, hand_center_y):
-        """Calculate throttle based on hand height"""
+        """
+        Calculate throttle based on hand height with continuous acceleration/deceleration
+        
+        When hand is in upper half: Continuously increase speed
+        When hand is in lower half: Decrease speed until 0.2
+        """
         try:
+            # Get current time for delta calculation
+            current_time = time.time()
+            dt = min(0.1, current_time - self.last_throttle_time)  # Cap at 100ms to avoid huge jumps
+            self.last_throttle_time = current_time
+            
+            # Use the passed hand_center_y parameter properly
             # Normalize hand height (0 = top of frame, 1 = bottom of frame)
-            normalized_height = hand_center_y / frame_height
+            normalized_height = hand_center_y
             
-            # Invert so higher hand = more throttle
-            # Map to 0.0-1.0 range with sensitivity adjustment
-            throttle = (1.0 - normalized_height) * self.throttle_sensitivity
-            throttle = max(0.0, min(1.0, throttle))
+            # Debug output to see actual hand position
+            if not hasattr(self, '_last_height_log') or current_time - self._last_height_log > 1.0:
+                print(f"🎯 Hand height debug: center_y={hand_center_y:.3f}, normalized={normalized_height:.3f}")
+                self._last_height_log = current_time
             
-            return throttle
+            # Determine if hand is in upper or lower half of the frame
+            if normalized_height < 0.5:  # Upper half - Accelerate
+                # Calculate acceleration factor (faster acceleration when hand is higher)
+                accel_factor = 1.0 - normalized_height * 2  # 1.0 at top, 0.0 at middle
+                
+                # Apply acceleration based on hand height
+                throttle_change = self.acceleration_rate * dt * (0.5 + accel_factor)
+                self.current_throttle += throttle_change
+                
+                # Debug output for significant changes
+                if throttle_change > 0.05:
+                    print(f"👆 Accelerating: +{throttle_change:.2f} (hand height: {normalized_height:.2f})")
+                
+            else:  # Lower half - Decelerate
+                # Calculate deceleration factor (faster deceleration when hand is lower)
+                decel_factor = (normalized_height - 0.5) * 2  # 0.0 at middle, 1.0 at bottom
+                
+                # Apply deceleration based on hand height
+                throttle_change = self.deceleration_rate * dt * (0.5 + decel_factor)
+                self.current_throttle -= throttle_change
+                
+                # Debug output for significant changes
+                if throttle_change > 0.05:
+                    print(f"👇 Decelerating: -{throttle_change:.2f} (hand height: {normalized_height:.2f})")
             
-        except Exception:
+            # Clamp throttle value with minimum 0.2 and maximum 1.0
+            self.current_throttle = max(0.2, min(1.0, self.current_throttle))
+            
+            return self.current_throttle
+            
+        except Exception as e:
+            print(f"⚠️ Error calculating throttle: {e}")
             return 0.5  # Default medium throttle
     
     def _detect_fist(self, landmarks, thumb_tip, index_tip, middle_tip, ring_tip, pinky_tip,
@@ -593,7 +646,7 @@ class GestureRecognizer:
         elif gesture.get('throttle', 0) < 0.3:
             return 'Low Throttle'
         else:
-            return 'Neutral'
+            return 'Medium Throttle'  # Changed from 'Neutral' for consistency
     
     def get_detection_stats(self):
         """Get detection statistics"""
@@ -887,8 +940,106 @@ class Obstacle:
 class Game:
     """Main game class with steering-based background movement"""
     
+    def __init__(self, mode="normal", hand_detector=None, show_tutorial=True, config=None):
+        """
+        Initialize the game
+        
+        Args:
+            mode: str, game mode ("easy", "normal", "hard")
+            hand_detector: HandDetector, optional hand detector
+            show_tutorial: bool, show tutorial flag
+            config: dict, optional configuration
+        """
+        # Initialize pygame
+        pygame.init()
+        
+        # Screen setup
+        self.screen_width = WINDOW_WIDTH
+        self.screen_height = WINDOW_HEIGHT
+        self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
+        pygame.display.set_caption(CAPTION)
+        
+        # Game settings from mode
+        self.mode = mode
+        self.settings = GAME_MODES.get(mode, GAME_MODES["normal"])
+        
+        # Timing
+        self.clock = pygame.time.Clock()
+        self._target_fps = FPS
+        self.running = False
+        
+        # Game state
+        self._paused = False
+        self._game_over = False
+        self._game_completed = False
+        self._debug_mode = False
+        self._debug_input = False
+        self._show_help = False
+        self.show_camera = True
+        
+        # Game timing
+        self._start_time = 0
+        self._elapsed_time = 0
+        self._game_duration = self.settings["time_limit"]
+        self._time_remaining = self._game_duration
+        self.time_left = self._game_duration
+        
+        # Score and distance tracking
+        self._score = 0
+        self._distance_traveled = 0
+        self._last_position = None
+        
+        # Car setup
+        self._car = Car(self.screen_width // 2, self.screen_height - 100)
+        
+        # Obstacles
+        self._obstacles = []
+        self._next_obstacle_time = 0
+        
+        # Road animation
+        self.road_offset = 0
+        self.total_dash_cycle = 70  # 50 + 20
+        self._road_offset_x = 0
+        
+        # Moving road
+        if MOVING_ROAD_AVAILABLE:
+            try:
+                self._moving_road = MovingRoadGenerator(self.screen_width, self.screen_height)
+                print("✅ MovingRoad initialized successfully")
+            except Exception as e:
+                print(f"⚠️ Error initializing MovingRoad: {e}")
+                self._moving_road = None
+        else:
+            self._moving_road = None
+        
+        # Initialize fonts
+        self._font = pygame.font.Font(None, 36)
+        self._title_font = pygame.font.Font(None, 72)
+        
+        # Hand detection setup
+        self._hand_detector = hand_detector or HandDetector()
+        self._gesture_recognizer = GestureRecognizer()
+        
+        # Camera setup
+        self._camera = self._init_camera(0, CAMERA_WIDTH, CAMERA_HEIGHT)
+        self._frame = None
+        self._last_gesture_result = None
+        
+        # Sound manager
+        self._sound_manager = SoundManager()
+        
+        # UI buttons
+        self.pause_button = Button(10, self.screen_height - 50, 80, 30, "Pause", PRIMARY, WHITE, self.toggle_pause)
+        self.mute_button = Button(100, self.screen_height - 50, 80, 30, "Mute", SECONDARY, WHITE, self.toggle_mute)
+        
+        print(f"✅ Game initialized in {mode} mode")
+        if self._hand_detector and self._hand_detector.enabled:
+            print("✅ Hand detection enabled")
+        else:
+            print("⚠️ Hand detection disabled - using keyboard controls")
+    
     def _init_camera(self, camera_index=0, width=640, height=480):
-        """Initialize camera with specified settings
+        """Initialize camera with robust error handling and fallback options
         
         Args:
             camera_index: int, camera device index
@@ -901,159 +1052,75 @@ class Game:
         try:
             if camera_index is None:
                 camera_index = 0
-                
-            camera = cv2.VideoCapture(camera_index)
-            if not camera.isOpened():
-                print(f"❌ Failed to open camera at index {camera_index}")
-                return None
-                
-            camera.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-            camera.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-            print(f"✅ Camera initialized at index {camera_index}")
-            return camera
+            
+            # Try different backends in order of preference
+            backends = [
+                cv2.CAP_DSHOW,      # DirectShow (Windows) - usually most reliable
+                cv2.CAP_MSMF,       # Windows Media Foundation 
+                cv2.CAP_ANY         # Let OpenCV choose
+            ]
+            
+            for backend in backends:
+                try:
+                    print(f"🔍 Trying camera {camera_index} with backend {backend}")
+                    camera = cv2.VideoCapture(camera_index, backend)
+                    
+                    if not camera.isOpened():
+                        camera.release()
+                        continue
+                    
+                    # Set camera properties
+                    camera.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+                    camera.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+                    camera.set(cv2.CAP_PROP_FPS, 30)
+                    camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Reduce buffer to prevent lag
+                    
+                    # Test if we can actually read a frame
+                    ret, test_frame = camera.read()
+                    if ret and test_frame is not None:
+                        print(f"✅ Camera initialized successfully with backend {backend}")
+                        return camera
+                    else:
+                        print(f"❌ Camera opened but cannot read frames with backend {backend}")
+                        camera.release()
+                        
+                except Exception as e:
+                    print(f"❌ Failed to initialize camera with backend {backend}: {e}")
+                    continue
+            
+            # If all backends fail, try different camera indices
+            for idx in range(3):  # Try camera indices 0, 1, 2
+                if idx == camera_index:
+                    continue  # Already tried this one
+                    
+                try:
+                    print(f"🔍 Trying camera index {idx}")
+                    camera = cv2.VideoCapture(idx, cv2.CAP_DSHOW)
+                    
+                    if camera.isOpened():
+                        ret, test_frame = camera.read()
+                        if ret and test_frame is not None:
+                            print(f"✅ Found working camera at index {idx}")
+                            camera.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+                            camera.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+                            camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                            return camera
+                    camera.release()
+                    
+                except Exception as e:
+                    print(f"❌ Camera {idx} failed: {e}")
+                    continue
+            
+            print(f"❌ Failed to open any camera")
+            return None
+            
         except Exception as e:
             print(f"❌ Error initializing camera: {e}")
             return None
     
-    def __init__(self, mode="normal", screen_width=800, screen_height=600, hand_detector=None):
-        """
-        Initialize the game instance
-        
-        Args:
-            mode: str, game mode ("normal", "easy", "hard")
-            screen_width: int, screen width
-            screen_height: int, screen height
-            hand_detector: HandDetector, optional hand detector instance
-        """
-        self.mode = mode
-        self.settings = GAME_MODES.get(mode, GAME_MODES["normal"])
-        
-        # Game state
-        self.running = False
-        self._paused = False
-        self._game_over = False
-        
-        # Score and time
-        self._score = 0.0
-        self.time_left = self.settings["time_limit"]
-        self._start_time = 0
-        
-        # Screen dimensions
-        self.screen_width = screen_width
-        self.screen_height = screen_height
-        
-        # Road animation properties
-        self.road_offset = 0
-        self._road_offset_x = 0
-        self.dash_length = 30
-        self.gap_length = 20
-        self.total_dash_cycle = self.dash_length + self.gap_length  # Fixed: changed _gap_length to gap_length
-        
-        # Initialize pygame
-        if not pygame.get_init():
-            pygame.init()
-        
-        # Display setup
-        self.screen = pygame.display.set_mode((self.screen_width + 320, self.screen_height))
-        pygame.display.set_caption(f"{CAPTION} - {mode.capitalize()}")
-        self.clock = pygame.time.Clock()
-        self._target_fps = FPS
-        
-        # Game objects
-        self._car = Car(self.screen_width // 2, self.screen_height - 100)
-        self._obstacles = []
-        self._next_obstacle_time = 0
-        
-        # Moving road setup
-        self._moving_road = None
-        if MOVING_ROAD_AVAILABLE:
-            try:
-                self._moving_road = MovingRoadGenerator(self.screen_width, self.screen_height)  # Fixed: changed _screen_height to screen_height
-            except Exception as e:
-                print(f"Error initializing MovingRoadGenerator: {e}")
-                self._moving_road = None
-        
-        # Camera and gesture detection
-        self._camera = None
-        self._frame = None
-        self._hand_detector = hand_detector
-        self._gesture_recognizer = None
-        self.init_camera_and_detector()  # Fixed: changed _init_camera_and_detector to init_camera_and_detector
-        
-        # Sound system
-        self._sound_manager = SoundManager()
-        
-        # Initialize fonts
-        self._font = pygame.font.Font(None, 36)
-        self._title_font = pygame.font.Font(None, 72)
-        
-        # Initialize debug and display flags
-        self._debug_mode = False
-        self._debug_input = False
-        self._show_help = False
-        self.show_camera = True
-        self._last_debug_time = 0
-        self._last_gesture_result = None
-        self._game_completed = False
-        self._game_duration = 300  # 5 minutes
-        self._elapsed_time = 0
-        self._time_remaining = 0
-        self._distance_traveled = 0
-        self._last_position = None
-        
-        # Create UI elements
-        self.create_ui_elements()
-
-    def init_camera_and_detector(self):
-        """Initialize camera and hand detection"""
-        try:
-            camera_index = None
-            if 'SELECTED_CAMERA' in os.environ:
-                try:
-                    camera_index = int(os.environ['SELECTED_CAMERA'])
-                except ValueError:
-                    pass
-            
-            self._camera = self._init_camera(camera_index, CAMERA_WIDTH, CAMERA_HEIGHT)
-            
-            if self._camera is None:
-                logger.error("Failed to initialize camera")
-                print("❌ Camera initialization failed")
-            else:
-                print("✅ Camera initialized successfully")
-                
-                self._hand_detector = HandDetector()
-                self._gesture_recognizer = GestureRecognizer()
-                
-                if self._hand_detector.enabled:
-                    logger.info("✅ Real hand detection system initialized")
-                    print("✅ Hand gesture detection is ACTIVE")
-                else:
-                    logger.warning("⚠️ Hand detection disabled - using keyboard only")
-                    print("⚠️ Hand detection disabled - using keyboard controls only")
-                
-        except Exception as e:
-            logger.error(f"Error initializing camera/detector: {e}")
-            print(f"❌ Error initializing camera/detector: {e}")
-            self._camera = None
-            self._hand_detector = None
-            self._gesture_recognizer = None
-
-    def create_ui_elements(self):
-        """Create UI buttons and elements"""
-        self.pause_button = Button(
-            self.screen_width - 110, 10, 100, 40, "Pause", 
-            PRIMARY, ACCENT, self.toggle_pause
-        )
-        
-        self.mute_button = Button(
-            self.screen_width - 110, 60, 100, 40, "Mute", 
-            PRIMARY, ACCENT, self.toggle_mute
-        )
-
     def read_frame(self):
         """
-        Read frame from camera
+        Read frame from camera with robust error handling
         
         Returns:
             tuple: (success, frame)
@@ -1061,182 +1128,76 @@ class Game:
         if self._camera is None:
             return False, None
         
-        try:
-            ret, frame = self._camera.read()
-            return ret, frame
-        except Exception as e:
-            print(f"Error reading frame: {e}")
-            return False, None
-    
-    def create_progress_bar(self, width, height, progress, color):
-        """
-        Create a progress bar surface
-        
-        Args:
-            width: int, bar width
-            height: int, bar height
-            progress: float, progress value (0-1)
-            color: tuple, fill color
-            
-        Returns:
-            pygame.Surface bar
-        """
-        bar_surface = pygame.Surface((width, height))
-        bar_surface.fill((100, 100, 100))
-        
-        fill_width = int(width * progress)
-        if fill_width > 0:
-            pygame.draw.rect(bar_surface, color, (0, 0, fill_width, height))
-        
-        return bar_surface
-    
-    def toggle_pause(self):
-        """Toggle game pause state"""
-        self._paused = not self._paused
-        logger.info(f"Game {'paused' if self._paused else 'resumed'}")
-
-    def toggle_mute(self):
-        """Toggle sound mute state"""
-        try:
-            is_muted = self._sound_manager.toggle_mute()
-            logger.info(f"Sound {'muted' if is_muted else 'unmuted'}")
-        except Exception as e:
-            logger.error(f"Error toggling mute: {e}")
-
-    def handle_input(self):
-        """
-        Handle keyboard input with debug output
-        
-        Returns:
-            dict: Pressed keys
-        """
-        keys = pygame.key.get_pressed()
-        current_time = time.time()
-        
-        if self._debug_input and current_time - self._last_debug_time > 1:
-            any_key_pressed = any([
-                keys[pygame.K_UP],
-                keys[pygame.K_DOWN],
-                keys[pygame.K_LEFT],
-                keys[pygame.K_RIGHT],
-                keys[pygame.K_w],
-                keys[pygame.K_s],
-                keys[pygame.K_a],
-                keys[pygame.K_d],
-                keys[pygame.K_SPACE]
-            ])
-            
-            if any_key_pressed:
-                print(f"Input: UP={keys[pygame.K_UP]}, DOWN={keys[pygame.K_DOWN]}, "
-                      f"LEFT={keys[pygame.K_LEFT]}, RIGHT={keys[pygame.K_RIGHT]}")
-                print(f"Car: speed={self._car.speed:.2f}, steering={self._car.steering:.2f}")
-            
-            self._last_debug_time = current_time
-        
-        return keys
-
-    def draw_help(self):
-        """Draw help text"""
-        help_rect = pygame.Rect(10, 10, 200, 240)
-        pygame.draw.rect(self.screen, (30, 30, 50), help_rect)
-        pygame.draw.rect(self.screen, WHITE, help_rect, 2)
-        
-        help_lines = [
-            "Controls:",
-            "Arrow Keys: Steer/Speed",
-            "WASD: Alternative",
-            "Space: Boost",
-            "H: Toggle Help",
-            "D: Toggle Debug",
-            "C: Toggle Camera",
-            "M: Mute/Unmute",
-            "P: Pause",
-            "ESC: Exit"
-        ]
-        
-        for i, line in enumerate(help_lines):
-            color = ACCENT if i == 0 else WHITE
-            help_text = pygame.font.Font(None, 20).render(line, True, color)
-            self.screen.blit(help_text, (help_rect.x + 10, help_rect.y + 10 + i * 22))
-
-    def draw_built_in_road(self):
-        """Draw the built-in road with steering-based horizontal movement"""
-        # Road surface
-        road_color = (80, 80, 80)
-        road_width = self.screen_width - 100
-        
-        # Calculate road position with enhanced horizontal offset
-        road_x = 50 - int(self._road_offset_x * 1)
-        
-        pygame.draw.rect(self.screen, road_color, (road_x, 0, road_width, self.screen_height))
-        
-        # Moving center line
-        center_x = road_x + road_width // 2
-        line_width = 5
-        
-        offset = int(-self.road_offset) % (self.dash_length + self.gap_length)
-        
-        y = -offset
-        while y < self.screen_height:
-            if y + self.dash_length > 0:
-                dash_start = max(0, y)
-                dash_end = min(self.screen_height, y + self.dash_length)
-                pygame.draw.rect(self.screen, WHITE,
-                                (center_x - line_width // 2, dash_start,
-                                 line_width, dash_end - dash_start))
-            y += self.dash_length + self.gap_length
-        
-        # Edge lines
-        edge_color = (255, 255, 0)
-        pygame.draw.rect(self.screen, edge_color, (road_x, 0, 5, self.screen_height))
-        pygame.draw.rect(self.screen, edge_color, (road_x + road_width - 5, 0, 5, self.screen_height))
-
-    def update_obstacles(self, current_time, delta_time):
-        """Update obstacles with world offset - only when car is moving"""
-        # Don't spawn or move obstacles if the car is stopped
-        if self._car.speed <= 0.05:  # Add a small threshold for determining "stopped"
-            return
-            
-        if self.settings["obstacle_frequency"] > 0:
-            if current_time >= self.next_obstacle_time:
-                obstacle_world_x = random.randint(100, self.screen_width - 100) + self.road_offset_x
-                obstacle = Obstacle(obstacle_world_x, -50, speed=self.settings["obstacle_speed"])
-                obstacle.world_x = obstacle_world_x
-                self.obstacles.append(obstacle)
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                ret, frame = self._camera.read()
                 
-                self.next_obstacle_time = current_time + (1.0 / self.settings["obstacle_frequency"])
+                if ret and frame is not None:
+                    return True, frame
+                else:
+                    if attempt == 0:  # Only log on first failure
+                        print(f"⚠️ Camera read failed, attempt {attempt + 1}/{max_retries}")
+                    
+                    # Try to restart camera on failure
+                    if attempt < max_retries - 1:
+                        self._restart_camera()
+                        
+            except Exception as e:
+                print(f"⚠️ Error reading frame (attempt {attempt + 1}): {e}")
+                if attempt < max_retries - 1:
+                    self._restart_camera()
         
-        for obstacle in self.obstacles[:]:
-            obstacle.update(delta_time)
+        return False, None
+    
+    def _restart_camera(self):
+        """Restart the camera connection"""
+        try:
+            if self._camera:
+                self._camera.release()
             
-            if not hasattr(obstacle, 'world_x'):
-                obstacle.world_x = obstacle.x
+            # Wait a moment before reinitializing
+            time.sleep(0.1)
             
-            screen_x = obstacle.world_x - self.road_offset_x
-            if obstacle.y > self.screen_height + 50 or screen_x < -150 or screen_x > self.screen_width + 150:
-                self.obstacles.remove(obstacle)
+            # Try to reinitialize camera
+            self._camera = self._init_camera(0, CAMERA_WIDTH, CAMERA_HEIGHT)
+            
+            if self._camera:
+                print("🔄 Camera restarted successfully")
+            else:
+                print("❌ Camera restart failed")
                 
-                if not obstacle.hit:
-                    points = SCORE_PER_OBSTACLE * self.settings["score_multiplier"]
-                    self.score += points
+        except Exception as e:
+            print(f"❌ Error restarting camera: {e}")
+            self._camera = None
 
     def process_camera_input(self):
-        """Process camera input for gesture detection"""
-        if self.camera is None or self.hand_detector is None or not self.hand_detector.enabled:
+        """Process camera input for gesture detection with enhanced error handling"""
+        if self._camera is None or self._hand_detector is None or not self._hand_detector.enabled:
             return None
         
         try:
-            success, self.frame = self.read_frame()
+            success, self._frame = self.read_frame()
             
-            if not success or self.frame is None:
-                return None
+            if not success or self._frame is None:
+                # Return default gesture instead of None to keep game running
+                return {
+                    'steering': 0.0,
+                    'throttle': 0.5,
+                    'braking': False,
+                    'boost': False,
+                    'stop': False,
+                    'gesture_name': 'Camera Error',
+                    'confidence': 0.0,
+                    'detection_fps': 0
+                }
             
-            self.frame = cv2.flip(self.frame, 1)
-            self.frame, results = self.hand_detector.find_hands(self.frame)
-            landmarks = self.hand_detector.find_positions(self.frame, results)
+            self._frame = cv2.flip(self._frame, 1)
+            self._frame, results = self._hand_detector.find_hands(self._frame)
+            landmarks = self._hand_detector.find_positions(self._frame, results)
             
-            if landmarks and self.gesture_recognizer:
-                gestures = self.gesture_recognizer.recognize_gestures(landmarks, self.frame.shape[0])
+            if landmarks and self._gesture_recognizer:
+                gestures = self._gesture_recognizer.recognize_gestures(landmarks, self._frame.shape[0])
                 
                 if gestures and gestures.get('gesture_name', 'No Detection') != 'No Detection':
                     current_time = time.time()
@@ -1260,109 +1221,235 @@ class Game:
                 }
                 
         except Exception as e:
-            logger.error(f"Error processing camera input: {e}")
             print(f"⚠️ Error in camera processing: {e}")
-            return None
+            
+            # Try to restart camera on persistent errors
+            if not hasattr(self, '_last_camera_restart') or time.time() - self._last_camera_restart > 5.0:
+                self._last_camera_restart = time.time()
+                self._restart_camera()
+            
+            # Return default gesture to keep game running
+            return {
+                'steering': 0.0,
+                'throttle': 0.5,
+                'braking': False,
+                'boost': False,
+                'stop': False,
+                'gesture_name': 'Processing Error',
+                'confidence': 0.0,
+                'detection_fps': 0
+            }
+
+    def handle_input(self):
+        """Handle keyboard input"""
+        return pygame.key.get_pressed()
+
+    def toggle_pause(self):
+        """Toggle pause state"""
+        self._paused = not self._paused
+        print(f"Game {'paused' if self._paused else 'resumed'}")
+
+    def toggle_mute(self):
+        """Toggle mute state"""
+        muted = self._sound_manager.toggle_mute()
+        print(f"Sound {'muted' if muted else 'unmuted'}")
+        return muted
+
+    def update_obstacles(self, current_time, delta_time):
+        """Update obstacles"""
+        # Spawn new obstacles
+        if current_time >= self._next_obstacle_time:
+            # Create obstacle
+            obstacle_x = random.randint(
+                self.screen_width // 2 - 100,
+                self.screen_width // 2 + 100
+            )
+            obstacle = Obstacle(obstacle_x, -50, self.settings["obstacle_speed"])
+            self._obstacles.append(obstacle)
+            
+            # Schedule next obstacle
+            frequency = self.settings["obstacle_frequency"]
+            self._next_obstacle_time = current_time + random.uniform(1.0 / frequency, 3.0 / frequency)
+        
+        # Update existing obstacles
+        for obstacle in self._obstacles[:]:
+            obstacle.update(delta_time)
+            
+            # Remove obstacles that are off screen
+            if obstacle.y > self.screen_height + 50:
+                self._obstacles.remove(obstacle)
+                # Award points for avoiding obstacle
+                self._score += SCORE_PER_OBSTACLE * self.settings["score_multiplier"]
+
+    def draw_built_in_road(self):
+        """Draw built-in road animation"""
+        # Fill with grass color
+        self.screen.fill((0, 100, 0))
+        
+        # Draw road
+        road_width = 300
+        road_x = self.screen_width // 2 - road_width // 2
+        pygame.draw.rect(self.screen, (80, 80, 80), (road_x, 0, road_width, self.screen_height))
+        
+        # Draw moving center line
+        line_width = 6
+        dash_length = 30
+        gap_length = 20
+        dash_spacing = dash_length + gap_length
+        
+        offset = int(self.road_offset) % dash_spacing
+        
+        y = -offset
+        while y < self.screen_height + dash_spacing:
+            if y + dash_length > 0:
+                pygame.draw.rect(self.screen, WHITE,
+                               (self.screen_width // 2 - line_width // 2, y,
+                                line_width, min(dash_length, self.screen_height - y)))
+            y += dash_spacing
 
     def draw_camera_feed(self):
-        """Draw camera feed display"""
-        if self.frame is not None and self.show_camera:
+        """Draw camera feed"""
+        if self._frame is not None and self.show_camera:
             try:
                 display_width = 320
                 display_height = 240
                 
-                display_frame = cv2.resize(self.frame, (display_width, display_height))
+                display_frame = cv2.resize(self._frame, (display_width, display_height))
                 display_frame = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
                 
                 feed_surface = pygame.surfarray.make_surface(display_frame.swapaxes(0, 1))
                 
-                feed_rect = pygame.Rect(self.screen_width, 0, display_width, display_height)
+                feed_rect = pygame.Rect(self.screen_width - display_width, 0, display_width, display_height)
                 pygame.draw.rect(self.screen, WHITE, feed_rect, width=2)
                 self.screen.blit(feed_surface, feed_rect)
                 
-                status_color = GREEN if (self.hand_detector and self.hand_detector.enabled) else RED
-                status_text = "HAND DETECTION ACTIVE" if (self.hand_detector and self.hand_detector.enabled) else "HAND DETECTION DISABLED"
+                status_color = GREEN if (self._hand_detector and self._hand_detector.enabled) else RED
+                status_text = "HAND DETECTION ACTIVE" if (self._hand_detector and self._hand_detector.enabled) else "HAND DETECTION DISABLED"
                 
                 font = pygame.font.SysFont(None, 16)
                 status_surface = font.render(status_text, True, status_color)
-                self.screen.blit(status_surface, (self.screen_width + 5, display_height + 5))
+                self.screen.blit(status_surface, (self.screen_width - display_width + 5, display_height + 5))
                 
                 if hasattr(self, '_last_gesture_result') and self._last_gesture_result:
                     gesture_name = self._last_gesture_result.get('gesture_name', 'Unknown')
                     gesture_surface = font.render(f"Gesture: {gesture_name}", True, WHITE)
-                    self.screen.blit(gesture_surface, (self.screen_width + 5, display_height + 25))
+                    self.screen.blit(gesture_surface, (self.screen_width - display_width + 5, display_height + 25))
                 
             except Exception as e:
                 logger.error(f"Error drawing camera feed: {e}")
-                
-        elif self.show_camera:
-            camera_rect = pygame.Rect(self.screen_width, 0, 320, 300)
-            pygame.draw.rect(self.screen, (30, 30, 30), camera_rect)
+
+    def draw_help(self):
+        """Draw help screen"""
+        overlay = pygame.Surface((self.screen_width, self.screen_height))
+        overlay.set_alpha(180)
+        overlay.fill((0, 0, 0))
+        self.screen.blit(overlay, (0, 0))
+        
+        help_text = [
+            "HAND GESTURE CONTROLS",
+            "",
+            "• Hand Tilt: Steering",
+            "• Hand Height: Throttle",
+            "• Fist: Brake",
+            "• Thumbs Up: Boost",
+            "• Open Palm: Stop",
+            "",
+            "KEYBOARD CONTROLS",
+            "",
+            "• Arrow Keys / WASD: Movement",
+            "• Space: Boost",
+            "• P: Pause",
+            "• M: Mute",
+            "• H: Help",
+            "• ESC: Exit"
+        ]
+        
+        y_offset = self.screen_height // 2 - len(help_text) * 15
+        for line in help_text:
+            if line.startswith("•"):
+                color = (150, 150, 255)
+            elif line == line.upper() and line:
+                color = (255, 255, 0)
+            else:
+                color = WHITE
             
-            messages = [
-                "Camera Not Available",
-                "Check camera connection",
-                "",
-                "Using Keyboard Controls:",
-                "Arrow Keys / WASD: Movement",
-                "Space: Boost",
-                "",
-                "Gesture Controls Ready:",
-                "• Hand Tilted: Steering",
-                "• Hand Height: Throttle",
-                "• Fist: Brake",
-                "• Thumbs Up: Boost",
-                "• Open Palm: Stop",
-                "",
-                "MediaPipe READY ✅" if MEDIAPIPE_AVAILABLE else "KEYBOARD MODE ⌨️"
-            ]
-            
-            for i, msg in enumerate(messages):
-                if not msg:
-                    continue
-                    
-                font_size = 16 if i > 0 else 18
-                font = pygame.font.SysFont(None, font_size)
-                
-                if i == 0:
-                    color = (255, 50, 50) if not MEDIAPIPE_AVAILABLE else (255, 165, 0)
-                elif "MediaPipe READY" in msg:
-                    color = (0, 255, 0)
-                elif "KEYBOARD MODE" in msg:
-                    color = (255, 255, 0)
-                elif "Gesture Controls" in msg:
-                    color = (255, 215, 0)
-                elif msg.startswith("•"):
-                    color = (150, 150, 255)
-                else:
-                    color = (200, 200, 200)
-                    
-                text = font.render(msg, True, color)
-                self.screen.blit(text, (self.screen_width + 10, 50 + i * 18))
+            text_surface = self._font.render(line, True, color)
+            text_rect = text_surface.get_rect(center=(self.screen_width // 2, y_offset))
+            self.screen.blit(text_surface, text_rect)
+            y_offset += 30
+
+    def handle_events(self):
+        """Handle all events for the game"""
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                self.running = False
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    self.running = False
+                elif event.key == pygame.K_p:
+                    self.toggle_pause()
+                elif event.key == pygame.K_m:
+                    self.toggle_mute()
+                elif event.key == pygame.K_h:
+                    self._show_help = not self._show_help
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 1:  # Left click
+                    # Check if pause button is clicked
+                    if self.pause_button.rect.collidepoint(event.pos):
+                        self.toggle_pause()
+                    # Check if mute button is clicked
+                    elif self.mute_button.rect.collidepoint(event.pos):
+                        self.toggle_mute()
 
     def cleanup(self):
-        """Clean up game resources"""
-        if self._camera:
-            self._camera.release()
-        if self._hand_detector:
-            self._hand_detector.release()
-        self._sound_manager.cleanup()
-        cv2.destroyAllWindows()
-        pygame.quit()
+        """Clean up game resources with enhanced camera cleanup"""
+        try:
+            if self._camera:
+                print("🧹 Cleaning up camera...")
+                self._camera.release()
+                self._camera = None
+                
+            if self._hand_detector:
+                print("🧹 Cleaning up hand detector...")
+                self._hand_detector.release()
+                
+            self._sound_manager.cleanup()
+            
+            # Ensure all OpenCV windows are closed
+            cv2.destroyAllWindows()
+            
+            # Wait a moment for cleanup
+            time.sleep(0.1)
+            
+            pygame.quit()
+            print("✅ Cleanup completed")
+            
+        except Exception as e:
+            print(f"⚠️ Error during cleanup: {e}")
+            # Force cleanup even if there are errors
+            try:
+                pygame.quit()
+            except:
+                pass
 
     def draw(self):
-        """Draw the game screen"""
+        """Draw the game screen with moving background"""
         self.screen.fill((50, 50, 50))
         
+        # Draw moving road background
         if self._moving_road:
             try:
                 self._moving_road.draw(self.screen)
-            except:
+            except Exception as e:
+                print(f"⚠️ Error drawing moving road: {e}")
                 self._draw_built_in_road()
         else:
             self._draw_built_in_road()
         
+        # Calculate world offset for steering effect
         world_offset_x = int(self._road_offset_x)
+        
+        # Draw obstacles with world offset
         for obstacle in self._obstacles:
             if hasattr(obstacle, 'world_x'):
                 screen_x = obstacle.world_x - world_offset_x
@@ -1375,8 +1462,10 @@ class Game:
             obstacle.draw(self.screen)
             obstacle.x = original_x
         
+        # Draw car (always in center)
         self._car.draw(self.screen)
         
+        # Draw UI elements
         self._draw_ui()
         self._draw_camera_feed()
         
@@ -1394,126 +1483,9 @@ class Game:
             
         pygame.display.flip()
 
-    def draw_ui(self):
-        """Draw UI elements"""
-        if hasattr(self, 'pause_button'):
-            self.pause_button.draw(self.screen)
-        if hasattr(self, 'mute_button'):
-            self.mute_button.draw(self.screen)
-        
-        score_text = self._font.render(f"Score: {int(self._score)}", True, WHITE)
-        self.screen.blit(score_text, (10, 10))
-        
-        speed_text = self._font.render(f"Speed: {self._car.speed:.2f}", True, WHITE)
-        self.screen.blit(speed_text, (10, 40))
-        
-        if self.time_left > 0:
-            minutes = int(self.time_left // 60)
-            seconds = int(self.time_left % 60)
-            time_text = self._font.render(f"Time: {minutes}:{seconds:02d}", True, WHITE)
-            self.screen.blit(time_text, (self.screen_width // 2 - 50, 10))
-
-    def draw_pause(self):
-        """Draw pause menu"""
-        overlay = pygame.Surface((self.screen_width, self.screen_height))
-        overlay.set_alpha(128)
-        overlay.fill((0, 0, 0))
-        self.screen.blit(overlay, (0, 0))
-        
-        pause_text = self._title_font.render("PAUSED", True, WHITE)
-        text_rect = pause_text.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
-        self.screen.blit(pause_text, text_rect)
-        
-        inst_text = self._font.render("Press P to resume", True, WHITE)
-        inst_rect = inst_text.get_rect(center=(self.screen_width // 2, self.screen_height // 2 + 50))
-        self.screen.blit(inst_text, inst_rect)
-
-    def draw_game_over(self):
-        """Draw game over screen"""
-        overlay = pygame.Surface((self.screen_width, self.screen_height))
-        overlay.set_alpha(200)
-        overlay.fill((0, 0, 0))
-        self.screen.blit(overlay, (0, 0))
-        
-        title = "Game Completed!" if self._game_completed else "Game Over"
-        color = SUCCESS if self._game_completed else RED
-        title_text = self._title_font.render(title, True, color)
-        title_rect = title_text.get_rect(center=(self.screen_width // 2, self.screen_height // 2 - 50))
-        self.screen.blit(title_text, title_rect)
-        
-        score_text = self._font.render(f"Final Score: {int(self._score)}", True, WHITE)
-        score_rect = score_text.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
-        self.screen.blit(score_text, score_rect)
-        
-        inst_text = self._font.render("Press ESC to exit", True, WHITE)
-        inst_rect = inst_text.get_rect(center=(self.screen_width // 2, self.screen_height // 2 + 50))
-        self.screen.blit(inst_text, inst_rect)
-
-    def draw_debug(self):
-        """Draw debug information"""
-        stats = self._gesture_recognizer.get_detection_stats() if self._gesture_recognizer else {}
-        
-        debug_info = [
-            f"Car Pos: ({self._car.x:.1f}, {self._car.y:.1f})",
-            f"Car Rotation: {self._car.rotation:.1f}°",
-            f"Road Offset X: {self._road_offset_x:.1f}",
-            f"Obstacles: {len(self._obstacles)}",
-            f"FPS: {self.clock.get_fps():.1f}",
-            "",
-            f"Gesture FPS: {stats.get('fps', 0)}",
-            f"Gesture History: {stats.get('history_size', 0)}",
-            f"Smoothing: {'ON' if stats.get('smoothing_enabled', False) else 'OFF'}"
-        ]
-        
-        for i, info in enumerate(debug_info):
-            if not info:
-                continue
-            debug_text = self._font.render(info, True, WHITE)
-            self.screen.blit(debug_text, (10, self.screen_height - 100 + i * 20))
-
-    def confirm_exit(self):
-        """
-        Confirm exit intention
-        
-        Returns:
-            bool: True to confirm exit
-        """
-        return True
-
-    def handle_events(self):
-        """Handle pygame events"""
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                self.running = False
-            
-            elif event.type == pygame.KEYDOWN:
-                print(f"🔑 Key pressed: {pygame.key.name(event.key)}")
-                
-                if event.key == pygame.K_ESCAPE:
-                    if self.game_completed or self._confirm_exit():
-                        self.running = False
-                elif event.key == pygame.K_m:
-                    self.toggle_mute()
-                elif event.key == pygame.K_h:
-                    self.show_help = not self.show_help
-                elif event.key == pygame.K_d:
-                    self.debug_mode = not self.debug_mode
-                elif event.key == pygame.K_i:
-                    self.debug_input = not self.debug_input
-                    print(f"🔧 Input debug {'enabled' if self.debug_input else 'disabled'}")
-                elif event.key == pygame.K_c:
-                    self.show_camera = not self.show_camera
-                elif event.key == pygame.K_p:
-                    self.toggle_pause()
-            
-            if hasattr(self, 'pause_button'):
-                self.pause_button.handle_event(event)
-            if hasattr(self, 'mute_button'):
-                self.mute_button.handle_event(event)
-
     def update(self, delta_time):
         """
-        Update game state
+        Update game state with enhanced road movement
         
         Args:
             delta_time: float, time since last update
@@ -1584,25 +1556,29 @@ class Game:
         if keys[pygame.K_SPACE]:
             controls['boost'] = True
         
+        # Update car
         self._car.update(controls, delta_time)
         
-        # Update road animation
-        road_speed = abs(self._car.speed) * 300
+        # ENHANCED: Update road animation with stronger steering effect
+        road_speed = abs(self._car.speed) * 400  # Increased from 300 to 400
         self.road_offset += road_speed * delta_time
         
-        steering_factor = self._car.rotation / 20.0
-        steering_factor = max(-2.5, min(2.5, steering_factor))
-        horizontal_speed = steering_factor * 180 * self._car.speed
+        # Enhanced steering-based horizontal movement
+        steering_factor = self._car.rotation / 15.0  # More sensitive (15 instead of 20)
+        steering_factor = max(-3.0, min(3.0, steering_factor))  # Allow more extreme values
+        horizontal_speed = steering_factor * 250 * self._car.speed  # Increased from 180 to 250
         self._road_offset_x += horizontal_speed * delta_time
         
+        # Reset road offset to prevent overflow
         if self.road_offset >= self.total_dash_cycle:
             self.road_offset -= self.total_dash_cycle
         
+        # Update moving road with enhanced parameters
         if self._moving_road:
             try:
                 self._moving_road.update(self._car.rotation, self._car.speed, delta_time)
-            except:
-                logger.error(f"Error updating moving road")
+            except Exception as e:
+                logger.error(f"Error updating moving road: {e}")
         
         # Update score
         current_position = (self._car.x, self._car.y)
@@ -1615,192 +1591,9 @@ class Game:
         
         self._update_obstacles(current_time, delta_time)
         self._check_collisions()
-    
-    def check_collisions(self):
-        """Check collisions between car and obstacles"""
-        for obstacle in self.obstacles:
-            if not obstacle.hit:
-                world_x = getattr(obstacle, 'world_x', obstacle.x)
-                screen_x = world_x - self.road_offset_x
-                
-                original_x = obstacle.x
-                obstacle.x = screen_x
-                
-                if self.car.check_collision(obstacle.rect):
-                    obstacle.hit = True
-                    try:
-                        self.sound_manager.play("collision")
-                    except Exception as e:
-                        logger.error(f"Error playing collision sound: {e}")
-                    logger.info("Collision detected")
-                    
-                    if self.mode == "hard":
-                        self.game_over = True
-                        logger.info("Game over: Collision in hard mode")
-                
-                obstacle.x = original_x
-
-    # Add missing property accessors and delegate methods
-    @property
-    def game_completed(self):
-        return self._game_completed
-    
-    @property
-    def debug_mode(self):
-        return self._debug_mode
-    
-    @debug_mode.setter
-    def debug_mode(self, value):
-        self._debug_mode = value
-    
-    @property
-    def debug_input(self):
-        return self._debug_input
-    
-    @debug_input.setter
-    def debug_input(self, value):
-        self._debug_input = value
-    
-    @property
-    def show_help(self):
-        return self._show_help
-    
-    @show_help.setter
-    def show_help(self, value):
-        self._show_help = value
-    
-    @property
-    def obstacles(self):
-        return self._obstacles
-    
-    @property
-    def next_obstacle_time(self):
-        return self._next_obstacle_time
-    
-    @next_obstacle_time.setter
-    def next_obstacle_time(self, value):
-        self._next_obstacle_time = value
-    
-    @property
-    def road_offset_x(self):
-        return self._road_offset_x
-    
-    @property
-    def car(self):
-        return self._car
-    
-    @property
-    def score(self):
-        return self._score
-    
-    @score.setter
-    def score(self, value):
-        self._score = value
-    
-    @property
-    def camera(self):
-        return self._camera
-    
-    @property
-    def hand_detector(self):
-        return self._hand_detector
-    
-    @hand_detector.setter
-    def hand_detector(self, value):
-        self._hand_detector = value
-    
-    @property
-    def gesture_recognizer(self):
-        return self._gesture_recognizer
-    
-    @gesture_recognizer.setter
-    def gesture_recognizer(self, value):
-        self._gesture_recognizer = value
-    
-    @property
-    def frame(self):
-        return self._frame
-    
-    @frame.setter
-    def frame(self, value):
-        self._frame = value
-    
-    @property
-    def sound_manager(self):
-        return self._sound_manager
-    
-    @property
-    def game_over(self):
-        return self._game_over
-    
-    @game_over.setter
-    def game_over(self, value):
-        self._game_over = value
-    
-    # Delegate methods
-    def _get_default_gestures(self):
-        """Return default gesture values"""
-        return {
-            'steering': 0.0,
-            'throttle': 0.5,
-            'braking': False,
-            'boost': False,
-            'stop': False,
-            'confidence': 0.0,
-            'detection_fps': 0,
-            'gesture_name': 'No Hand Detected'
-        }
-    
-    def _process_camera_input(self):
-        """Process camera input for gesture detection"""
-        return self.process_camera_input()
-    
-    def _handle_input(self):
-        """Handle keyboard input"""
-        return self.handle_input()
-    
-    def _update_obstacles(self, current_time, delta_time):
-        """Update obstacles"""
-        return self.update_obstacles(current_time, delta_time)
-    
-    def _check_collisions(self):
-        """Check collisions"""
-        return self.check_collisions()
-    
-    def _draw_built_in_road(self):
-        """Draw built-in road"""
-        return self.draw_built_in_road()
-    
-    def _draw_ui(self):
-        """Draw UI elements"""
-        return self.draw_ui()
-    
-    def _draw_camera_feed(self):
-        """Draw camera feed"""
-        return self.draw_camera_feed()
-    
-    def _draw_pause(self):
-        """Draw pause screen"""
-        return self.draw_pause()
-    
-    def _draw_game_over(self):
-        """Draw game over screen"""
-        return self.draw_game_over()
-    
-    def _draw_debug(self):
-        """Draw debug info"""
-        return self.draw_debug()
-    
-    def _draw_help(self):
-        """Draw help"""
-        return self.draw_help()
-    
-    def _confirm_exit(self):
-        """Confirm exit"""
-        return self.confirm_exit()
 
     def run(self):
-        """Main game loop"""
+        """Main game loop with enhanced road animation"""
         self.running = True
         last_time = time.time()
         
@@ -1829,29 +1622,135 @@ class Game:
         finally:
             self.cleanup()
 
-def run_game(mode="normal", hand_detector=None, show_tutorial=True, config=None):
-    """
-    Run the game with specified settings
+    def _get_default_gestures(self):
+        """Return default gesture values"""
+        return {
+            'steering': 0.0,
+            'throttle': 0.5,
+            'braking': False,
+            'boost': False,
+            'stop': False,
+            'confidence': 0.0,
+            'detection_fps': 0,
+            'gesture_name': 'No Hand Detected'
+        }
     
-    Args:
-        mode: str, game mode ("easy", "normal", "hard")
-        hand_detector: HandDetector, optional hand detector
-        show width: bool, show tutorial flag
-        config: dict, optional configuration
-        
-    Returns:
-        float: Final score
-    """
-    print(f"Starting game in {mode} mode")
-    
-    game = Game(mode, hand_detector=hand_detector)
-    
-    try:
-        game.run()
-        return game.score
-    except:
-        return 0
-    finally:
-        game.cleanup()
+    def _process_camera_input(self):
+        """Process camera input for gesture detection"""
+        return self.process_camera_input()
 
-__all__ = ['Game', 'run_game']
+    def _handle_input(self):
+        """Handle keyboard input"""
+        return self.handle_input()
+
+    def _update_obstacles(self, current_time, delta_time):
+        """Update obstacles"""
+        return self.update_obstacles(current_time, delta_time)
+
+    def _check_collisions(self):
+        """Check for collisions between car and obstacles"""
+        for obstacle in self._obstacles:
+            if self._car.check_collision(obstacle.rect):
+                self._game_over = True
+                print("💥 Collision detected! Game over.")
+                break
+
+    def _draw_built_in_road(self):
+        """Draw built-in road animation"""
+        return self.draw_built_in_road()
+
+    def _draw_camera_feed(self):
+        """Draw camera feed"""
+        return self.draw_camera_feed()
+
+    def _draw_help(self):
+        """Draw help screen"""
+        return self.draw_help()
+
+    def _draw_ui(self):
+        """Draw UI elements"""
+        # Draw score
+        draw_text(self.screen, f"Score: {int(self._score)}", WHITE, self._font, 20, 20)
+        
+        # Draw time remaining
+        minutes = int(self._time_remaining) // 60
+        seconds = int(self._time_remaining) % 60
+        time_text = f"Time: {minutes}:{seconds:02d}"
+        draw_text(self.screen, time_text, WHITE, self._font, self.screen_width - 150, 20)
+        
+        # Draw speed indicator
+        speed_text = f"Speed: {self._car.speed:.1f}"
+        draw_text(self.screen, speed_text, WHITE, self._font, 20, 60)
+        
+        # Draw controls info
+        if self._last_gesture_result:
+            gesture_text = f"Gesture: {self._last_gesture_result.get('gesture_name', 'Unknown')}"
+            draw_text(self.screen, gesture_text, GREEN, self._font, 20, 100)
+        
+        # Draw buttons
+        self.pause_button.draw(self.screen)
+        self.mute_button.draw(self.screen)
+
+    def _draw_pause(self):
+        """Draw pause overlay"""
+        overlay = pygame.Surface((self.screen_width, self.screen_height))
+        overlay.set_alpha(128)
+        overlay.fill(BLACK)
+        self.screen.blit(overlay, (0, 0))
+        
+        pause_text = "PAUSED"
+        text_surface = self._title_font.render(pause_text, True, WHITE)
+        text_rect = text_surface.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
+        self.screen.blit(text_surface, text_rect)
+        
+        instruction_text = "Press P to resume"
+        instruction_surface = self._font.render(instruction_text, True, WHITE)
+        instruction_rect = instruction_surface.get_rect(center=(self.screen_width // 2, self.screen_height // 2 + 60))
+        self.screen.blit(instruction_surface, instruction_rect)
+
+    def _draw_game_over(self):
+        """Draw game over screen"""
+        overlay = pygame.Surface((self.screen_width, self.screen_height))
+        overlay.set_alpha(180)
+        overlay.fill(BLACK)
+        self.screen.blit(overlay, (0, 0))
+        
+        if self._game_completed:
+            title_text = "GAME COMPLETED!"
+            title_color = SUCCESS
+        else:
+            title_text = "GAME OVER"
+            title_color = ERROR
+            
+        title_surface = self._title_font.render(title_text, True, title_color)
+        title_rect = title_surface.get_rect(center=(self.screen_width // 2, self.screen_height // 2 - 60))
+        self.screen.blit(title_surface, title_rect)
+        
+        score_text = f"Final Score: {int(self._score)}"
+        score_surface = self._font.render(score_text, True, WHITE)
+        score_rect = score_surface.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
+        self.screen.blit(score_surface, score_rect)
+        
+        instruction_text = "Press ESC to exit"
+        instruction_surface = self._font.render(instruction_text, True, WHITE)
+        instruction_rect = instruction_surface.get_rect(center=(self.screen_width // 2, self.screen_height // 2 + 60))
+        self.screen.blit(instruction_surface, instruction_rect)
+
+    def _draw_debug(self):
+        """Draw debug information"""
+        if not self._debug_mode:
+            return
+            
+        debug_y = 200
+        debug_texts = [
+            f"Car Position: ({self._car.x:.1f}, {self._car.y:.1f})",
+            f"Car Rotation: {self._car.rotation:.1f}°",
+            f"Car Speed: {self._car.speed:.2f}",
+            f"Road Offset: {self.road_offset:.1f}",
+            f"Road Offset X: {self._road_offset_x:.1f}",
+            f"Obstacles: {len(self._obstacles)}",
+            f"FPS: {self.clock.get_fps():.1f}"
+        ]
+        
+        for i, text in enumerate(debug_texts):
+            draw_text(self.screen, text, WHITE, self._font, 20, debug_y + i * 25)
