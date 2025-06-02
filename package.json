@@ -1,0 +1,12 @@
+{
+  "name": "hand-gesture-car-control",
+  "version": "1.0.0",
+  "description": "A car game controlled by hand gestures",
+  "private": true,
+  "dependencies": {
+    "opencv-python": "^4.11.0",
+    "mediapipe": "^0.10.21",
+    "pygame": "^2.6.1",
+    "numpy": "^1.26.4"
+  }
+}
