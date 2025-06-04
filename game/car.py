@@ -15,7 +15,7 @@ class Car:
     Represents a car in the game
     """
     
-    def __init__(self, x, y, width=40, height=80):
+    def __init__(self, x, y, width=40, height=80, screen_width=800, screen_height=600):
         """
         Initialize a car
         
@@ -33,10 +33,11 @@ class Car:
         
         # Movement parameters
         self.direction = 0.0  # -1.0 (left) to 1.0 (right)
-        self.speed = 0.0      # 0.0 to 1.0
-        self.max_speed = 300  # Maximum speed in pixels per second
+        self.speed = 1.0      # 0.0 to 1.0
+        self.max_speed = 8.0  # Maximum speed in pixels per second
         self.boost_multiplier = 1.5  # Speed multiplier when boosting
         self.brake_deceleration = 0.4  # ערך האטה כשבולמים
+        self.min_speed = 1.0  # מהירות מינימלית בפיקסלים לפריים
         
         # Anti-spin steering parameters - more aggressive values
         self.steering_sensitivity = 1.5   # Reduced from 2.5 to 1.5
@@ -54,8 +55,8 @@ class Car:
         # World boundaries
         self.world_width = 2000  # רוחב העולם הווירטואלי
         self.world_height = 2000  # גובה העולם הווירטואלי
-        self.screen_width = 800  # רוחב המסך
-        self.screen_height = 600  # גובה המסך
+        self.screen_width = screen_width  # רוחב המסך
+        self.screen_height = screen_height  # גובה המסך
         
         # Collision state
         self.collision_cooldown = 0
@@ -292,6 +293,48 @@ class Car:
             import traceback
             traceback.print_exc()
             
+    def update_physics(self, controls):
+        """עדכון פיזיקת המכונית"""
+        throttle = controls.get('throttle', self.min_speed)  # במקום 0
+        steering = controls.get('steering', 0)
+        brake = controls.get('brake', False)
+        
+        # וודא שמהירות לא יורדת מתחת למינימום
+        if throttle < self.min_speed and not brake:
+            throttle = self.min_speed
+        
+        # עדכן מהירות בהתבסס על מצערת
+        if brake:
+            self.speed *= 0.9  # בלימה
+            if self.speed < self.min_speed:
+                self.speed = self.min_speed  # לא עוצר לחלוטין
+        else:
+            target_speed = throttle * self.max_speed
+            
+            if target_speed > self.speed:
+                # האצה
+                self.speed += 0.05
+            elif target_speed < self.speed:
+                # האטה
+                self.speed -= 0.03
+            
+            # וודא שמהירות נשארת בטווח המותר
+            self.speed = max(self.min_speed, min(self.max_speed, self.speed))
+        
+        # עדכן כיוון בהתבסס על הגה
+        if abs(steering) > 0.01:
+            # הגה מושפע ממהירות - ככל שמהר יותר, פחות רגיש
+            steering_factor = 1.0 - (self.speed / self.max_speed) * 0.3
+            self.direction += steering * steering_factor * 3
+        
+        # עדכן מיקום
+        self.x += math.cos(math.radians(self.direction)) * self.speed
+        self.y += math.sin(math.radians(self.direction)) * self.speed
+        
+        # שמור על המכונית בגבולות המסך
+        self.x = max(50, min(self.screen_width - 50, self.x))
+        self.y = max(50, min(self.screen_height - 50, self.y))
+
     def draw(self, screen, offset_x=0, offset_y=0):
         """
         Draw the car on the screen

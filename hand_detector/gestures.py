@@ -53,6 +53,12 @@ class HandGestureDetector:
             'direction': 0.0
         }
         
+        # Additional parameters for speed control
+        self.min_speed = 0.2  # מהירות מינימלית (20% מהמהירות המקסימלית)
+        self.max_speed = 1.0  # מהירות מקסימלית
+        self.no_hand_timeout = 2.0  # זמן המתנה לפני ירידה למהירות מינימלית
+        self.last_hand_time = time.time()
+        
         print("🖐️ Hand gesture detector initialized - v2.0 with improved reliability")
         
     def ensure_valid_frame(self, frame):
@@ -519,3 +525,20 @@ class HandGestureDetector:
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
         cv2.putText(frame, f"{controls['steering']:.2f}", (steering_bar_x, steering_bar_y + steering_bar_height + 20),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+    
+    def calculate_throttle(self, hand_landmarks, frame_height):
+        """חישוב מצערת בהתבסס על גובה היד"""
+        if not hand_landmarks:
+            return self.min_speed  # החזר מהירות מינימלית במקום 0
+        
+        # חישוב גובה היד הממוצע
+        hand_y = sum([lm.y for lm in hand_landmarks.landmark]) / len(hand_landmarks.landmark)
+        
+        # נרמול הערך (0-1, כאשר 0 = למעלה, 1 = למטה)
+        normalized_y = hand_y
+        
+        # החזרת ערך מצערת בין min_speed למהירות מקסימלית
+        # ככל שהיד נמוכה יותר - מהירות נמוכה יותר (אבל לא 0)
+        throttle = self.max_speed - (normalized_y * (self.max_speed - self.min_speed))
+        
+        return max(self.min_speed, min(self.max_speed, throttle))

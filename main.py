@@ -21,6 +21,104 @@ WINDOW_WIDTH = 800
 WINDOW_HEIGHT = 600
 FPS = 60
 
+class DebugMode:
+    """מחלקת דיבאג משולבת"""
+    def __init__(self):
+        self.debug_info = {}
+        self.font = None
+        self.small_font = None
+        self.enabled = False
+        self.performance_data = {}
+        self.frame_times = []
+        self.max_frame_history = 60
+        
+    def init_font(self):
+        """אתחול הגופן"""
+        if pygame.get_init():
+            try:
+                self.font = pygame.font.Font(None, 24)
+                self.small_font = pygame.font.Font(None, 18)
+            except pygame.error:
+                print("Warning: Could not initialize debug font")
+    
+    def update_debug_info(self, **kwargs):
+        """עדכון מידע דיבאג"""
+        self.debug_info.update(kwargs)
+        self.debug_info['timestamp'] = time.strftime("%H:%M:%S")
+        
+        if self.enabled:
+            debug_text = " | ".join([f"{k}: {v}" for k, v in kwargs.items()])
+            print(f"[DEBUG {self.debug_info['timestamp']}] {debug_text}")
+    
+    def update_performance(self, frame_time):
+        """עדכון נתוני ביצועים"""
+        self.frame_times.append(frame_time)
+        if len(self.frame_times) > self.max_frame_history:
+            self.frame_times.pop(0)
+        
+        if self.frame_times:
+            avg_frame_time = sum(self.frame_times) / len(self.frame_times)
+            fps = 1.0 / avg_frame_time if avg_frame_time > 0 else 0
+            self.performance_data['fps'] = f"{fps:.1f}"
+            self.performance_data['frame_time'] = f"{frame_time*1000:.1f}ms"
+    
+    def draw_debug_info(self, screen):
+        """ציור מידע דיבאג על המסך"""
+        if not self.enabled or not self.font:
+            return
+        
+        debug_width = 350
+        debug_height = (len(self.debug_info) + len(self.performance_data) + 2) * 25 + 20
+        debug_surface = pygame.Surface((debug_width, debug_height))
+        debug_surface.set_alpha(180)
+        debug_surface.fill((0, 0, 0))
+        screen.blit(debug_surface, (10, 10))
+        
+        title_text = self.font.render("DEBUG INFO", True, (255, 255, 0))
+        screen.blit(title_text, (15, 15))
+        
+        y_offset = 40
+        
+        for key, value in self.debug_info.items():
+            text = f"{key}: {value}"
+            text_surface = self.font.render(text, True, (255, 255, 255))
+            screen.blit(text_surface, (15, y_offset))
+            y_offset += 25
+        
+        pygame.draw.line(screen, (100, 100, 100), (15, y_offset), (debug_width - 5, y_offset))
+        y_offset += 10
+        
+        perf_title = self.font.render("PERFORMANCE", True, (0, 255, 0))
+        screen.blit(perf_title, (15, y_offset))
+        y_offset += 25
+        
+        for key, value in self.performance_data.items():
+            text = f"{key}: {value}"
+            text_surface = self.small_font.render(text, True, (200, 255, 200))
+            screen.blit(text_surface, (15, y_offset))
+            y_offset += 20
+    
+    def toggle(self):
+        """החלפת מצב דיבאג"""
+        self.enabled = not self.enabled
+        print(f"Debug mode: {'ON' if self.enabled else 'OFF'}")
+    
+    def log_error(self, error_msg, exception=None):
+        """רישום שגיאות"""
+        timestamp = time.strftime("%H:%M:%S")
+        error_text = f"[ERROR {timestamp}] {error_msg}"
+        
+        if exception:
+            error_text += f" - {str(exception)}"
+        
+        print(error_text)
+        
+        try:
+            with open("debug.log", "a", encoding='utf-8') as f:
+                f.write(error_text + "\n")
+        except:
+            pass
+
 class GameLauncher:
     """Main game launcher with menu system"""
     
@@ -33,6 +131,11 @@ class GameLauncher:
         self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
         pygame.display.set_caption("Hand Gesture Car Control - Main Menu")
         self.clock = pygame.time.Clock()
+        
+        # Initialize debug mode
+        self.debug_mode = DebugMode()
+        self.debug_mode.init_font()
+        self.debug_mode.update_debug_info(launcher_initialized=True)
         
         # Fonts
         self.title_font = pygame.font.Font(None, 72)
@@ -82,7 +185,7 @@ class GameLauncher:
         # Game settings
         self.selected_difficulty = "normal"
         self.camera_enabled = True
-        self.debug_mode = False
+        self.debug_mode_enabled = False
         
         # Setup logging
         logging.basicConfig(level=logging.INFO)
@@ -91,12 +194,24 @@ class GameLauncher:
     def run(self):
         """Run the main menu loop"""
         self.logger.info("Starting game launcher")
+        self.debug_mode.update_debug_info(launcher_running=True)
         
         while self.running:
+            frame_start = time.time()
+            
             self.handle_events()
             self.update()
             self.draw()
+            
+            # ציור מידע דיבאג על המסך
+            if self.debug_mode_enabled:
+                self.debug_mode.draw_debug_info(self.screen)
+            
             self.clock.tick(FPS)
+            
+            # עדכון נתוני ביצועים
+            frame_time = time.time() - frame_start
+            self.debug_mode.update_performance(frame_time)
         
         self.cleanup()
     
@@ -104,23 +219,35 @@ class GameLauncher:
         """Handle pygame events"""
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
+                self.debug_mode.update_debug_info(quit_requested=True)
                 self.running = False
             
             elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
+                # מקש F1 להחלפת מצב דיבאג
+                if event.key == pygame.K_F1:
+                    self.debug_mode_enabled = not self.debug_mode_enabled
+                    self.debug_mode.enabled = self.debug_mode_enabled
+                    self.debug_mode.toggle()
+                
+                elif event.key == pygame.K_ESCAPE:
                     if self.current_menu == "main":
+                        self.debug_mode.update_debug_info(escape_quit=True)
                         self.running = False
                     else:
+                        self.debug_mode.update_debug_info(menu_back=True)
                         self.current_menu = "main"
                         self.selected_option = 0
                 
                 elif event.key == pygame.K_UP:
                     self.navigate_menu(-1)
+                    self.debug_mode.update_debug_info(menu_nav="up")
                 
                 elif event.key == pygame.K_DOWN:
                     self.navigate_menu(1)
+                    self.debug_mode.update_debug_info(menu_nav="down")
                 
                 elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
+                    self.debug_mode.update_debug_info(menu_select=self.selected_option)
                     self.select_option()
     
     def navigate_menu(self, direction):
@@ -184,30 +311,45 @@ class GameLauncher:
         
         if option == "Toggle Camera":
             self.camera_enabled = not self.camera_enabled
+            self.debug_mode.update_debug_info(camera_enabled=self.camera_enabled)
             self.logger.info(f"Camera {'enabled' if self.camera_enabled else 'disabled'}")
         elif option == "Test Camera":
             self.test_camera()
         elif option == "Debug Mode":
-            self.debug_mode = not self.debug_mode
-            self.logger.info(f"Debug mode {'enabled' if self.debug_mode else 'disabled'}")
+            self.debug_mode_enabled = not self.debug_mode_enabled
+            self.debug_mode.enabled = self.debug_mode_enabled 
+            self.debug_mode.update_debug_info(debug_mode_toggled=self.debug_mode_enabled)
+            self.logger.info(f"Debug mode {'enabled' if self.debug_mode_enabled else 'disabled'}")
         elif option == "Back":
             self.current_menu = "main"
             self.selected_option = 0
     
     def start_game(self):
-        """Start the actual game - SYNCHRONIZED VERSION"""
+        """Start the actual game - WITH DEBUG INTEGRATION"""
+        self.debug_mode.update_debug_info(action="starting_game", difficulty=self.selected_difficulty)
         self.logger.info(f"Starting game with difficulty: {self.selected_difficulty}")
         
         try:
+            # Initialize debug mode for game
+            self.debug_mode.enabled = self.debug_mode_enabled
+            self.debug_mode.init_font()
+            self.debug_mode.update_debug_info(
+                game_starting=True,
+                difficulty=self.selected_difficulty,
+                camera_enabled=self.camera_enabled
+            )
+            
             # Create __init__.py if missing
             game_init_file = os.path.join(current_dir, 'game', '__init__.py')
             if not os.path.exists(game_init_file):
+                self.debug_mode.update_debug_info(creating_init_file=True)
                 print("⚠️ Creating missing __init__.py file...")
                 os.makedirs(os.path.dirname(game_init_file), exist_ok=True)
                 with open(game_init_file, 'w') as f:
                     f.write('# Game package init file\n')
             
             # Import the game
+            self.debug_mode.update_debug_info(importing_game_module=True)
             print("🔄 Importing game module...")
             from game.start_game import run_game
             print("✅ Game module imported successfully")
@@ -218,20 +360,27 @@ class GameLauncher:
             # Set environment variables
             if not self.camera_enabled:
                 os.environ['NO_CAMERA'] = '1'
-            if self.debug_mode:
+            if self.debug_mode_enabled:
                 os.environ['DEBUG_MODE'] = '1'
             
+            self.debug_mode.update_debug_info(
+                environment_set=True,
+                no_camera=not self.camera_enabled,
+                debug_env=self.debug_mode_enabled
+            )
             print(f"🎮 Starting game with mode: {self.selected_difficulty}")
             
             # Run the game
             final_score = run_game(mode=self.selected_difficulty)
             
+            self.debug_mode.update_debug_info(game_finished=True, final_score=final_score)
             print(f"🏆 Game finished with score: {final_score}")
             
             # Show result
             self.show_game_result(final_score)
             
         except Exception as e:
+            self.debug_mode.log_error("Error starting game", e)
             self.logger.error(f"Error starting game: {e}")
             print(f"❌ Full error details: {e}")
             import traceback
@@ -243,8 +392,10 @@ class GameLauncher:
             try:
                 pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
                 pygame.display.set_caption("Hand Gesture Car Control - Main Menu")
+                self.debug_mode.update_debug_info(menu_restored=True)
                 print("🔄 Menu window restored")
             except Exception as e:
+                self.debug_mode.log_error("Error restoring menu window", e)
                 self.logger.error(f"Error restoring menu window: {e}")
     
     def test_camera(self):
@@ -364,7 +515,7 @@ class GameLauncher:
                     self.screen.blit(desc_text, (WINDOW_WIDTH // 2 - desc_text.get_width() // 2, y + 35))
     
     def draw_settings_menu(self):
-        """Draw the settings menu"""
+        """Draw the settings menu - WITH DEBUG STATUS"""
         title_text = self.menu_font.render("Settings", True, self.colors['white'])
         self.screen.blit(title_text, (WINDOW_WIDTH // 2 - title_text.get_width() // 2, 100))
         
@@ -376,7 +527,7 @@ class GameLauncher:
                 status = "ON" if self.camera_enabled else "OFF"
                 display_text = f"{option}: {status}"
             elif option == "Debug Mode":
-                status = "ON" if self.debug_mode else "OFF"
+                status = "ON" if self.debug_mode_enabled else "OFF"
                 display_text = f"{option}: {status}"
             else:
                 display_text = option
@@ -384,9 +535,14 @@ class GameLauncher:
             text = self.menu_font.render(display_text, True, color)
             y = 200 + i * 60
             self.screen.blit(text, (WINDOW_WIDTH // 2 - text.get_width() // 2, y))
-    
+        
+        # הוספת הוראות מקש F1
+        if self.debug_mode_enabled:
+            debug_info = self.info_font.render("Press F1 to toggle debug mode", True, self.colors['gray'])
+            self.screen.blit(debug_info, (10, WINDOW_HEIGHT - 70))
+
     def draw_instructions(self):
-        """Draw the instructions screen"""
+        """Draw the instructions screen - WITH DEBUG KEYS"""
         title_text = self.menu_font.render("Instructions", True, self.colors['white'])
         self.screen.blit(title_text, (WINDOW_WIDTH // 2 - title_text.get_width() // 2, 50))
         
@@ -402,28 +558,34 @@ class GameLauncher:
             "• Arrow Keys / WASD - Movement",
             "• Space - Boost",
             "• ESC - Pause/Quit",
+            "• F1 - Toggle Debug Mode",
+            "",
+            "Debug Features:",
+            "• Real-time performance monitoring",
+            "• Game state visualization", 
+            "• Error logging and tracking",
             "",
             "Game Objective:",
             "• Avoid obstacles",
             "• Survive as long as possible",
             "• Score points by distance traveled",
             "",
-            "NEW: Fixed road animation - now moves in correct direction!",
-            "",
             "Press any key to return to menu"
         ]
         
-        y = 120
+        y = 90
         for line in instructions:
-            if line.startswith("NEW:"):
+            if line.startswith("Debug Features:"):
                 color = self.colors['green']
+            elif line.startswith("• F1"):
+                color = self.colors['yellow'] 
             elif line.startswith("•"):
-                color = self.colors['yellow']
+                color = self.colors['light_blue']
             else:
                 color = self.colors['white']
             text = self.info_font.render(line, True, color)
             self.screen.blit(text, (50, y))
-            y += 25
+            y += 22
     
     def show_game_result(self, score):
         """Show game result"""
@@ -565,6 +727,69 @@ class GameLauncher:
             pygame.quit()
         except Exception as e:
             self.logger.error(f"Error during cleanup: {e}")
+
+    def main_game_loop(self):
+        """לולאת המשחק הראשית עם דיבאג"""
+        clock = pygame.time.Clock()
+        running = True
+        game_start_time = time.time()
+        
+        # Use the integrated debug mode instead
+        self.debug_mode.init_font()
+        
+        while running:
+            current_time = time.time()
+            game_duration = current_time - game_start_time
+            
+            # עדכון מידע דיבאג
+            self.debug_mode.update_debug_info(
+                game_time=f"{game_duration:.1f}s",
+                car_x=f"{getattr(self, 'car', {}).get('x', 0):.1f}",
+                car_y=f"{getattr(self, 'car', {}).get('y', 0):.1f}",
+                car_speed=f"{getattr(self, 'car', {}).get('speed', 0):.2f}",
+                obstacles=len(getattr(self, 'obstacles', [])),
+                collisions=getattr(self, 'collision_count', 0)
+            )
+            
+            # טיפול באירועים
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        running = False
+                    elif event.key == pygame.K_d:  # החלף מצב דיבאג
+                        self.debug_mode.enabled = not self.debug_mode.enabled
+                    elif event.key == pygame.K_r:  # איפוס משחק
+                        self.reset_game()
+            
+            # עדכון משחק
+            if hasattr(self, 'update_game'):
+                self.update_game()
+            
+            # בדיקת תנאי סיום - רק אחרי זמן מינימלי
+            if game_duration > 5.0:  # לפחות 5 שניות של משחק
+                if hasattr(self, 'check_game_over_conditions') and self.check_game_over_conditions():
+                    print(f"Game Over after {game_duration:.1f} seconds")
+                    break
+            
+            # ציור
+            if hasattr(self, 'draw_game'):
+                self.draw_game()
+            self.debug_mode.draw_debug_info(self.screen)
+            
+            pygame.display.flip()
+            clock.tick(60)  # 60 FPS
+        
+        pygame.quit()
+
+    def reset_game(self):
+        """איפוס המשחק"""
+        if hasattr(self, 'car'):
+            self.car.x = getattr(self, 'screen_width', 800) // 2
+            self.car.y = getattr(self, 'screen_height', 600) // 2
+            self.car.speed = 0.3
+            self.car.direction = 0
 
 def main():
     """Main function"""

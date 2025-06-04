@@ -421,6 +421,31 @@ class PowerUpManager:
             pygame.draw.line(screen, (0, 0, 0), (x, y - 6), (x, y + 6), 2)
 
             
+class Obstacle:
+    """Simple obstacle class for the game"""
+    
+    def __init__(self, x, y):
+        """Initialize an obstacle at position x, y"""
+        self.x = x
+        self.y = y
+        self.width = 30
+        self.height = 30
+        self.color = (255, 0, 0)  # Red by default
+        
+    def update(self):
+        """Update obstacle position"""
+        # Basic movement logic - can be enhanced later
+        self.y += 2  # Move down
+        
+    def draw(self, screen):
+        """Draw the obstacle"""
+        pygame.draw.rect(
+            screen, 
+            self.color, 
+            (self.x - self.width // 2, self.y - self.height // 2, self.width, self.height)
+        )
+
+
 class ScoreManager:
     """Manages scoring and score display"""
     
@@ -429,6 +454,8 @@ class ScoreManager:
         self.score = 0
         self.high_score = 0
         self.score_multiplier = 1.0
+        self.obstacles = []  # List to store obstacles
+        self.car = None  # Reference to the car will be set later
         
         # Load high score if available
         self._load_high_score()
@@ -494,3 +521,40 @@ class ScoreManager:
                 f.write(str(self.high_score))
         except:
             pass  # Silently fail if we can't save
+
+    def update_obstacles(self):
+        """עדכון מכשולים - יותר קל לביצוע"""
+        
+        # הוסף מכשולים בתדירות נמוכה יותר
+        if random.random() < 0.01:  # במקום 0.02 - פחות מכשולים
+            self.add_obstacle()
+        
+        # עדכן מיקום מכשולים
+        for obstacle in self.obstacles[:]:  # העתק רשימה למניעת שגיאות
+            obstacle.update()
+
+            # הסר מכשולים שיצאו מהמסך
+            if (obstacle.x < -100 or obstacle.x > self.screen_width + 100 or
+                obstacle.y < -100 or obstacle.y > self.screen_height + 100):
+                self.obstacles.remove(obstacle)
+
+    def add_obstacle(self):
+        """הוספת מכשול חדש - רחוק מהמכונית"""
+        
+        # וודא שהמכשול לא נוצר קרוב מדי למכונית
+        min_distance = 150  # מרחק מינימלי מהמכונית
+        
+        attempts = 0
+        while attempts < 10:  # מקסימום 10 ניסיונות
+            x = random.randint(50, self.screen_width - 50)
+            y = random.randint(50, self.screen_height - 50)
+            
+            # בדוק מרחק מהמכונית
+            distance_from_car = math.sqrt((x - self.car.x)**2 + (y - self.car.y)**2)
+            
+            if distance_from_car > min_distance:
+                obstacle = Obstacle(x, y)
+                self.obstacles.append(obstacle)
+                break
+            
+            attempts += 1

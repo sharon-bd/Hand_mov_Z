@@ -1273,7 +1273,7 @@ class Game:
         
         # Update existing obstacles
         for obstacle in self._obstacles[:]:
-            obstacle.update(delta_time)
+            obstacle.update(delta_time)  # Fixed: changed dt to delta_time
             
             # Remove obstacles that are off screen
             if obstacle.y > self.screen_height + 50:
@@ -1649,10 +1649,13 @@ class Game:
 
     def _check_collisions(self):
         """Check for collisions between car and obstacles"""
-        for obstacle in self._obstacles:
+        for obstacle in self._obstacles[:]:  # Use slice copy to safely remove during iteration
             if self._car.check_collision(obstacle.rect):
-                self._game_over = True
-                print("💥 Collision detected! Game over.")
+                # Instead of immediate game over, remove the obstacle and continue
+                self._obstacles.remove(obstacle)
+                print("💥 Collision detected! Obstacle removed.")
+                # Optionally reduce score or health here
+                self._score = max(0, self._score - 50)  # Penalty instead of game over
                 break
 
     def _draw_built_in_road(self):
@@ -1754,3 +1757,40 @@ class Game:
         
         for i, text in enumerate(debug_texts):
             draw_text(self.screen, text, WHITE, self._font, 20, debug_y + i * 25)
+
+    def check_game_over_conditions(self):
+        """בדיקת תנאי סיום המשחק - יותר סלחנית"""
+        
+        # בדיקת התנגשות עם מכשולים - רק התנגשות ישירה
+        for obstacle in self.obstacles:
+            distance = math.sqrt((self.car.x - obstacle.x)**2 + (self.car.y - obstacle.y)**2)
+            
+            # הגדל את הסובלנות להתנגשות
+            collision_threshold = 40  # במקום 30
+            
+            if distance < collision_threshold:
+                self.collision_count += 1
+                
+                # אפשר יותר התנגשויות לפני סיום המשחק
+                if self.collision_count >= 3:  # במקום 1
+                    return True
+                
+                # הסר את המכשול שנגענו בו
+                self.obstacles.remove(obstacle)
+                break
+        
+        # בדיקת יציאה מהמסך - יותר סלחנית
+        screen_margin = 100  # במקום 50
+        
+        if (self.car.x < -screen_margin or 
+            self.car.x > self.screen_width + screen_margin or
+            self.car.y < -screen_margin or 
+            self.car.y > self.screen_height + screen_margin):
+            
+            # התחזר למקום בטוח במקום לסיים את המשחק
+            self.car.x = max(screen_margin, min(self.screen_width - screen_margin, self.car.x))
+            self.car.y = max(screen_margin, min(self.screen_height - screen_margin, self.car.y))
+            
+            return False  # לא מסיים את המשחק
+        
+        return False

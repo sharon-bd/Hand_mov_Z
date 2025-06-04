@@ -9,6 +9,7 @@ It provides a clean interface between the hand detection and the car physics.
 import math
 import numpy as np
 import pygame  # Add pygame import for collision detection
+import time  # Import time for managing hand detection timing
 
 class CarControlHandler:
     """
@@ -31,6 +32,18 @@ class CarControlHandler:
         
         # Control limits
         self.max_steering_rate = 0.1  # Maximum steering change per update
+        
+        # Minimum and maximum speed settings
+        self.min_speed = 0.2  # Minimum speed (20%)
+        self.max_speed = 1.0  # Maximum speed (100%)
+        
+        # No hand detected timeout
+        self.no_hand_timeout = 2.0  # Seconds before dropping to minimum speed
+        self.last_hand_time = time.time()
+        
+        # Current throttle and steering values
+        self.current_throttle = self.min_speed
+        self.current_steering = 0.0
         
     def process_controls(self, gesture_data):
         """
@@ -440,3 +453,57 @@ class Car:
         )
         
         return car_rect.colliderect(obstacle_rect)
+    
+    def update_car_controls(self, gesture_data):
+        """עדכון בקרת המכונית - יותר יציב"""
+        current_time = time.time()
+        
+        # אתחול ברירת מחדל
+        if not hasattr(self, 'current_throttle'):
+            self.current_throttle = 0.3  # מהירות התחלתית בטוחה
+            self.current_steering = 0
+            self.last_hand_time = current_time
+        
+        if gesture_data and gesture_data.get('hand_detected', False):
+            self.last_hand_time = current_time
+            
+            # קבל ערכי בקרה עם ברירת מחדל בטוחה
+            throttle = gesture_data.get('throttle', 0.3)
+            steering = gesture_data.get('steering', 0)
+            
+            # החלק שינויים פתאומיים
+            throttle_diff = throttle - self.current_throttle
+            steering_diff = steering - self.current_steering
+            
+            # הגבל שינויים פתאומיים
+            max_throttle_change = 0.1
+            max_steering_change = 0.2
+            
+            if abs(throttle_diff) > max_throttle_change:
+                throttle = self.current_throttle + (max_throttle_change if throttle_diff > 0 else -max_throttle_change)
+            
+            if abs(steering_diff) > max_steering_change:
+                steering = self.current_steering + (max_steering_change if steering_diff > 0 else -max_steering_change)
+            
+            self.current_throttle = max(0.2, min(1.0, throttle))  # מינימום 0.2
+            self.current_steering = max(-1.0, min(1.0, steering))
+            
+        else:
+            # אין יד - שמור על מהירות מינימלית
+            time_without_hand = current_time - self.last_hand_time
+            
+            if time_without_hand > 1.0:  # אחרי שנייה
+                # ירידה הדרגתית למהירות מינימלית
+                target_throttle = 0.3
+                if self.current_throttle > target_throttle:
+                    self.current_throttle = max(target_throttle, self.current_throttle - 0.02)
+                
+                # איפוס הגה הדרגתי
+                if abs(self.current_steering) > 0.01:
+                    self.current_steering *= 0.9
+    
+        return {
+            'throttle': self.current_throttle,
+            'steering': self.current_steering,
+            'brake': False
+        }
