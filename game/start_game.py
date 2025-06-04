@@ -511,8 +511,8 @@ class GestureRecognizer:
             return False
     
     def _detect_open_palm(self, landmarks, thumb_tip, index_tip, middle_tip, ring_tip, pinky_tip,
-                          thumb_ip, index_mcp, middle_mcp, ring_mcp, pinky_mcp):
-        """Detect open palm gesture for stop"""
+                      thumb_ip, index_mcp, middle_mcp, ring_mcp, pinky_mcp):
+        """Detect open palm gesture for stop - BALANCED: Block only clear steering cases"""
         try:
             # All fingers should be extended
             thumb_extended = self._distance(thumb_tip, thumb_ip) > 0.04
@@ -528,10 +528,86 @@ class GestureRecognizer:
                 self._distance(ring_tip, pinky_tip) > 0.03
             )
             
-            return (thumb_extended and index_extended and middle_extended and 
-                   ring_extended and pinky_extended and finger_spread)
+            # Basic open palm requirements
+            basic_palm_detected = (
+                thumb_extended and 
+                index_extended and 
+                middle_extended and 
+                ring_extended and 
+                pinky_extended and 
+                finger_spread
+            )
             
-        except Exception:
+            # If basic palm is not detected, return False immediately
+            if not basic_palm_detected:
+                return False
+            
+            # NEW: Only block if thumb is CLEARLY in steering position
+            thumb_mcp = landmarks[2]
+            wrist = landmarks[0]
+            
+            # Calculate thumb vector relative to wrist
+            thumb_vector_x = thumb_tip[0] - wrist[0]
+            thumb_vector_y = thumb_tip[1] - wrist[1]
+            
+            # Calculate thumb angle (0° = up, 90° = right, -90° = left, ±180° = down)
+            thumb_angle = math.degrees(math.atan2(thumb_vector_x, -thumb_vector_y))
+            
+            # Normalize angle to 0-360 range
+            if thumb_angle < 0:
+                thumb_angle += 360
+            
+            # RELAXED: Only block if thumb is in CLEAR steering zones AND far from center
+            hand_center_x = (wrist[0] + middle_mcp[0]) / 2
+            thumb_horizontal_distance = abs(thumb_tip[0] - hand_center_x)
+            
+            # More restrictive criteria for blocking:
+            # 1. Thumb must be in clear steering zones (not near vertical)
+            clear_steering_right = 45 <= thumb_angle <= 135  # Clear right steering
+            clear_steering_left = 225 <= thumb_angle <= 315  # Clear left steering
+            is_clear_steering = clear_steering_right or clear_steering_left
+            
+            # 2. Thumb must be significantly far from center
+            thumb_very_far_sideways = thumb_horizontal_distance > 0.12  # Increased threshold
+            
+            # 3. Additional check: if steering is detected with significant steering value
+            steering_value = abs(self._calculate_steering(landmarks, wrist, index_mcp))
+            significant_steering = steering_value > 0.5  # Clear steering input
+            
+            # Only block if ALL conditions for clear steering are met
+            should_block_for_steering = (
+                is_clear_steering and 
+                thumb_very_far_sideways and 
+                significant_steering
+            )
+            
+            # Final decision
+            open_palm_detected = basic_palm_detected and not should_block_for_steering
+            
+            # Enhanced debug logging
+            current_time = time.time()
+            if hasattr(self, 'debug_mode') and self.debug_mode:
+                if open_palm_detected:
+                    if not hasattr(self, '_last_palm_log') or current_time - self._last_palm_log > 2.0:
+                        print(f"✋ OPEN PALM detected!")
+                        print(f"   Thumb angle: {thumb_angle:.1f}°, Distance from center: {thumb_horizontal_distance:.3f}")
+                        print(f"   Steering value: {steering_value:.2f}")
+                        self._last_palm_log = current_time
+                elif should_block_for_steering:
+                    if not hasattr(self, '_last_steering_block_log') or current_time - self._last_steering_block_log > 3.0:
+                        print(f"🚫 Open palm blocked - clear steering detected")
+                        print(f"   Angle: {thumb_angle:.1f}°, Distance: {thumb_horizontal_distance:.3f}, Steering: {steering_value:.2f}")
+                        self._last_steering_block_log = current_time
+                elif basic_palm_detected:
+                    if not hasattr(self, '_last_palm_allowed_log') or current_time - self._last_palm_allowed_log > 3.0:
+                        print(f"✋ Open palm allowed - not clear steering")
+                        print(f"   Angle: {thumb_angle:.1f}°, Distance: {thumb_horizontal_distance:.3f}, Steering: {steering_value:.2f}")
+                        self._last_palm_allowed_log = current_time
+            
+            return open_palm_detected
+            
+        except Exception as e:
+            print(f"⚠️ Error in open palm detection: {e}")
             return False
     
     def _distance(self, point1, point2):
@@ -1682,7 +1758,7 @@ class Game:
         draw_text(self.screen, time_text, WHITE, self._font, self.screen_width - 150, 20)
         
         # Draw speed indicator
-        speed_text = f"Speed: {self._car.speed:.1f}"
+        speed_text = f"Speed: {self._car.speed * 100:.0f}"
         draw_text(self.screen, speed_text, WHITE, self._font, 20, 60)
         
         # Draw controls info

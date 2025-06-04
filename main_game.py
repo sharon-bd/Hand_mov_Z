@@ -34,7 +34,8 @@ class GameLauncher:
             'blue': (0, 100, 200),
             'yellow': (255, 255, 0),
             'green': (0, 200, 0),
-            'red': (200, 0, 0)
+            'red': (200, 0, 0),
+            'hover': (100, 100, 100)  # צבע hover לעכבר
         }
         
         # Menu state
@@ -45,6 +46,10 @@ class GameLauncher:
         }
         
         self.selected_mode = "normal"
+        
+        # Mouse support
+        self.mouse_pos = (0, 0)
+        self.menu_rects = []  # רשימה של rectangles עבור כל אפשרות בתפריט
     
     def handle_events(self):
         """Handle menu events"""
@@ -62,8 +67,28 @@ class GameLauncher:
                 elif event.key == pygame.K_DOWN:
                     self.selected_option = (self.selected_option + 1) % len(self.menu_options[self.current_menu])
                 
-                elif event.key == pygame.K_RETURN:
+                elif event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
                     self.handle_menu_selection()
+            
+            # הוספת תמיכה בעכבר
+            elif event.type == pygame.MOUSEMOTION:
+                self.mouse_pos = event.pos
+                self.update_selected_option_by_mouse()
+            
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 1:  # לחיצה שמאלית
+                    self.mouse_pos = event.pos
+                    if self.update_selected_option_by_mouse():
+                        self.handle_menu_selection()
+    
+    def update_selected_option_by_mouse(self):
+        """עדכון האפשרות הנבחרת על סמך מיקום העכבר"""
+        for i, rect in enumerate(self.menu_rects):
+            if rect.collidepoint(self.mouse_pos):
+                if self.selected_option != i:
+                    self.selected_option = i
+                return True
+        return False
     
     def handle_menu_selection(self):
         """Handle menu option selection"""
@@ -123,6 +148,14 @@ class GameLauncher:
             "• Make a fist to brake",
             "• Thumbs up for boost",
             "",
+            "Keyboard Controls:",
+            "• Arrow Keys / WASD: Movement",
+            "• Space: Boost",
+            "• P: Pause",
+            "• M: Mute",
+            "• H: Help",
+            "• ESC: Exit",
+            "",
             "Press any key to continue..."
         ]
         
@@ -136,7 +169,7 @@ class GameLauncher:
                 if event.type == pygame.QUIT:
                     self.running = False
                     waiting = False
-                elif event.type == pygame.KEYDOWN:
+                elif event.type == pygame.KEYDOWN or event.type == pygame.MOUSEBUTTONDOWN:
                     waiting = False
             
             self.screen.fill(self.colors['black'])
@@ -152,6 +185,12 @@ class GameLauncher:
                 if line.strip():
                     color = self.colors['white']
                     font = self.font_small
+                    
+                    if line.startswith("•"):
+                        color = self.colors['yellow']
+                    elif "Controls:" in line:
+                        color = self.colors['green']
+                        font = self.font_medium
                     
                     text_surface = font.render(line, True, color)
                     text_rect = text_surface.get_rect(center=(self.screen_width // 2, y))
@@ -175,18 +214,52 @@ class GameLauncher:
         # Draw menu options
         options = self.menu_options[self.current_menu]
         start_y = 250
+        self.menu_rects = []  # איפוס רשימת המלבנים
         
         for i, option in enumerate(options):
+            # בחירת צבע ופונט על סמך בחירה/hover
             if i == self.selected_option:
                 color = self.colors['yellow']
                 font = self.font_medium
+                
+                # רקע לאפשרות הנבחרת
+                option_surface = font.render(option, True, color)
+                option_rect = option_surface.get_rect(center=(self.screen_width // 2, start_y + i * 60))
+                
+                # צור מלבן רקע גדול יותר
+                background_rect = pygame.Rect(
+                    option_rect.left - 20,
+                    option_rect.top - 10,
+                    option_rect.width + 40,
+                    option_rect.height + 20
+                )
+                pygame.draw.rect(self.screen, self.colors['hover'], background_rect, 0, 10)
+                pygame.draw.rect(self.screen, self.colors['yellow'], background_rect, 2, 10)
+                
             else:
                 color = self.colors['white']
                 font = self.font_small
+                option_surface = font.render(option, True, color)
+                option_rect = option_surface.get_rect(center=(self.screen_width // 2, start_y + i * 60))
             
-            option_surface = font.render(option, True, color)
-            option_rect = option_surface.get_rect(center=(self.screen_width // 2, start_y + i * 60))
+            # שמירת המלבן עבור זיהוי עכבר
+            # צור מלבן גדול יותר לזיהוי עכבר נוח יותר
+            mouse_rect = pygame.Rect(
+                option_rect.left - 50,
+                option_rect.top - 15,
+                option_rect.width + 100,
+                option_rect.height + 30
+            )
+            self.menu_rects.append(mouse_rect)
+            
+            # ציור הטקסט
             self.screen.blit(option_surface, option_rect)
+        
+        # הוספת הוראות שימוש
+        instructions_text = "Use UP/DOWN arrows, Enter, or mouse to select"
+        instructions_surface = pygame.font.Font(None, 24).render(instructions_text, True, self.colors['white'])
+        instructions_rect = instructions_surface.get_rect(center=(self.screen_width // 2, self.screen_height - 50))
+        self.screen.blit(instructions_surface, instructions_rect)
     
     def run(self):
         """Run the game launcher"""
