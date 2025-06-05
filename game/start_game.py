@@ -221,28 +221,39 @@ class GestureRecognizer:
             hand_center_x = (wrist[0] + middle_mcp[0]) / 2
             hand_center_y = (wrist[1] + middle_mcp[1]) / 2
             
-            # Additional debug for hand center calculation
-            if not hasattr(self, '_last_center_log') or current_time - self._last_center_log > 2.0:
-                print(f"🎯 Hand center calculation: wrist_y={wrist[1]:.3f}, middle_mcp_y={middle_mcp[1]:.3f}, center_y={hand_center_y:.3f}")
-                self._last_center_log = current_time
+            # PRIORITY 1: STOP - Open palm detection (highest priority)
+            stop = self._detect_open_palm(landmarks, thumb_tip, index_tip, middle_tip, ring_tip, pinky_tip,
+                                         thumb_ip, index_mcp, middle_mcp, ring_mcp, pinky_mcp)
             
-            # 1. STEERING - Hand tilt for left/right
-            steering = self._calculate_steering(landmarks, wrist, index_mcp)
-            
-            # 2. THROTTLE - Hand height for speed (use calculated hand center)
-            throttle = self._calculate_throttle(landmarks, frame_height, hand_center_y)
-            
-            # 3. BRAKE - Fist gesture detection
+            # PRIORITY 2: BRAKE - Fist gesture detection
             braking = self._detect_fist(landmarks, thumb_tip, index_tip, middle_tip, ring_tip, pinky_tip,
                                        thumb_ip, index_mcp, middle_mcp, ring_mcp, pinky_mcp)
             
-            # 4. BOOST - Thumb up with other fingers curled
+            # PRIORITY 3: BOOST - Thumb up with other fingers curled
             boost = self._detect_thumbs_up(landmarks, thumb_tip, thumb_ip, index_tip, middle_tip, 
                                           ring_tip, pinky_tip, wrist)
             
-            # 5. STOP - Open palm detection
-            stop = self._detect_open_palm(landmarks, thumb_tip, index_tip, middle_tip, ring_tip, pinky_tip,
-                                         thumb_ip, index_mcp, middle_mcp, ring_mcp, pinky_mcp)
+            # FIXED: Only calculate steering and throttle if NOT in stop/brake/boost mode
+            if stop:
+                # STOP gesture overrides everything
+                steering = 0.0
+                throttle = 0.0
+                current_time = time.time()
+                if not hasattr(self, '_last_stop_override_log') or current_time - self._last_stop_override_log > 2.0:
+                    print(f"🛑 STOP gesture active - overriding steering and throttle")
+                    self._last_stop_override_log = current_time
+            elif braking:
+                # BRAKE gesture allows limited steering but no throttle
+                steering = self._calculate_steering(landmarks, wrist, index_mcp) * 0.3  # Reduced steering
+                throttle = 0.0
+            elif boost:
+                # BOOST gesture allows normal steering with max throttle
+                steering = self._calculate_steering(landmarks, wrist, index_mcp)
+                throttle = 1.0  # Max throttle for boost
+            else:
+                # Normal driving mode - calculate steering and throttle
+                steering = self._calculate_steering(landmarks, wrist, index_mcp)
+                throttle = self._calculate_throttle(landmarks, frame_height, hand_center_y)
             
             # Create raw gesture data
             raw_gesture = {
@@ -512,97 +523,82 @@ class GestureRecognizer:
     
     def _detect_open_palm(self, landmarks, thumb_tip, index_tip, middle_tip, ring_tip, pinky_tip,
                       thumb_ip, index_mcp, middle_mcp, ring_mcp, pinky_mcp):
-        """Detect open palm gesture for stop - BALANCED: Block only clear steering cases"""
+        """Detect open palm gesture for stop - IMPROVED with better finger extension detection"""
         try:
-            # All fingers should be extended
-            thumb_extended = self._distance(thumb_tip, thumb_ip) > 0.04
-            index_extended = index_tip[1] < index_mcp[1] - 0.03
-            middle_extended = middle_tip[1] < middle_mcp[1] - 0.03
-            ring_extended = ring_tip[1] < ring_mcp[1] - 0.03
-            pinky_extended = pinky_tip[1] < pinky_mcp[1] - 0.03
+            # בדיקה משופרת של פיתוח אצבעות - בודקת שהאצבע באמת פשוטה
             
-            # Fingers should be spread apart
-            finger_spread = (
-                self._distance(index_tip, middle_tip) > 0.03 and
-                self._distance(middle_tip, ring_tip) > 0.03 and
-                self._distance(ring_tip, pinky_tip) > 0.03
-            )
+            # 1. בדיקת פיתוח אצבעות - קצה האצבע חייב להיות מעל ה-PIP (מפרק האמצע)
+            index_pip = landmarks[6]   # Index PIP joint
+            middle_pip = landmarks[10] # Middle PIP joint  
+            ring_pip = landmarks[14]   # Ring PIP joint
+            pinky_pip = landmarks[18]  # Pinky PIP joint
             
-            # Basic open palm requirements
-            basic_palm_detected = (
-                thumb_extended and 
-                index_extended and 
-                middle_extended and 
-                ring_extended and 
-                pinky_extended and 
-                finger_spread
-            )
+            # האצבע פשוטה אם הקצה מעל ה-PIP ויש מרחק מינימלי מהמפרק הבסיסי
+            index_extended = (index_tip[1] < index_pip[1] - 0.01) and (self._distance(index_tip, index_mcp) > 0.06)
+            middle_extended = (middle_tip[1] < middle_pip[1] - 0.01) and (self._distance(middle_tip, middle_mcp) > 0.06)
+            ring_extended = (ring_tip[1] < ring_pip[1] - 0.01) and (self._distance(ring_tip, ring_mcp) > 0.06)
+            pinky_extended = (pinky_tip[1] < pinky_pip[1] - 0.01) and (self._distance(pinky_tip, pinky_mcp) > 0.06)
             
-            # If basic palm is not detected, return False immediately
-            if not basic_palm_detected:
-                return False
-            
-            # NEW: Only block if thumb is CLEARLY in steering position
-            thumb_mcp = landmarks[2]
+            # 2. בדיקת אגודל - חייב להיות רחוק מכף היד ולא מקופל
             wrist = landmarks[0]
+            thumb_distance_from_wrist = self._distance(thumb_tip, wrist)
+            thumb_distance_from_palm = self._distance(thumb_tip, landmarks[1])  # מבסיס האגודל
             
-            # Calculate thumb vector relative to wrist
-            thumb_vector_x = thumb_tip[0] - wrist[0]
-            thumb_vector_y = thumb_tip[1] - wrist[1]
+            # האגודל פשוט אם הוא רחוק מכף היד ולא מקופל לפנים
+            thumb_extended = (thumb_distance_from_wrist > 0.10) and (thumb_distance_from_palm > 0.08)
             
-            # Calculate thumb angle (0° = up, 90° = right, -90° = left, ±180° = down)
-            thumb_angle = math.degrees(math.atan2(thumb_vector_x, -thumb_vector_y))
+            # 3. בדיקה נוספת: וידוא שהאצבעות לא מקופלות לתוך כף היד
+            # בודקים שכל קצה אצבע רחוק מכף היד (מהפרק)
+            palm_center = landmarks[0]  # הפרק כמרכז כף היד
             
-            # Normalize angle to 0-360 range
-            if thumb_angle < 0:
-                thumb_angle += 360
+            fingers_away_from_palm = all([
+                self._distance(index_tip, palm_center) > 0.12,
+                self._distance(middle_tip, palm_center) > 0.12,
+                self._distance(ring_tip, palm_center) > 0.12,
+                self._distance(pinky_tip, palm_center) > 0.12
+            ])
             
-            # RELAXED: Only block if thumb is in CLEAR steering zones AND far from center
-            hand_center_x = (wrist[0] + middle_mcp[0]) / 2
-            thumb_horizontal_distance = abs(thumb_tip[0] - hand_center_x)
+            # 4. ספירת אצבעות פתוחות
+            total_extended_fingers = sum([
+                thumb_extended,
+                index_extended, 
+                middle_extended,
+                ring_extended,
+                pinky_extended
+            ])
             
-            # More restrictive criteria for blocking:
-            # 1. Thumb must be in clear steering zones (not near vertical)
-            clear_steering_right = 45 <= thumb_angle <= 135  # Clear right steering
-            clear_steering_left = 225 <= thumb_angle <= 315  # Clear left steering
-            is_clear_steering = clear_steering_right or clear_steering_left
-            
-            # 2. Thumb must be significantly far from center
-            thumb_very_far_sideways = thumb_horizontal_distance > 0.12  # Increased threshold
-            
-            # 3. Additional check: if steering is detected with significant steering value
-            steering_value = abs(self._calculate_steering(landmarks, wrist, index_mcp))
-            significant_steering = steering_value > 0.5  # Clear steering input
-            
-            # Only block if ALL conditions for clear steering are met
-            should_block_for_steering = (
-                is_clear_steering and 
-                thumb_very_far_sideways and 
-                significant_steering
+            # 5. בדיקת פיזור - האצבעות לא צמודות
+            finger_spread_check = (
+                self._distance(index_tip, middle_tip) > 0.025 or
+                self._distance(middle_tip, ring_tip) > 0.025 or
+                self._distance(ring_tip, pinky_tip) > 0.025
             )
             
-            # Final decision
-            open_palm_detected = basic_palm_detected and not should_block_for_steering
+            # 6. בדיקה נוספת: וידוא שהיד לא בצורת אגרוף
+            # אצבעות באגרוף יהיו קרובות לכף היד
+            not_fist = fingers_away_from_palm
             
-            # Enhanced debug logging
+            # הגדרה סופית: לפחות 4 אצבעות פתוחות + פיזור + לא אגרוף
+            open_palm_detected = (total_extended_fingers >= 4) and finger_spread_check and not_fist
+            
+            # לוג מפורט
             current_time = time.time()
-            if hasattr(self, 'debug_mode') and self.debug_mode:
-                if open_palm_detected:
-                    if not hasattr(self, '_last_palm_log') or current_time - self._last_palm_log > 2.0:
-                        print(f"✋ OPEN PALM detected!")
-                        print(f"   Thumb angle: {thumb_angle:.1f}°, Distance from center: {thumb_horizontal_distance:.3f}")
-                        print(f"   Steering value: {steering_value:.2f}")
-                        self._last_palm_log = current_time
-                elif should_block_for_steering:
-                    if not hasattr(self, '_last_steering_block_log') or current_time - self._last_steering_block_log > 3.0:
-                        print(f"🚫 Open palm blocked - clear steering detected")
-                        print(f"   Angle: {thumb_angle:.1f}°, Distance: {thumb_horizontal_distance:.3f}, Steering: {steering_value:.2f}")
-                        self._last_steering_block_log = current_time
-                elif basic_palm_detected:
-                    if not hasattr(self, '_last_palm_allowed_log') or current_time - self._last_palm_allowed_log > 3.0:
-                        print(f"✋ Open palm allowed - not clear steering")
-                        print(f"   Angle: {thumb_angle:.1f}°, Distance: {thumb_horizontal_distance:.3f}, Steering: {steering_value:.2f}")
-                        self._last_palm_allowed_log = current_time
+            if open_palm_detected:
+                if not hasattr(self, '_last_palm_log') or current_time - self._last_palm_log > 1.0:
+                    print(f"✋ OPEN PALM detected! (Improved detection)")
+                    print(f"   Extended fingers: {total_extended_fingers}/5")
+                    print(f"   Individual: thumb={thumb_extended}, index={index_extended}, middle={middle_extended}, ring={ring_extended}, pinky={pinky_extended}")
+                    print(f"   Finger spread: {finger_spread_check}, Not fist: {not_fist}")
+                    self._last_palm_log = current_time
+            else:
+                # דיבוג מפורט
+                if not hasattr(self, '_last_palm_debug') or current_time - self._last_palm_debug > 3.0:
+                    print(f"🤚 Palm check FAILED (improved):")
+                    print(f"   Extended fingers: {total_extended_fingers}/5 (need ≥4)")
+                    print(f"   Individual: thumb={thumb_extended}, index={index_extended}, middle={middle_extended}, ring={ring_extended}, pinky={pinky_extended}")
+                    print(f"   Finger spread: {finger_spread_check}, Not fist: {not_fist}")
+                    print(f"   Thumb distances: wrist={thumb_distance_from_wrist:.3f}, palm={thumb_distance_from_palm:.3f}")
+                    self._last_palm_debug = current_time
             
             return open_palm_detected
             
@@ -651,7 +647,7 @@ class GestureRecognizer:
             return 0.5
     
     def _apply_smoothing(self, raw_gesture):
-        """Apply smoothing to reduce gesture jitter"""
+        """Apply smoothing to reduce gesture jitter with priority handling"""
         # Add current gesture to history
         gesture_with_landmarks = raw_gesture.copy()
         self.gesture_history.append(gesture_with_landmarks)
@@ -666,39 +662,50 @@ class GestureRecognizer:
         
         smoothed = {}
         
-        # Smooth numerical values
-        for key in ['steering', 'throttle']:
-            if key in raw_gesture:
-                recent_values = [h[key] for h in self.gesture_history[-5:] if key in h]
-                if recent_values:
-                    # Weighted average with more weight on recent values
-                    weights = [0.1, 0.15, 0.2, 0.25, 0.3][-len(recent_values):]
-                    smoothed[key] = sum(v * w for v, w in zip(recent_values, weights)) / sum(weights)
+        # FIXED: Don't smooth steering/throttle if STOP gesture is active
+        if raw_gesture.get('stop', False):
+            # Force zero values for stop gesture - no smoothing
+            smoothed['steering'] = 0.0
+            smoothed['throttle'] = 0.0
+        else:
+            # Normal smoothing for steering and throttle
+            for key in ['steering', 'throttle']:
+                if key in raw_gesture:
+                    recent_values = [h[key] for h in self.gesture_history[-5:] if key in h and not h.get('stop', False)]
+                    if recent_values:
+                        # Weighted average with more weight on recent values
+                        weights = [0.1, 0.15, 0.2, 0.25, 0.3][-len(recent_values):]
+                        smoothed[key] = sum(v * w for v, w in zip(recent_values, weights)) / sum(weights)
+                    else:
+                        smoothed[key] = raw_gesture[key]
                 else:
-                    smoothed[key] = raw_gesture[key]
-            else:
-                smoothed[key] = raw_gesture.get(key, 0.0)
+                    smoothed[key] = raw_gesture.get(key, 0.0)
         
-        # Smooth boolean values
+        # Smooth boolean values with priority handling
         for key in ['braking', 'boost', 'stop']:
             if key in raw_gesture:
                 recent_values = [h[key] for h in self.gesture_history[-3:] if key in h]
                 if recent_values:
-                    # Majority vote
-                    smoothed[key] = sum(recent_values) > len(recent_values) / 2
+                    # For STOP gesture, be more immediate (less smoothing)
+                    if key == 'stop':
+                        smoothed[key] = raw_gesture[key]  # No smoothing for stop
+                    else:
+                        # Majority vote for other gestures
+                        smoothed[key] = sum(recent_values) > len(recent_values) / 2
                 else:
                     smoothed[key] = raw_gesture[key]
             else:
                 smoothed[key] = raw_gesture.get(key, False)
         
-        # Apply stability filtering
-        if len(self.gesture_history) >= 3:
+        # Apply stability filtering only if not in stop mode
+        if not smoothed.get('stop', False) and len(self.gesture_history) >= 3:
             # Check if gesture is stable enough
-            recent_steering = [h.get('steering', 0) for h in self.gesture_history[-3:]]
-            steering_stability = max(recent_steering) - min(recent_steering)
-            if steering_stability > self.stability_threshold:
-                # Gesture is unstable, reduce sensitivity
-                smoothed['steering'] *= 0.7
+            recent_steering = [h.get('steering', 0) for h in self.gesture_history[-3:] if not h.get('stop', False)]
+            if recent_steering:
+                steering_stability = max(recent_steering) - min(recent_steering)
+                if steering_stability > self.stability_threshold:
+                    # Gesture is unstable, reduce sensitivity
+                    smoothed['steering'] *= 0.7
         
         # Copy other values
         for key in ['confidence', 'detection_fps', 'landmarks']:
@@ -1849,6 +1856,7 @@ class Game:
                 
                 # אפשר יותר התנגשויות לפני סיום המשחק
                 if self.collision_count >= 3:  # במקום 1
+                   
                     return True
                 
                 # הסר את המכשול שנגענו בו
