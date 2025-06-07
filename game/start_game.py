@@ -35,6 +35,12 @@ CAMERA_HEIGHT = 480
 
 # Game modes configuration
 GAME_MODES = {
+    "practice": {
+        "time_limit": 0,  # No time limit
+        "obstacle_frequency": 0.0,  # No obstacles
+        "obstacle_speed": 0,
+        "score_multiplier": 0.5
+    },
     "normal": {
         "time_limit": 180,
         "obstacle_frequency": 0.02,
@@ -52,6 +58,12 @@ GAME_MODES = {
         "obstacle_frequency": 0.03,
         "obstacle_speed": 250,
         "score_multiplier": 1.5
+    },
+    "time_trial": {
+        "time_limit": 60,  # Short time limit
+        "obstacle_frequency": 0.04,  # More obstacles
+        "obstacle_speed": 300,
+        "score_multiplier": 2.0
     }
 }
 
@@ -460,17 +472,16 @@ class GestureRecognizer:
                           ring_tip, pinky_tip, wrist):
         """Detect thumbs-up gesture for boost with stricter conditions"""
         try:
-            thumb_mcp = landmarks[2]   # Thumb MCP joint
-            thumb_base = landmarks[1]  # Thumb base
+            # Get thumb MCP joint for thumb direction calculation
+            thumb_mcp = landmarks[2]
             
-            # Thumb must be fully extended upward
-            thumb_extended_up = (thumb_tip[1] < thumb_ip[1] < thumb_mcp[1] < thumb_base[1])
+            # Check if thumb is extended upward
+            thumb_extended_up = thumb_tip[1] < thumb_ip[1]
             
-            # Thumb must be significantly higher than all other fingers
-            min_finger_y = min(index_tip[1], middle_tip[1], ring_tip[1], pinky_tip[1])
-            thumb_significantly_higher = thumb_tip[1] < min_finger_y - 0.10  # Increased threshold
+            # Check if thumb is significantly higher than other finger tips
+            thumb_significantly_higher = thumb_tip[1] < min(index_tip[1], middle_tip[1], ring_tip[1], pinky_tip[1])
             
-            # Minimum distance between thumb tip and finger tips
+            # Calculate distances between thumb and other fingers
             thumb_to_finger_distances = [
                 self._distance(thumb_tip, index_tip),
                 self._distance(thumb_tip, middle_tip),
@@ -1115,6 +1126,14 @@ class Game:
         self.pause_button = Button(10, self.screen_height - 50, 80, 30, "Pause", PRIMARY, WHITE, self.toggle_pause)
         self.mute_button = Button(100, self.screen_height - 50, 80, 30, "Mute", SECONDARY, WHITE, self.toggle_mute)
         
+        # Add game state for menu system
+        self._show_main_menu = True
+        self._show_mode_selection = False
+        self._selected_mode = None
+        
+        # Create game mode menu buttons
+        self._create_mode_selection_buttons()
+        
         print(f"✅ Game initialized in {mode} mode")
         if self._hand_detector and self._hand_detector.enabled:
             print("✅ Hand detection enabled")
@@ -1468,21 +1487,32 @@ class Game:
                 self.running = False
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
-                    self.running = False
-                elif event.key == pygame.K_p:
+                    if self._show_mode_selection:
+                        self._back_to_main_menu()
+                    else:
+                        self.running = False
+                elif event.key == pygame.K_p and not self._show_main_menu and not self._show_mode_selection:
                     self.toggle_pause()
-                elif event.key == pygame.K_m:
+                elif event.key == pygame.K_m and not self._show_main_menu and not self._show_mode_selection:
                     self.toggle_mute()
-                elif event.key == pygame.K_h:
+                elif event.key == pygame.K_h and not self._show_main_menu and not self._show_mode_selection:
                     self._show_help = not self._show_help
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:  # Left click
-                    # Check if pause button is clicked
-                    if self.pause_button.rect.collidepoint(event.pos):
-                        self.toggle_pause()
-                    # Check if mute button is clicked
-                    elif self.mute_button.rect.collidepoint(event.pos):
-                        self.toggle_mute()
+                    # Handle main menu start button
+                    if self._show_main_menu and hasattr(self, 'start_button_rect'):
+                        if self.start_button_rect.collidepoint(event.pos):
+                            self._show_start_game_menu()
+                    # Handle mode selection menu clicks
+                    elif self._show_mode_selection:
+                        for button in self.mode_buttons:
+                            button.handle_event(event)
+                    # Handle main game buttons
+                    elif not self._show_main_menu and not self._show_mode_selection:
+                        if self.pause_button.rect.collidepoint(event.pos):
+                            self.toggle_pause()
+                        elif self.mute_button.rect.collidepoint(event.pos):
+                            self.toggle_mute()
 
     def cleanup(self):
         """Clean up game resources with enhanced camera cleanup"""
@@ -1517,53 +1547,59 @@ class Game:
 
     def draw(self):
         """Draw the game screen with moving background"""
-        self.screen.fill((50, 50, 50))
-        
-        # Draw moving road background
-        if self._moving_road:
-            try:
-                self._moving_road.draw(self.screen)
-            except Exception as e:
-                print(f"⚠️ Error drawing moving road: {e}")
-                self._draw_built_in_road()
+        if self._show_mode_selection:
+            self._draw_mode_selection_menu()
+        elif self._show_main_menu:
+            self._draw_main_menu()
         else:
-            self._draw_built_in_road()
-        
-        # Calculate world offset for steering effect
-        world_offset_x = int(self._road_offset_x)
-        
-        # Draw obstacles with world offset
-        for obstacle in self._obstacles:
-            if hasattr(obstacle, 'world_x'):
-                screen_x = obstacle.world_x - world_offset_x
+            # Normal game drawing
+            self.screen.fill((50, 50, 50))
+            
+            # Draw moving road background
+            if self._moving_road:
+                try:
+                    self._moving_road.draw(self.screen)
+                except Exception as e:
+                    print(f"⚠️ Error drawing moving road: {e}")
+                    self._draw_built_in_road()
             else:
-                obstacle.world_x = obstacle.x
-                screen_x = obstacle.x - world_offset_x
+                self._draw_built_in_road()
+            
+            # Calculate world offset for steering effect
+            world_offset_x = int(self._road_offset_x)
+            
+            # Draw obstacles with world offset
+            for obstacle in self._obstacles:
+                if hasattr(obstacle, 'world_x'):
+                    screen_x = obstacle.world_x - world_offset_x
+                else:
+                    obstacle.world_x = obstacle.x
+                    screen_x = obstacle.x - world_offset_x
                 
-            original_x = obstacle.x
-            obstacle.x = screen_x
-            obstacle.draw(self.screen)
-            obstacle.x = original_x
-        
-        # Draw car (always in center)
-        self._car.draw(self.screen)
-        
-        # Draw UI elements
-        self._draw_ui()
-        self._draw_camera_feed()
-        
-        if self._paused:
-            self._draw_pause()
-        
-        if self._game_over or self._game_completed:
-            self._draw_game_over()
+                original_x = obstacle.x
+                obstacle.x = screen_x
+                obstacle.draw(self.screen)
+                obstacle.x = original_x
             
-        if self._debug_mode:
-            self._draw_debug()
-        
-        if self._show_help:
-            self._draw_help()
+            # Draw car (always in center)
+            self._car.draw(self.screen)
             
+            # Draw UI elements
+            self._draw_ui()
+            self._draw_camera_feed()
+            
+            if self._paused:
+                self._draw_pause()
+            
+            if self._game_over or self._game_completed:
+                self._draw_game_over()
+                
+            if self._debug_mode:
+                self._draw_debug()
+            
+            if self._show_help:
+                self._draw_help()
+        
         pygame.display.flip()
 
     def update(self, delta_time):
@@ -1841,40 +1877,106 @@ class Game:
         for i, text in enumerate(debug_texts):
             draw_text(self.screen, text, WHITE, self._font, 20, debug_y + i * 25)
 
-    def check_game_over_conditions(self):
-        """בדיקת תנאי סיום המשחק - יותר סלחנית"""
+    def _create_mode_selection_buttons(self):
+        """Create buttons for game mode selection"""
+        button_width = 380
+        button_height = 48
+        button_spacing = 18
+        num_buttons = 6  # 5 modes + back button
+        total_height = num_buttons * button_height + (num_buttons - 1) * button_spacing
+
+        start_y = (self.screen_height - total_height) // 2 + 60  # 60px below title
+        center_x = self.screen_width // 2 - button_width // 2
+
+        self.mode_buttons = [
+            Button(center_x, start_y, button_width, button_height,
+                   "Practice Mode: No obstacles", PRIMARY, WHITE,
+                   lambda: self._select_mode("practice")),
+            Button(center_x, start_y + (button_height + button_spacing) * 1, button_width, button_height,
+                   "Easy Mode: Few obstacles at slow pace", SUCCESS, WHITE,
+                   lambda: self._select_mode("easy")),
+            Button(center_x, start_y + (button_height + button_spacing) * 2, button_width, button_height,
+                   "Normal Mode: Standard gameplay", SECONDARY, WHITE,
+                   lambda: self._select_mode("normal")),
+            Button(center_x, start_y + (button_height + button_spacing) * 3, button_width, button_height,
+                   "Hard Mode: Many fast obstacles", ERROR, WHITE,
+                   lambda: self._select_mode("hard")),
+            Button(center_x, start_y + (button_height + button_spacing) * 4, button_width, button_height,
+                   "Time Trial: Race against the clock", ACCENT, WHITE,
+                   lambda: self._select_mode("time_trial")),
+            Button(center_x, start_y + (button_height + button_spacing) * 5, button_width // 2, button_height,
+                   "Back to Main Menu", (100, 100, 100), WHITE,
+                   lambda: self._back_to_main_menu())
+        ]
+
+    def _select_mode(self, mode):
+        """Handle mode selection"""
+        self._selected_mode = mode
+        print(f"🎮 Selected mode: {mode}")
+        # Start the game with selected mode
+        self._show_mode_selection = False
+        self._show_main_menu = False  # Start the actual game
+        self.mode = mode
+        self.settings = GAME_MODES.get(mode, GAME_MODES["normal"])
+
+    def _back_to_main_menu(self):
+        """Return to main menu"""
+        self._show_mode_selection = False
+        self._show_main_menu = True
+        print("↩️ Returning to main menu")
+
+    def _show_start_game_menu(self):
+        """Show the game mode selection menu"""
+        self._show_main_menu = False
+        self._show_mode_selection = True
+        print("🎯 Showing game mode selection menu")
+
+    def _draw_mode_selection_menu(self):
+        """Draw the game mode selection menu"""
+        self.screen.fill((20, 25, 40))
+
+        # Title
+        title_text = "SELECT GAME MODE"
+        title_surface = self._title_font.render(title_text, True, WHITE)
+        title_rect = title_surface.get_rect(center=(self.screen_width // 2, 80))
+        self.screen.blit(title_surface, title_rect)
+
+        # Show selected mode if any
+        if self._selected_mode:
+            selected_text = f"Selected: {self._selected_mode.replace('_', ' ').title()}"
+            selected_surface = self._font.render(selected_text, True, SUCCESS)
+            selected_rect = selected_surface.get_rect(center=(self.screen_width // 2, 140))
+            self.screen.blit(selected_surface, selected_rect)
+
+        # Draw mode selection buttons
+        for button in self.mode_buttons:
+            button.draw(self.screen)
+
+        # Instructions at the bottom
+        instruction_text = "Press ESC to go back"
+        instruction_surface = self._font.render(instruction_text, True, (150, 150, 150))
+        instruction_rect = instruction_surface.get_rect(center=(self.screen_width // 2, self.screen_height - 25))
+        self.screen.blit(instruction_surface, instruction_rect)
+
+    def _draw_main_menu(self):
+        """Draw the main menu"""
+        self.screen.fill((30, 30, 50))
         
-        # בדיקת התנגשות עם מכשולים - רק התנגשות ישירה
-        for obstacle in self.obstacles:
-            distance = math.sqrt((self.car.x - obstacle.x)**2 + (self.car.y - obstacle.y)**2)
-            
-            # הגדל את הסובלנות להתנגשות
-            collision_threshold = 40  # במקום 30
-            
-            if distance < collision_threshold:
-                self.collision_count += 1
-                
-                # אפשר יותר התנגשויות לפני סיום המשחק
-                if self.collision_count >= 3:  # במקום 1
-                   
-                    return True
-                
-                # הסר את המכשול שנגענו בו
-                self.obstacles.remove(obstacle)
-                break
+        # Title
+        title_text = "HAND GESTURE CAR CONTROL"
+        title_surface = self._title_font.render(title_text, True, WHITE)
+        title_rect = title_surface.get_rect(center=(self.screen_width // 2, 150))
+        self.screen.blit(title_surface, title_rect)
         
-        # בדיקת יציאה מהמסך - יותר סלחנית
-        screen_margin = 100  # במקום 50
+        # Start Game button
+        start_button_rect = pygame.Rect(self.screen_width // 2 - 100, 300, 200, 60)
+        pygame.draw.rect(self.screen, PRIMARY, start_button_rect)
+        pygame.draw.rect(self.screen, WHITE, start_button_rect, 2)
         
-        if (self.car.x < -screen_margin or 
-            self.car.x > self.screen_width + screen_margin or
-            self.car.y < -screen_margin or 
-            self.car.y > self.screen_height + screen_margin):
-            
-            # התחזר למקום בטוח במקום לסיים את המשחק
-            self.car.x = max(screen_margin, min(self.screen_width - screen_margin, self.car.x))
-            self.car.y = max(screen_margin, min(self.screen_height - screen_margin, self.car.y))
-            
-            return False  # לא מסיים את המשחק
+        start_text = "START GAME"
+        start_surface = self._font.render(start_text, True, WHITE)
+        start_text_rect = start_surface.get_rect(center=start_button_rect.center)
+        self.screen.blit(start_surface, start_text_rect)
         
-        return False
+        # Store button rect for click handling
+        self.start_button_rect = start_button_rect
