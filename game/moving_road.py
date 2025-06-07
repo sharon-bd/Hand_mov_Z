@@ -37,7 +37,14 @@ class MovingRoadGenerator:
         self.scroll_x = 0
         self.speed = 0.0
         
+        # Add steering offset support
+        self.steering_offset = 0
+        
         print("✅ MovingRoadGenerator initialized - SIMPLE VERSION")
+    
+    def set_steering_offset(self, offset):
+        """Set steering offset for consistent road movement"""
+        self.steering_offset = offset
     
     def update(self, rotation, speed, dt):
         """
@@ -68,7 +75,7 @@ class MovingRoadGenerator:
 
     def draw(self, screen, world_offset_x=0, world_offset_y=0):
         """
-        Draw the simple moving road with horizontal offset
+        Draw the simple moving road with horizontal offset compensation
         
         Args:
             screen: Pygame surface to draw on
@@ -78,8 +85,9 @@ class MovingRoadGenerator:
         # Fill background with grass
         screen.fill(self.grass_color)
         
-        # Calculate road position with horizontal offset
-        road_center_x = self.screen_width // 2 - int(self.scroll_x)
+        # FIXED: Calculate road position with steering offset compensation
+        # Road moves opposite to steering offset to stay centered
+        road_center_x = self.screen_width // 2 - int(self.scroll_x) - int(self.steering_offset)
         
         # Draw main road surface with offset
         road_rect = pygame.Rect(
@@ -94,7 +102,7 @@ class MovingRoadGenerator:
         self._draw_center_line(screen, road_center_x)
     
     def _draw_center_line(self, screen, center_x):
-        """Draw simple moving center line with horizontal offset"""
+        """Draw simple moving center line with horizontal offset compensation"""
         line_width = 6
         
         # Moving dashed line - REVERSED direction to match cones
@@ -107,8 +115,8 @@ class MovingRoadGenerator:
                 dash_start = max(0, y)
                 dash_end = min(self.screen_height, y + self.lane_length)
                 
-                # Only draw if line is within screen bounds
-                if center_x - line_width // 2 >= 0 and center_x + line_width // 2 <= self.screen_width:
+                # Only draw if line is within screen bounds with steering compensation
+                if center_x - line_width // 2 >= -50 and center_x + line_width // 2 <= self.screen_width + 50:
                     pygame.draw.rect(screen, self.lane_color,
                                    (center_x - line_width // 2, dash_start,
                                     line_width, dash_end - dash_start))
