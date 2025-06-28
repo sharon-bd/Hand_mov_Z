@@ -37,18 +37,19 @@ class MovingRoadGenerator:
         self.scroll_x = 0
         self.speed = 0.0
         
-        # Add steering offset support
+        # Add steering offset support - REDUCED EFFECT
         self.steering_offset = 0
         
         print("✅ MovingRoadGenerator initialized - SIMPLE VERSION")
     
     def set_steering_offset(self, offset):
-        """Set steering offset for consistent road movement"""
-        self.steering_offset = offset
+        """Set steering offset for consistent road movement - MINIMAL EFFECT"""
+        # FIXED: Reduce steering effect to almost nothing
+        self.steering_offset = offset * 0.1  # Only 10% of original effect
     
     def update(self, rotation, speed, dt):
         """
-        Update the moving road state - WITH STRONGER STEERING OFFSET
+        Update the moving road state - MINIMAL STEERING OFFSET
         
         Args:
             rotation: Car rotation in degrees
@@ -64,18 +65,17 @@ class MovingRoadGenerator:
         # Update vertical scroll position
         self.scroll_y += base_scroll_speed * dt
         
-        # ENHANCED: Stronger horizontal scroll based on car rotation
-        # Convert rotation to steering effect with more sensitivity
-        steering_factor = rotation / 30.0  # 30 degrees = full steering (more sensitive)
-        steering_factor = max(-1.5, min(1.5, steering_factor))  # Allow more extreme values
+        # FIXED: MINIMAL horizontal scroll - almost like center line
+        steering_factor = rotation / 90.0  # Less sensitive
+        steering_factor = max(-0.3, min(0.3, steering_factor))  # Very limited range
         
-        # Move background horizontally opposite to car direction with stronger effect
-        horizontal_speed = steering_factor * 150 * speed  # Increased from 100 to 150
+        # MINIMAL horizontal movement - just a few pixels
+        horizontal_speed = steering_factor * 20 * speed  # Reduced from 150 to 20
         self.scroll_x += horizontal_speed * dt
 
     def draw(self, screen, world_offset_x=0, world_offset_y=0):
         """
-        Draw the simple moving road with horizontal offset compensation
+        Draw the simple moving road with minimal horizontal offset
         
         Args:
             screen: Pygame surface to draw on
@@ -85,11 +85,10 @@ class MovingRoadGenerator:
         # Fill background with grass
         screen.fill(self.grass_color)
         
-        # FIXED: Calculate road position with steering offset compensation
-        # Road moves opposite to steering offset to stay centered
-        road_center_x = self.screen_width // 2 - int(self.scroll_x) - int(self.steering_offset)
+        # FIXED: Minimal road position change - mostly centered
+        road_center_x = self.screen_width // 2 - int(self.scroll_x * 0.2) - int(self.steering_offset * 0.2)
         
-        # Draw main road surface with offset
+        # Draw main road surface with minimal offset
         road_rect = pygame.Rect(
             road_center_x - self.road_width // 2,
             0,
@@ -98,11 +97,11 @@ class MovingRoadGenerator:
         )
         pygame.draw.rect(screen, self.road_color, road_rect)
         
-        # Draw moving center line with offset
+        # Draw moving center line with minimal offset
         self._draw_center_line(screen, road_center_x)
     
     def _draw_center_line(self, screen, center_x):
-        """Draw simple moving center line with horizontal offset compensation"""
+        """Draw simple moving center line with minimal horizontal offset"""
         line_width = 6
         
         # Moving dashed line - REVERSED direction to match cones
@@ -115,7 +114,7 @@ class MovingRoadGenerator:
                 dash_start = max(0, y)
                 dash_end = min(self.screen_height, y + self.lane_length)
                 
-                # Only draw if line is within screen bounds with steering compensation
+                # Only draw if line is within screen bounds with minimal steering compensation
                 if center_x - line_width // 2 >= -50 and center_x + line_width // 2 <= self.screen_width + 50:
                     pygame.draw.rect(screen, self.lane_color,
                                    (center_x - line_width // 2, dash_start,

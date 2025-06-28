@@ -58,9 +58,9 @@ class Obstacle:
         self.rect.centery = self.y
 
     def draw(self, screen, world_offset_x=0):
-        """Draw the obstacle with world offset"""
-        # Calculate screen position based on world offset
-        screen_x = self.x  # כבר מכיל את המיקום על המסך אחרי החישובים
+        """Draw the obstacle with minimal world offset effect"""
+        # FIXED: Minimal screen position change - mostly stay in place
+        screen_x = self.x - (world_offset_x * 0.05)  # Only 5% of offset effect
         
         # Only draw if visible on screen
         if -50 <= screen_x <= screen.get_width() + 50:
@@ -94,7 +94,7 @@ class ObstacleManager:
         self.road_width = 600
         self.road_x = 100
         
-        # World offset for steering effect
+        # World offset for steering effect - MINIMAL
         self.world_offset_x = 0
 
     def set_road_parameters(self, screen_width, screen_height, road_width, road_x):
@@ -105,17 +105,18 @@ class ObstacleManager:
         self.road_x = road_x
 
     def update_world_offset(self, offset_x):
-        """Update world offset for steering effect"""
-        self.world_offset_x = offset_x
+        """Update world offset for steering effect - MINIMAL IMPACT"""
+        # FIXED: Reduce the offset effect to almost nothing
+        self.world_offset_x = offset_x * 0.1  # Only 10% of original effect
 
     def update(self, dt, score):
-        """Update all obstacles"""
+        """Update all obstacles with minimal steering effect"""
         active_obstacles = []
         for obstacle in self.obstacles:
             obstacle.update(dt)
             
-            # Check if obstacle is still on screen considering world offset
-            screen_x = obstacle.world_x - self.world_offset_x
+            # FIXED: Check screen position with minimal offset effect
+            screen_x = obstacle.world_x - (self.world_offset_x * 0.05)  # Minimal effect
             if obstacle.y < self.screen_height + 100 and -100 <= screen_x <= self.screen_width + 100:
                 active_obstacles.append(obstacle)
         
@@ -123,14 +124,14 @@ class ObstacleManager:
         return active_obstacles
 
     def spawn_obstacle(self):
-        """Spawn a new obstacle at world position"""
+        """Spawn a new obstacle at fixed world position"""
         if len(self.obstacles) < 10:  # Limit number of obstacles
-            # Spawn at world coordinates (not screen coordinates)
-            world_x = random.randint(self.road_x + 50, self.road_x + self.road_width - 50) + self.world_offset_x
+            # FIXED: Spawn at fixed world coordinates - no offset compensation
+            world_x = random.randint(self.road_x + 50, self.road_x + self.road_width - 50)
             y = -50
             obstacle_type = random.choice(["cone", "rock", "barrier"])
             new_obstacle = Obstacle(world_x, y, obstacle_type, self.obstacle_speed)
-            new_obstacle.world_x = world_x  # Store world position
+            new_obstacle.world_x = world_x  # Store fixed world position
             self.obstacles.append(new_obstacle)
             return True
         return False
