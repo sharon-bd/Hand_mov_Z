@@ -215,20 +215,13 @@ class GestureRecognizer:
             stop = self._detect_open_palm(landmarks, thumb_tip, index_tip, middle_tip, ring_tip, pinky_tip,
                                          thumb_ip, index_mcp, middle_mcp, ring_mcp, pinky_mcp)
             
-            # Priority 2: BRAKE - Fist gesture detection
-            braking = self._detect_fist(landmarks, thumb_tip, index_tip, middle_tip, ring_tip, pinky_tip,
-                                       thumb_ip, index_mcp, middle_mcp, ring_mcp, pinky_mcp)
-            
-            # Priority 3: BOOST - Thumbs up
+            # Priority 2: BOOST - Thumbs up
             boost = self._detect_thumbs_up(landmarks, thumb_tip, thumb_ip, index_tip, middle_tip, 
                                           ring_tip, pinky_tip, wrist)
             
             # Calculate steering and throttle
             if stop:
                 steering = 0.0
-                throttle = 0.0
-            elif braking:
-                steering = self._calculate_steering(landmarks, wrist, index_mcp) * 0.3
                 throttle = 0.0
             elif boost:
                 steering = self._calculate_steering(landmarks, wrist, index_mcp)
@@ -240,7 +233,7 @@ class GestureRecognizer:
             raw_gesture = {
                 'steering': steering,
                 'throttle': throttle,
-                'braking': braking,
+                'braking': False,  # Fist braking removed
                 'boost': boost,
                 'stop': stop,
                 'confidence': self._calculate_confidence(landmarks),
@@ -259,35 +252,66 @@ class GestureRecognizer:
             return self._get_default_gestures()
     
     def _calculate_steering(self, landmarks, wrist, index_mcp):
-        """Calculate steering based on thumb orientation"""
+        """Calculate steering based on thumb orientation - precise angle-based control"""
         try:
             thumb_tip = landmarks[4]
             thumb_mcp = landmarks[2]
             
+            # Calculate vector from thumb MCP to thumb tip
             dx = thumb_tip[0] - thumb_mcp[0]
             dy = thumb_tip[1] - thumb_mcp[1]
             
-            angle = math.degrees(math.atan2(dx, -dy))
+            # Calculate angle in degrees (0° = straight up, +90° = right, -90° = left)
+            # Using atan2 with dy first gives us angle from vertical axis
+            angle_rad = math.atan2(dx, -dy)  # -dy because screen Y increases downward
+            angle_deg = math.degrees(angle_rad)
             
-            if angle > 90:
-                angle = 180 - angle
-            elif angle < -90:
-                angle = -180 - angle
+            # Normalize angle to [-180, 180] range
+            if angle_deg > 180:
+                angle_deg -= 360
+            elif angle_deg < -180:
+                angle_deg += 360
             
-            max_angle = 75
-            steering = angle / max_angle
-            steering = max(-1.0, min(1.0, steering))
+            # Map angle to steering value:
+            # 0° (straight up) = 0.0 steering (straight)
+            # +90° (right) = +1.0 steering (max right)
+            # -90° (left) = -1.0 steering (max left)
+            # Beyond ±90° should still work but with reduced sensitivity
             
-            dead_zone = 0.15
+            if abs(angle_deg) <= 90:
+                # Within ±90°: direct linear mapping
+                steering = angle_deg / 90.0
+            else:
+                # Beyond ±90°: reduced sensitivity (thumb pointing backwards)
+                if angle_deg > 90:
+                    # 90° to 180°: gradually reduce from +1.0 to 0.0
+                    steering = 1.0 - ((angle_deg - 90) / 90.0)
+                else:
+                    # -90° to -180°: gradually reduce from -1.0 to 0.0
+                    steering = -1.0 - ((angle_deg + 90) / 90.0)
+            
+            # Apply dead zone for more stable straight driving
+            dead_zone = 0.1  # Smaller dead zone for more precise control
             if abs(steering) < dead_zone:
                 steering = 0.0
             else:
+                # Scale remaining range to full [-1, 1]
                 sign = 1 if steering > 0 else -1
                 adjusted_value = (abs(steering) - dead_zone) / (1.0 - dead_zone)
                 steering = sign * adjusted_value
             
+            # Apply sensitivity and clamp final result
             steering *= self.steering_sensitivity
             steering = max(-1.0, min(1.0, steering))
+            
+            # Debug output for steering calibration
+            if hasattr(self, '_last_steering_debug'):
+                current_time = time.time()
+                if current_time - self._last_steering_debug > 0.5:  # Every 0.5 seconds
+                    print(f"🎯 Steering Debug: Angle={angle_deg:.1f}°, Steering={steering:.2f}")
+                    self._last_steering_debug = current_time
+            else:
+                self._last_steering_debug = time.time()
             
             return steering
             
@@ -360,45 +384,119 @@ class GestureRecognizer:
     
     def _detect_open_palm(self, landmarks, thumb_tip, index_tip, middle_tip, ring_tip, pinky_tip,
                           thumb_ip, index_mcp, middle_mcp, ring_mcp, pinky_mcp):
-        """Detect open palm gesture for stop"""
+        """Detect open palm gesture for stop - requires ALL 5 fingers to be extended"""
         try:
+            # Get PIP joints for better finger extension detection
             index_pip = landmarks[6]
             middle_pip = landmarks[10]
             ring_pip = landmarks[14]
             pinky_pip = landmarks[18]
             
-            index_extended = (index_tip[1] < index_pip[1] - 0.01) and (self._distance(index_tip, index_mcp) > 0.06)
-            middle_extended = (middle_tip[1] < middle_pip[1] - 0.01) and (self._distance(middle_tip, middle_mcp) > 0.06)
-            ring_extended = (ring_tip[1] < ring_pip[1] - 0.01) and (self._distance(ring_tip, ring_mcp) > 0.06)
-            pinky_extended = (pinky_tip[1] < pinky_pip[1] - 0.01) and (self._distance(pinky_tip, pinky_mcp) > 0.06)
-            
-            wrist = landmarks[0]
-            thumb_distance_from_wrist = self._distance(thumb_tip, wrist)
-            thumb_extended = thumb_distance_from_wrist > 0.10
-            
-            total_extended_fingers = sum([
-                thumb_extended,
-                index_extended, 
-                middle_extended,
-                ring_extended,
-                pinky_extended
-            ])
-            
-            finger_spread_check = (
-                self._distance(index_tip, middle_tip) > 0.025 or
-                self._distance(middle_tip, ring_tip) > 0.025 or
-                self._distance(ring_tip, pinky_tip) > 0.025
+            # STRICT finger extension detection - multiple criteria to prevent false positives
+            # Index finger: tip must be above PIP, far from MCP, and PIP must be above MCP (straight line)
+            index_extended = (
+                index_tip[1] < index_pip[1] - 0.03 and  # Tip significantly above PIP
+                self._distance(index_tip, index_mcp) > 0.09 and  # Tip far from MCP
+                index_pip[1] < index_mcp[1] - 0.015 and  # PIP above MCP (finger straight)
+                self._distance(index_tip, index_pip) > 0.04  # Tip far from PIP
             )
             
+            # Middle finger: same strict criteria
+            middle_extended = (
+                middle_tip[1] < middle_pip[1] - 0.03 and
+                self._distance(middle_tip, middle_mcp) > 0.09 and
+                middle_pip[1] < middle_mcp[1] - 0.015 and
+                self._distance(middle_tip, middle_pip) > 0.04
+            )
+            
+            # Ring finger: same strict criteria  
+            ring_extended = (
+                ring_tip[1] < ring_pip[1] - 0.03 and
+                self._distance(ring_tip, ring_mcp) > 0.09 and
+                ring_pip[1] < ring_mcp[1] - 0.015 and
+                self._distance(ring_tip, ring_pip) > 0.04
+            )
+            
+            # Pinky finger: slightly relaxed due to smaller size
+            pinky_extended = (
+                pinky_tip[1] < pinky_pip[1] - 0.025 and
+                self._distance(pinky_tip, pinky_mcp) > 0.075 and
+                pinky_pip[1] < pinky_mcp[1] - 0.01 and
+                self._distance(pinky_tip, pinky_pip) > 0.035
+            )
+            
+            # Thumb extension: enhanced detection with multiple criteria
+            wrist = landmarks[0]
+            thumb_distance_from_wrist = self._distance(thumb_tip, wrist)
+            thumb_mcp = landmarks[2]
+            thumb_distance_from_mcp = self._distance(thumb_tip, thumb_mcp)
+            
+            # Additional thumb joint for better detection
+            thumb_ip = landmarks[3]
+            thumb_distance_from_ip = self._distance(thumb_tip, thumb_ip)
+            
+            # Thumb is extended if:
+            # 1. Far from wrist and MCP
+            # 2. IP joint is between MCP and tip (straight line)
+            # 3. Tip is away from other fingers
+            thumb_extended = (
+                thumb_distance_from_wrist > 0.13 and  # Far from wrist
+                thumb_distance_from_mcp > 0.07 and   # Far from MCP
+                thumb_distance_from_ip > 0.03 and    # Far from IP
+                self._distance(thumb_ip, thumb_mcp) > 0.04 and  # IP far from MCP
+                abs(thumb_tip[0] - index_tip[0]) > 0.05  # Away from index finger
+            )
+            
+            # Count extended fingers - MUST be exactly 5
+            extended_fingers = [thumb_extended, index_extended, middle_extended, ring_extended, pinky_extended]
+            total_extended_fingers = sum(extended_fingers)
+            
+            # Enhanced finger spread check - fingers must be well separated
+            finger_spread_sufficient = (
+                self._distance(thumb_tip, index_tip) > 0.07 and   # Thumb-index separation
+                self._distance(index_tip, middle_tip) > 0.04 and  # Index-middle separation
+                self._distance(middle_tip, ring_tip) > 0.04 and   # Middle-ring separation
+                self._distance(ring_tip, pinky_tip) > 0.035       # Ring-pinky separation
+            )
+            
+            # All fingers must be well away from palm center (wrist) and from each other
             palm_center = landmarks[0]
-            fingers_away_from_palm = all([
-                self._distance(index_tip, palm_center) > 0.12,
-                self._distance(middle_tip, palm_center) > 0.12,
-                self._distance(ring_tip, palm_center) > 0.12,
-                self._distance(pinky_tip, palm_center) > 0.12
+            all_fingers_away_from_palm = all([
+                self._distance(thumb_tip, palm_center) > 0.12,   # Thumb far from palm
+                self._distance(index_tip, palm_center) > 0.17,   # Index far from palm
+                self._distance(middle_tip, palm_center) > 0.18,  # Middle far from palm (longest)
+                self._distance(ring_tip, palm_center) > 0.17,    # Ring far from palm
+                self._distance(pinky_tip, palm_center) > 0.14    # Pinky far from palm
             ])
             
-            open_palm_detected = (total_extended_fingers >= 4) and finger_spread_check and fingers_away_from_palm
+            # Additional check: make sure fingers are not curled by checking if they point away from palm
+            fingers_pointing_away = all([
+                index_tip[1] < wrist[1] - 0.05,    # Index pointing up/away
+                middle_tip[1] < wrist[1] - 0.05,   # Middle pointing up/away
+                ring_tip[1] < wrist[1] - 0.05,     # Ring pointing up/away
+                pinky_tip[1] < wrist[1] - 0.04     # Pinky pointing up/away
+            ])
+            
+            # ULTRA STRICT CRITERIA: ALL conditions must be met for STOP detection
+            open_palm_detected = (
+                total_extended_fingers == 5 and      # Exactly 5 fingers extended
+                finger_spread_sufficient and         # Fingers are well separated
+                all_fingers_away_from_palm and      # All fingers far from palm
+                fingers_pointing_away               # Fingers pointing away from palm (not curled)
+            )
+            
+            # Debug logging for better understanding
+            if total_extended_fingers >= 2:  # Log when any fingers might be detected
+                current_time = time.time()
+                if not hasattr(self, '_last_palm_debug') or current_time - self._last_palm_debug > 1.0:
+                    print(f"🖐️ Palm Detection Debug:")
+                    print(f"   Extended fingers: {total_extended_fingers}/5")
+                    print(f"   Individual: T:{thumb_extended} I:{index_extended} M:{middle_extended} R:{ring_extended} P:{pinky_extended}")
+                    print(f"   Spread sufficient: {finger_spread_sufficient}")
+                    print(f"   Away from palm: {all_fingers_away_from_palm}")
+                    print(f"   Pointing away: {fingers_pointing_away}")
+                    print(f"   STOP detected: {open_palm_detected}")
+                    self._last_palm_debug = current_time
             
             return open_palm_detected
             
@@ -459,7 +557,7 @@ class GestureRecognizer:
                 else:
                     smoothed[key] = raw_gesture.get(key, 0.0)
         
-        for key in ['braking', 'boost', 'stop']:
+        for key in ['boost', 'stop']:
             if key in raw_gesture:
                 recent_values = [h[key] for h in self.gesture_history[-3:] if key in h]
                 if recent_values:
@@ -471,6 +569,9 @@ class GestureRecognizer:
                     smoothed[key] = raw_gesture[key]
             else:
                 smoothed[key] = raw_gesture.get(key, False)
+        
+        # Braking is always False since fist gesture is removed
+        smoothed['braking'] = False
         
         for key in ['confidence', 'detection_fps', 'landmarks']:
             smoothed[key] = raw_gesture.get(key, 0)
@@ -495,23 +596,29 @@ class GestureRecognizer:
         }
     
     def _determine_gesture_name(self, gesture):
-        """Determine the primary gesture name"""
+        """Determine the primary gesture name with detailed steering info"""
         try:
             if gesture.get('stop', False):
-                return 'Open Palm Stop'
-            elif gesture.get('braking', False):
-                return 'Fist Brake'
+                return 'Open Palm (ALL 5 Fingers) Stop'
             elif gesture.get('boost', False):
                 return 'Thumbs Up Boost'
             else:
                 steering = gesture.get('steering', 0.0)
-                if abs(steering) > 0.3:
-                    if steering > 0.3:
-                        return 'Turn Right'
-                    else:
-                        return 'Turn Left'
+                if abs(steering) > 0.2:
+                    if steering > 0.6:
+                        return 'Hard Right Turn (>60°)'
+                    elif steering > 0.3:
+                        return 'Right Turn (30-60°)'
+                    elif steering > 0.2:
+                        return 'Slight Right (20-30°)'
+                    elif steering < -0.6:
+                        return 'Hard Left Turn (<-60°)'
+                    elif steering < -0.3:
+                        return 'Left Turn (-30 to -60°)'
+                    elif steering < -0.2:
+                        return 'Slight Left (-20 to -30°)'
                 else:
-                    return 'Forward'
+                    return 'Straight (0-20°)'
         except Exception as e:
             print(f"⚠️ Error determining gesture name: {e}")
             return 'Unknown'
@@ -567,8 +674,9 @@ class Car:
         self.world_x = x
         self.world_y = y
         
+        # Screen position - car always in center with lateral offset
         self.screen_x = WINDOW_WIDTH // 2
-        self.screen_y = WINDOW_HEIGHT - 100
+        self.screen_y = WINDOW_HEIGHT - 150  # Slightly lower for better perspective
         
         self.width = 40
         self.height = 80
@@ -577,14 +685,20 @@ class Car:
         self.throttle = 0.5
         self.braking = False
         self.boosting = False
+        self.hand_stopping = False  # Track if car is stopping due to hand gesture
         self.rotation = 0.0
         self.max_speed = 200
         self.health = 100
+        self._last_steering = 0.0  # For momentum physics
         
         self.velocity_x = 0.0
         self.velocity_y = 0.0
         
-        print("✅ Car initialized with camera follow system")
+        print("✅ Car initialized with realistic directional physics:")
+        print("   • Car moves in the EXACT direction it's facing")
+        print("   • Rotation 0° = UP, 90° = RIGHT, 180° = DOWN, -90° = LEFT")
+        print("   • World moves around the car (car stays centered)")
+        print("   • Steering only works when moving (realistic physics)")
     
     def update(self, controls, dt, road_bounds=None):
         """Update car state"""
@@ -594,6 +708,12 @@ class Car:
             self.braking = controls.get('braking', False)
             self.boosting = controls.get('boost', False)
             self.steering = new_steering
+            
+            # Check if car is slowing down due to hand gesture (STOP command)
+            self.hand_stopping = controls.get('stop', False)
+        else:
+            # No controls detected - reset hand stopping state
+            self.hand_stopping = False
         
         # Physics
         if self.braking:
@@ -606,17 +726,38 @@ class Car:
             self.speed += (target_speed - self.speed) * dt * 2
             self.speed = max(0.0, min(1.0, self.speed))
         
-        # Update rotation
-        if self.speed > 0.05:
-            max_turn_rate = 120
-            turn_amount = self.steering * max_turn_rate * dt
-            speed_factor = max(0.3, 1.0 - (self.speed * 0.7))
-            turn_amount *= speed_factor
+        # Realistic steering physics - car can only turn when moving
+        if self.speed > 0.1:  # Need minimum speed to turn (like real cars)
+            # Steering affects rotation rate based on speed
+            max_turn_rate = 120  # Base turn rate in degrees per second
+            
+            # Turn rate is proportional to steering input and inversely proportional to speed
+            # At low speed: responsive turning, at high speed: gradual turning
+            speed_factor = max(0.3, 2.0 / (1.0 + self.speed * 2))  # More realistic speed-turn relationship
+            effective_turn_rate = max_turn_rate * speed_factor
+            
+            turn_amount = self.steering * effective_turn_rate * dt
+            
+            # Apply rotation
             self.rotation += turn_amount
-        else:
-            if abs(self.rotation) > 1.0:
-                center_return = -self.rotation * 0.05
-                self.rotation += center_return * dt * 60
+            
+            # Momentum effect: car continues turning slightly when steering stops
+            # This simulates real car physics where turning creates momentum
+            if abs(self.steering) < 0.1 and hasattr(self, '_last_steering'):
+                if abs(self._last_steering) > 0.3:  # Had significant steering input
+                    momentum_factor = 0.15 * self.speed  # Stronger at higher speeds
+                    momentum_rotation = self._last_steering * 30 * dt * momentum_factor
+                    self.rotation += momentum_rotation
+            
+            # Store last steering for momentum calculation
+            self._last_steering = self.steering
+            
+        elif self.speed > 0.02:  # Very slow maneuvering
+            if abs(self.steering) > 0.7:  # Only for strong steering input
+                slow_turn_rate = 45  # Slow turning when barely moving
+                turn_amount = self.steering * slow_turn_rate * dt
+                self.rotation += turn_amount
+        # No turning when completely stopped (realistic)
         
         self.rotation = self.rotation % 360
         if self.rotation > 180:
@@ -624,20 +765,33 @@ class Car:
         elif self.rotation < -180:
             self.rotation += 360
 
-        # Movement based on rotation
+        # Realistic car physics - car moves in headlight direction
         if self.speed > 0.05:
+            # Calculate movement direction based on car's current rotation (headlight direction)
             angle_rad = math.radians(self.rotation)
             movement_speed = self.speed * self.max_speed
+            
+            # Car moves in the direction it's pointing (realistic physics)
+            # If car is facing right (90°), it moves right
+            # If car is facing left (-90°), it moves left
+            # If car is facing backwards (180°), it moves backwards
             self.velocity_x = math.sin(angle_rad) * movement_speed
             self.velocity_y = -math.cos(angle_rad) * movement_speed
+            
+            # Apply the movement to world position
             self.world_x += self.velocity_x * dt
             self.world_y += self.velocity_y * dt
+            
+            # Allow car to move freely - no artificial lateral constraints
+            # The car can drive anywhere on the screen, including off-road
+            # This is realistic - a car can go where the driver steers it
+            
         else:
             self.velocity_x = 0.0
             self.velocity_y = 0.0
 
     def check_collision(self, obstacle_rect):
-        """Check collision using screen position"""
+        """Check collision using fixed screen position - car is always at center"""
         car_rect = pygame.Rect(
             self.screen_x - self.width // 2,
             self.screen_y - self.height // 2,
@@ -647,8 +801,10 @@ class Car:
         return car_rect.colliderect(obstacle_rect)
 
     def draw(self, screen):
-        """Draw the car at screen position"""
+        """Draw the car at fixed screen center - car always stays in center"""
         try:
+            # Car is always drawn at the same screen position (center)
+            # The world moves around the car, not the car around the world
             car_surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
             
             # Draw car body
@@ -664,13 +820,13 @@ class Car:
                 0, 5
             )
             
-            # Draw headlights
+            # Draw headlights - these show the direction the car is pointing
             light_size = self.width // 5
             pygame.draw.circle(car_surface, (255, 255, 200), (self.width // 4, light_size), light_size // 2)
             pygame.draw.circle(car_surface, (255, 255, 200), (self.width - self.width // 4, light_size), light_size // 2)
             
-            # Draw brake lights if braking
-            if self.braking:
+            # Draw brake lights if braking or hand stopping (red lights for any deceleration)
+            if self.braking or self.hand_stopping:
                 pygame.draw.circle(car_surface, RED, (self.width // 4, self.height - light_size), light_size // 2)
                 pygame.draw.circle(car_surface, RED, (self.width - self.width // 4, self.height - light_size), light_size // 2)
                 
@@ -683,13 +839,14 @@ class Car:
                 ]
                 pygame.draw.polygon(car_surface, (255, 165, 0), flame_points)
                 
-            # Rotate the car surface
+            # Rotate the car surface based on its rotation
             rotated_car = pygame.transform.rotate(car_surface, -self.rotation)
             rotated_rect = rotated_car.get_rect(center=(self.screen_x, self.screen_y))
             screen.blit(rotated_car, rotated_rect)
             
         except Exception as e:
             print(f"Error drawing car: {e}")
+            # Fallback drawing
             car_rect = pygame.Rect(
                 self.screen_x - self.width // 2,
                 self.screen_y - self.height // 2,
@@ -716,17 +873,27 @@ class Obstacle:
         
         print(f"🐢 Turtle created at world position ({x}, {y})")
     
-    def update(self, dt, car_velocity_x=0, car_velocity_y=0):
-        """Update obstacle position relative to car movement"""
-        self.world_x -= car_velocity_x * dt
-        self.world_y -= car_velocity_y * dt
+    def update(self, dt, car_world_x, car_world_y, car_rotation):
+        """Update obstacle position relative to car movement and rotation"""
+        # The obstacle stays in the same world position
+        # But we need to calculate its screen position relative to the car
+        pass
     
-    def get_screen_position(self, camera_x, camera_y):
-        """Calculate screen position based on camera offset"""
-        relative_x = self.world_x - camera_x
-        relative_y = self.world_y - camera_y
-        self.screen_x = WINDOW_WIDTH // 2 + relative_x
-        self.screen_y = WINDOW_HEIGHT - 100 + relative_y
+    def get_screen_position(self, car_world_x, car_world_y, car_rotation):
+        """Calculate screen position based on car position and rotation"""
+        # Calculate relative position from car to obstacle
+        relative_x = self.world_x - car_world_x
+        relative_y = self.world_y - car_world_y
+        
+        # Apply car's rotation to the relative position
+        # This makes obstacles rotate around the car as the car turns
+        car_angle = math.radians(-car_rotation)  # Negative for correct rotation direction
+        rotated_x = relative_x * math.cos(car_angle) - relative_y * math.sin(car_angle)
+        rotated_y = relative_x * math.sin(car_angle) + relative_y * math.cos(car_angle)
+        
+        # Calculate screen position relative to car (which is at screen center)
+        self.screen_x = WINDOW_WIDTH // 2 + rotated_x
+        self.screen_y = WINDOW_HEIGHT - 150 + rotated_y  # Car is at this Y position
         
         return self.screen_x, self.screen_y
     
@@ -774,10 +941,11 @@ class Obstacle:
         pygame.draw.circle(screen, leg_color, (self.screen_x - self.width // 4, self.screen_y + self.height // 2 + 5), 5)
         pygame.draw.circle(screen, leg_color, (self.screen_x + self.width // 4, self.screen_y + self.height // 2 + 5), 5)
 
-    def draw(self, screen, camera_x, camera_y):
-        """Draw obstacle at screen position relative to camera"""
-        self.get_screen_position(camera_x, camera_y)
+    def draw(self, screen, car_world_x, car_world_y, car_rotation):
+        """Draw obstacle at screen position relative to car"""
+        self.get_screen_position(car_world_x, car_world_y, car_rotation)
         
+        # Only draw if obstacle is visible on screen
         if (-100 <= self.screen_x <= WINDOW_WIDTH + 100 and 
             -100 <= self.screen_y <= WINDOW_HEIGHT + 100):
             
@@ -826,12 +994,13 @@ class Game:
         self._distance_traveled = 0
         self._last_position = None
         
-        # Car setup
+        # Car setup - start at road center
         self._car = Car(0, 0)
         
-        # Camera system
+        # Camera system - smooth camera follow
         self.camera_x = 0
         self.camera_y = 0
+        self.camera_smooth_factor = 0.05  # Smoother camera movement for realism
         
         # Obstacles
         self._obstacles = []
@@ -1050,11 +1219,15 @@ class Game:
 
         # Update obstacles
         for obstacle in self._obstacles[:]:
-            obstacle.update(delta_time, self._car.velocity_x, self._car.velocity_y)
+            obstacle.update(delta_time, self._car.world_x, self._car.world_y, self._car.rotation)
+            
+            # Calculate distance from car to obstacle in world coordinates
             dx = obstacle.world_x - self._car.world_x
             dy = obstacle.world_y - self._car.world_y
             distance = math.hypot(dx, dy)
-            if distance > 1200 or dy > 200:
+            
+            # Remove obstacles that are too far away
+            if distance > 1200:
                 self._obstacles.remove(obstacle)
                 score_bonus = SCORE_PER_OBSTACLE * self.settings["score_multiplier"]
                 if obstacle.obstacle_type == "turtle":
@@ -1063,31 +1236,56 @@ class Game:
                 self._score += score_bonus
 
     def draw_built_in_road(self):
-        """Draw built-in road animation"""
+        """Draw built-in road that moves relative to car position and direction"""
         road_width = 300
-        road_surface = pygame.Surface((road_width, self.screen_height))
+        
+        # Calculate road position based on car's world position
+        # The road appears to move in the opposite direction of the car
+        road_offset_x = -self._car.world_x
+        road_offset_y = -self._car.world_y
+        
+        # Apply car's rotation to the road offset
+        # This makes the road rotate as the car turns
+        car_angle = math.radians(self._car.rotation)
+        rotated_offset_x = road_offset_x * math.cos(-car_angle) - road_offset_y * math.sin(-car_angle)
+        rotated_offset_y = road_offset_x * math.sin(-car_angle) + road_offset_y * math.cos(-car_angle)
+        
+        # Create road surface
+        road_surface = pygame.Surface((road_width, self.screen_height + 400), pygame.SRCALPHA)
         road_surface.fill((80, 80, 80))
 
-        pygame.draw.line(road_surface, WHITE, (0, 0), (0, self.screen_height), 3)
-        pygame.draw.line(road_surface, WHITE, (road_width, 0), (road_width, self.screen_height), 3)
+        # Draw road edges
+        pygame.draw.line(road_surface, WHITE, (0, 0), (0, self.screen_height + 400), 3)
+        pygame.draw.line(road_surface, WHITE, (road_width, 0), (road_width, self.screen_height + 400), 3)
 
+        # Draw center line with movement effect
         line_width = 6
         dash_length = 50
         gap_length = 30
         dash_spacing = dash_length + gap_length
 
-        offset = int(self._car.world_y) % dash_spacing
+        # Use car position for road animation
+        offset = int(rotated_offset_y) % dash_spacing
         center_x = road_width // 2
         y = -offset
-        while y < self.screen_height + dash_spacing:
+        while y < self.screen_height + dash_spacing + 400:
             dash_start = max(0, y)
-            dash_end = min(self.screen_height, y + dash_length)
-            pygame.draw.rect(road_surface, WHITE, (center_x - line_width // 2, dash_start, line_width, dash_end - dash_start))
+            dash_end = min(self.screen_height + 400, y + dash_length)
+            if dash_end > dash_start:
+                pygame.draw.rect(road_surface, WHITE, (center_x - line_width // 2, dash_start, line_width, dash_end - dash_start))
             y += dash_spacing
 
-        rotated_road = pygame.transform.rotate(road_surface, -self._car.rotation)
-        road_rect = rotated_road.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
-        self.screen.blit(rotated_road, road_rect)
+        # Position road surface on screen based on car position and rotation
+        road_screen_x = (self.screen_width - road_width) // 2 + rotated_offset_x * 0.5
+        road_screen_y = -200 + rotated_offset_y * 0.5
+        
+        # Rotate the entire road based on car's rotation
+        if abs(self._car.rotation) > 1.0:  # Only rotate if significant rotation
+            rotated_road = pygame.transform.rotate(road_surface, self._car.rotation)
+            rotated_rect = rotated_road.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
+            self.screen.blit(rotated_road, rotated_rect)
+        else:
+            self.screen.blit(road_surface, (road_screen_x, road_screen_y))
 
     def update(self, dt):
         """Update game state"""
@@ -1164,7 +1362,7 @@ class Game:
     def _check_collisions(self):
         """Check for collisions"""
         for obstacle in self._obstacles[:]:
-            obstacle.get_screen_position(self.camera_x, self.camera_y)
+            obstacle.get_screen_position(self._car.world_x, self._car.world_y, self._car.rotation)
             obstacle_rect = obstacle.get_collision_rect()
             
             if self._car.check_collision(obstacle_rect):
@@ -1202,9 +1400,14 @@ class Game:
         return controls
 
     def update_camera(self):
-        """Camera follows car's world position"""
-        self.camera_x = self._car.world_x
-        self.camera_y = self._car.world_y
+        """Camera follows car smoothly with realistic tracking"""
+        # Target camera position (car position)
+        target_camera_x = self._car.world_x
+        target_camera_y = self._car.world_y
+        
+        # Smooth camera interpolation for realistic feel
+        self.camera_x += (target_camera_x - self.camera_x) * self.camera_smooth_factor
+        self.camera_y += (target_camera_y - self.camera_y) * self.camera_smooth_factor
 
     def _create_mode_selection_buttons(self):
         """Create mode selection buttons"""
@@ -1314,6 +1517,7 @@ class Game:
         self._obstacles.clear()
         self._next_obstacle_time = 0
         self._car = Car(0, 0)
+        self._car._last_steering = 0.0  # Reset steering momentum
         self.camera_x = 0
         self.camera_y = 0
         if self._moving_road and hasattr(self._moving_road, 'reset'):
@@ -1364,11 +1568,21 @@ class Game:
         # Instructions
         instructions = [
             "Hand Gestures:",
-            "• Open Palm - STOP",
-            "• Closed Fist - BRAKE", 
+            "• Open Palm (ALL 5 fingers extended) - STOP",
+            "  (Shows red brake lights when stopping)",
             "• Thumbs Up - BOOST",
-            "• Thumb Direction - STEERING",
+            "• Thumb Up (0°) - STRAIGHT",
+            "• Thumb Right (90°) - TURN RIGHT",
+            "• Thumb Left (-90°) - TURN LEFT",
             "• Hand Height - THROTTLE",
+            "",
+            "Realistic Car Physics:",
+            "• Car moves in EXACT direction it's facing",
+            "• Turn car to change movement direction",
+            "• Car can move in any direction (up/down/left/right)",
+            "• Car can go off-road or anywhere on screen",
+            "• World rotates around car (car stays centered)",
+            "• No artificial road constraints",
             "",
             "Keyboard Controls:",
             "• Arrow Keys / WASD - Movement",
@@ -1470,6 +1684,11 @@ class Game:
                 self.screen.blit(brake_text, (10, status_y))
                 status_y += 25
             
+            if self._car.hand_stopping:
+                stop_text = pygame.font.Font(None, 24).render("HAND STOP", True, RED)
+                self.screen.blit(stop_text, (10, status_y))
+                status_y += 25
+            
             if self._car.boosting:
                 boost_text = pygame.font.Font(None, 24).render("BOOST!", True, ACCENT)
                 self.screen.blit(boost_text, (10, status_y))
@@ -1564,11 +1783,23 @@ class Game:
         
         help_content = [
             "HAND GESTURES:",
-            "• Open Palm (5 fingers) = STOP",
-            "• Closed Fist = BRAKE",
+            "• Open Palm (ALL 5 fingers extended) = STOP",
+            "  (Red brake lights activate when stopping)",
             "• Thumbs Up = BOOST",
-            "• Thumb Left/Right = STEERING",
+            "• Thumb Up (0°) = STRAIGHT",
+            "• Thumb Right (90°) = TURN RIGHT", 
+            "• Thumb Left (-90°) = TURN LEFT",
             "• Hand Up/Down = THROTTLE",
+            "",
+            "REALISTIC CAR PHYSICS:",
+            "• Car moves in EXACT direction it's facing",
+            "• Rotate car to change movement direction",
+            "• 0° = UP, 90° = RIGHT, 180° = DOWN, -90° = LEFT",
+            "• Car can drive anywhere - no road constraints",
+            "• World rotates around stationary car view",
+            "• Must be moving to steer (realistic physics)",
+            "• Speed affects turning rate",
+            "• Momentum effect during turns",
             "",
             "KEYBOARD CONTROLS:",
             "• Arrow Keys / WASD = Movement",
@@ -1669,7 +1900,7 @@ class Game:
                 self.draw_built_in_road()
             
             for obstacle in self._obstacles:
-                obstacle.draw(self.screen, self.camera_x, self.camera_y)
+                obstacle.draw(self.screen, self._car.world_x, self._car.world_y, self._car.rotation)
             
             self._car.draw(self.screen)
             self._draw_ui()
@@ -1724,12 +1955,18 @@ class Game:
                 f"FPS: {self.clock.get_fps():.1f}",
                 f"Car World: ({int(self._car.world_x)}, {int(self._car.world_y)})",
                 f"Car Screen: ({int(self._car.screen_x)}, {int(self._car.screen_y)})",
-                f"Camera: ({int(self.camera_x)}, {int(self.camera_y)})",
                 f"Car Speed: {self._car.speed:.2f}",
+                f"Car Steering: {self._car.steering:.2f}",
                 f"Car Rotation: {self._car.rotation:.1f}°",
+                f"Car Velocity: ({self._car.velocity_x:.1f}, {self._car.velocity_y:.1f})",
+                f"Last Steering: {getattr(self._car, '_last_steering', 0):.2f}",
                 f"Obstacles: {len(self._obstacles)}",
                 f"Mode: {self.mode}",
-                f"Time Left: {getattr(self, 'time_left', 0):.1f}"
+                f"Time Left: {getattr(self, 'time_left', 0):.1f}",
+                "",
+                f"Car Direction Analysis:",
+                f"  Rotation 0° = Up, 90° = Right, 180° = Down, -90° = Left",
+                f"  Current: {self._car.rotation:.1f}° = Moving towards {self._get_direction_name(self._car.rotation)}"
             ]
             
             y_offset = self.screen_height - len(debug_info) * 25 - 20
@@ -1739,6 +1976,32 @@ class Game:
                 y_offset += 25
         except Exception as e:
             print(f"⚠️ Error in debug display: {e}")
+    
+    def _get_direction_name(self, rotation):
+        """Get direction name based on rotation angle"""
+        # Normalize angle to 0-360
+        angle = rotation % 360
+        if angle < 0:
+            angle += 360
+        
+        if 337.5 <= angle or angle < 22.5:
+            return "UP"
+        elif 22.5 <= angle < 67.5:
+            return "UP-RIGHT"
+        elif 67.5 <= angle < 112.5:
+            return "RIGHT"
+        elif 112.5 <= angle < 157.5:
+            return "DOWN-RIGHT"
+        elif 157.5 <= angle < 202.5:
+            return "DOWN"
+        elif 202.5 <= angle < 247.5:
+            return "DOWN-LEFT"
+        elif 247.5 <= angle < 292.5:
+            return "LEFT"
+        elif 292.5 <= angle < 337.5:
+            return "UP-LEFT"
+        else:
+            return "UNKNOWN"
 
 
 def run_game(mode="normal", config=None):
