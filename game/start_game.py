@@ -690,6 +690,8 @@ class Car:
         self.max_speed = 200
         self.health = 100
         self._last_steering = 0.0  # For momentum physics
+        self.lateral_offset = 0.0  # Position relative to road center (-120 to +120)
+        self.max_lateral_offset = 120  # Maximum distance from road center
         
         self.velocity_x = 0.0
         self.velocity_y = 0.0
@@ -782,6 +784,23 @@ class Car:
             self.world_x += self.velocity_x * dt
             self.world_y += self.velocity_y * dt
             
+            # Update lateral offset based on steering - car moves away from road center when turning
+            if abs(self.steering) > 0.1:
+                # Calculate lateral movement - stronger steering = more lateral movement
+                lateral_change = self.steering * self.speed * dt * 80  # Scale factor for realistic movement
+                self.lateral_offset += lateral_change
+                
+                # Limit lateral offset to road boundaries
+                self.lateral_offset = max(-self.max_lateral_offset, min(self.max_lateral_offset, self.lateral_offset))
+            else:
+                # Gradually return to center when driving straight (natural road correction)
+                if abs(self.lateral_offset) > 2.0:
+                    center_return_speed = 40 * dt * self.speed  # Faster return at higher speeds
+                    if self.lateral_offset > 0:
+                        self.lateral_offset = max(0, self.lateral_offset - center_return_speed)
+                    else:
+                        self.lateral_offset = min(0, self.lateral_offset + center_return_speed)
+            
             # Allow car to move freely - no artificial lateral constraints
             # The car can drive anywhere on the screen, including off-road
             # This is realistic - a car can go where the driver steers it
@@ -791,9 +810,10 @@ class Car:
             self.velocity_y = 0.0
 
     def check_collision(self, obstacle_rect):
-        """Check collision using fixed screen position - car is always at center"""
+        """Check collision using screen position with lateral offset"""
+        actual_screen_x = self.screen_x + self.lateral_offset
         car_rect = pygame.Rect(
-            self.screen_x - self.width // 2,
+            actual_screen_x - self.width // 2,
             self.screen_y - self.height // 2,
             self.width,
             self.height
@@ -801,10 +821,12 @@ class Car:
         return car_rect.colliderect(obstacle_rect)
 
     def draw(self, screen):
-        """Draw the car at fixed screen center - car always stays in center"""
+        """Draw the car at fixed screen center with lateral offset for lane position"""
         try:
-            # Car is always drawn at the same screen position (center)
-            # The world moves around the car, not the car around the world
+            # Calculate actual screen position with lateral offset
+            actual_screen_x = self.screen_x + self.lateral_offset
+            
+            # Car is drawn at center + lateral offset to show lane position
             car_surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
             
             # Draw car body
@@ -841,14 +863,15 @@ class Car:
                 
             # Rotate the car surface based on its rotation
             rotated_car = pygame.transform.rotate(car_surface, -self.rotation)
-            rotated_rect = rotated_car.get_rect(center=(self.screen_x, self.screen_y))
+            rotated_rect = rotated_car.get_rect(center=(actual_screen_x, self.screen_y))
             screen.blit(rotated_car, rotated_rect)
             
         except Exception as e:
             print(f"Error drawing car: {e}")
-            # Fallback drawing
+            # Fallback drawing with lateral offset
+            actual_screen_x = self.screen_x + self.lateral_offset
             car_rect = pygame.Rect(
-                self.screen_x - self.width // 2,
+                actual_screen_x - self.width // 2,
                 self.screen_y - self.height // 2,
                 self.width,
                 self.height
@@ -1276,7 +1299,8 @@ class Game:
             y += dash_spacing
 
         # Position road surface on screen based on car position and rotation
-        road_screen_x = (self.screen_width - road_width) // 2 + rotated_offset_x * 0.5
+        # Add lateral offset so road appears to move opposite to car's lateral position
+        road_screen_x = (self.screen_width - road_width) // 2 + rotated_offset_x * 0.5 - self._car.lateral_offset
         road_screen_y = -200 + rotated_offset_y * 0.5
         
         # Rotate the entire road based on car's rotation
@@ -1518,6 +1542,7 @@ class Game:
         self._next_obstacle_time = 0
         self._car = Car(0, 0)
         self._car._last_steering = 0.0  # Reset steering momentum
+        self._car.lateral_offset = 0.0  # Reset to road center
         self.camera_x = 0
         self.camera_y = 0
         if self._moving_road and hasattr(self._moving_road, 'reset'):
@@ -1578,7 +1603,9 @@ class Game:
             "",
             "Realistic Car Physics:",
             "• Car moves in EXACT direction it's facing",
-            "• Turn car to change movement direction",
+            "• Turn car to change movement direction", 
+            "• Steering moves car away from road center",
+            "• Car naturally returns to center when driving straight",
             "• Car can move in any direction (up/down/left/right)",
             "• Car can go off-road or anywhere on screen",
             "• World rotates around car (car stays centered)",
@@ -1795,6 +1822,8 @@ class Game:
             "• Car moves in EXACT direction it's facing",
             "• Rotate car to change movement direction",
             "• 0° = UP, 90° = RIGHT, 180° = DOWN, -90° = LEFT",
+            "• Steering moves car laterally from road center",
+            "• Car naturally returns to center when driving straight",
             "• Car can drive anywhere - no road constraints",
             "• World rotates around stationary car view",
             "• Must be moving to steer (realistic physics)",
@@ -1960,6 +1989,7 @@ class Game:
                 f"Car Rotation: {self._car.rotation:.1f}°",
                 f"Car Velocity: ({self._car.velocity_x:.1f}, {self._car.velocity_y:.1f})",
                 f"Last Steering: {getattr(self._car, '_last_steering', 0):.2f}",
+                f"Lateral Offset: {getattr(self._car, 'lateral_offset', 0):.1f}",
                 f"Obstacles: {len(self._obstacles)}",
                 f"Mode: {self.mode}",
                 f"Time Left: {getattr(self, 'time_left', 0):.1f}",
