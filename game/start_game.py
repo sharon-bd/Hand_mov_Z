@@ -907,6 +907,10 @@ class Obstacle:
         self.obstacle_type = obstacle_type
         self.color = (255, 165, 0)  # Orange for turtles
         
+        # Store the original road-relative position for consistent placement
+        self.road_offset_x = 0  # Will be set when turtle is created relative to car
+        self.fixed_on_road = True  # Flag to keep turtle fixed on road
+        
         self.screen_x = 0
         self.screen_y = 0
         
@@ -919,20 +923,17 @@ class Obstacle:
         pass
     
     def get_screen_position(self, car_world_x, car_world_y, car_rotation):
-        """Calculate screen position based on car position and rotation"""
-        # Calculate relative position from car to obstacle
-        relative_x = self.world_x - car_world_x
+        """Calculate screen position - turtle stays fixed in its road lane"""
+        # Calculate ONLY forward/backward movement relative to car
         relative_y = self.world_y - car_world_y
         
-        # Apply car's rotation to the relative position
-        # This makes obstacles rotate around the car as the car turns
-        car_angle = math.radians(-car_rotation)  # Negative for correct rotation direction
-        rotated_x = relative_x * math.cos(car_angle) - relative_y * math.sin(car_angle)
-        rotated_y = relative_x * math.sin(car_angle) + relative_y * math.cos(car_angle)
+        # Turtle stays in its FIXED road lane position
+        # Uses the road_offset_x that was set when turtle was created
+        road_center_x = WINDOW_WIDTH // 2
         
-        # Calculate screen position relative to car (which is at screen center)
-        self.screen_x = WINDOW_WIDTH // 2 + rotated_x
-        self.screen_y = WINDOW_HEIGHT - 150 + rotated_y  # Car is at this Y position
+        # Turtle maintains its exact lane position on the road
+        self.screen_x = road_center_x + self.road_offset_x
+        self.screen_y = WINDOW_HEIGHT - 150 + relative_y
         
         return self.screen_x, self.screen_y
     
@@ -981,8 +982,9 @@ class Obstacle:
         pygame.draw.circle(screen, leg_color, (self.screen_x + self.width // 4, self.screen_y + self.height // 2 + 5), 5)
 
     def draw(self, screen, car_world_x, car_world_y, car_rotation):
-        """Draw obstacle at screen position relative to car"""
-        self.get_screen_position(car_world_x, car_world_y, car_rotation)
+        """Draw obstacle at screen position relative to car - rotation ignored for fixed road position"""
+        # Calculate screen position but ignore car rotation for fixed road obstacles
+        self.get_screen_position(car_world_x, car_world_y, 0)  # Pass 0 rotation to keep turtles fixed
         
         # Only draw if obstacle is visible on screen
         if (-100 <= self.screen_x <= WINDOW_WIDTH + 100 and 
@@ -1233,20 +1235,24 @@ class Game:
 
         if current_time >= self._next_obstacle_time:
             if self.mode == "easy":
-                road_width = 300
-                angle_rad = math.radians(self._car.rotation)
-                spawn_distance = 500
-                base_x = self._car.world_x + math.sin(angle_rad) * spawn_distance
-                base_y = self._car.world_y - math.cos(angle_rad) * spawn_distance
-                lateral_offset = random.randint(-road_width // 2 + 50, road_width // 2 - 50)
-                perp_angle = angle_rad + math.pi / 2
-                obstacle_world_x = base_x + math.cos(perp_angle) * lateral_offset
-                obstacle_world_y = base_y + math.sin(perp_angle) * lateral_offset
-
+                # Create turtles at fixed positions on the road
+                road_width = 200  # Road width
+                spawn_distance = 400  # Distance ahead of car
+                
+                # Place turtle at a random position across the road width
+                road_lateral_position = random.randint(-road_width // 2, road_width // 2)
+                
+                # Create turtle ahead of car
+                turtle_world_x = self._car.world_x + road_lateral_position
+                turtle_world_y = self._car.world_y - spawn_distance  # Always ahead of car
+                
                 obstacle_type = "turtle"
-                obstacle_speed = 0
-                print(f"🐢 Spawning turtle at world position ({obstacle_world_x:.1f}, {obstacle_world_y:.1f})")
-                obstacle = Obstacle(obstacle_world_x, obstacle_world_y, obstacle_speed, obstacle_type)
+                obstacle_speed = 0  # Stationary turtles
+                print(f"🐢 Spawning turtle at fixed road position - lateral offset: {road_lateral_position}")
+                
+                obstacle = Obstacle(turtle_world_x, turtle_world_y, obstacle_speed, obstacle_type)
+                # Set the road offset so turtle stays in lane
+                obstacle.road_offset_x = road_lateral_position
                 self._obstacles.append(obstacle)
 
                 next_spawn_delay = random.uniform(3.0, 6.0)
@@ -1398,7 +1404,8 @@ class Game:
     def _check_collisions(self):
         """Check for collisions"""
         for obstacle in self._obstacles[:]:
-            obstacle.get_screen_position(self._car.world_x, self._car.world_y, self._car.rotation)
+            # Calculate obstacle screen position without car rotation effect
+            obstacle.get_screen_position(self._car.world_x, self._car.world_y, 0)  # Fixed road position
             obstacle_rect = obstacle.get_collision_rect()
             
             if self._car.check_collision(obstacle_rect):
