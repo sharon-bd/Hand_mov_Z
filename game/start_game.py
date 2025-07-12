@@ -784,18 +784,34 @@ class Car:
             self.world_x += self.velocity_x * dt
             self.world_y += self.velocity_y * dt
             
-            # Update lateral offset based on steering - car moves away from road center when turning
-            if abs(self.steering) > 0.1:
-                # Calculate lateral movement - stronger steering = more lateral movement
-                lateral_change = self.steering * self.speed * dt * 80  # Scale factor for realistic movement
+            # Update lateral offset based on ACTUAL movement direction relative to straight road
+            # Only move away from road center when car is actually moving sideways
+            road_forward_angle = 0  # Road goes straight up (0 degrees)
+            car_movement_angle = self.rotation
+            
+            # Calculate how much the car is deviating from straight road direction
+            angle_difference = car_movement_angle - road_forward_angle
+            
+            # Normalize angle difference to -180 to +180
+            while angle_difference > 180:
+                angle_difference -= 360
+            while angle_difference < -180:
+                angle_difference += 360
+            
+            # Car moves laterally only when it's actually moving in a sideways direction
+            if abs(angle_difference) > 5:  # Only if car is significantly not pointing straight
+                # Calculate lateral movement based on actual movement direction
+                # The more sideways the car moves, the more it drifts from road center
+                lateral_component = math.sin(math.radians(angle_difference))
+                lateral_change = lateral_component * self.speed * dt * 60  # Reduced scale factor
                 self.lateral_offset += lateral_change
                 
                 # Limit lateral offset to road boundaries
                 self.lateral_offset = max(-self.max_lateral_offset, min(self.max_lateral_offset, self.lateral_offset))
             else:
-                # Gradually return to center when driving straight (natural road correction)
+                # When driving straight (within 5 degrees), gradually return to center
                 if abs(self.lateral_offset) > 2.0:
-                    center_return_speed = 40 * dt * self.speed  # Faster return at higher speeds
+                    center_return_speed = 50 * dt * self.speed  # Faster return when driving straight
                     if self.lateral_offset > 0:
                         self.lateral_offset = max(0, self.lateral_offset - center_return_speed)
                     else:
@@ -1276,10 +1292,6 @@ class Game:
         # Create road surface
         road_surface = pygame.Surface((road_width, self.screen_height + 400), pygame.SRCALPHA)
         road_surface.fill((80, 80, 80))
-
-        # Draw road edges
-        pygame.draw.line(road_surface, WHITE, (0, 0), (0, self.screen_height + 400), 3)
-        pygame.draw.line(road_surface, WHITE, (road_width, 0), (road_width, self.screen_height + 400), 3)
 
         # Draw center line with movement effect
         line_width = 6

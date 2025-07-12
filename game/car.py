@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 """
-Car Module for Hand Gesture Car Control Game
-
-This module implements the Car class for the game.
+שיפור פיזיקת המכונית - המכונית מתרחקת ממרכז הכביש בזמן פנייה
 """
 
 import math
@@ -12,104 +10,99 @@ import random
 
 class Car:
     """
-    Represents a car in the game
+    מחלקת מכונית עם פיזיקה מתקדמת של פנייה
     """
     
     def __init__(self, x, y, width=40, height=80, screen_width=800, screen_height=600):
-        """
-        Initialize a car
-        
-        Args:
-            x, y: Initial position
-            width, height: Car dimensions
-        """
-        # Position and size
-        self.x = x  # אמיתי בעולם
-        self.y = y  # אמיתי בעולם
-        self.screen_x = x  # תמיד יהיה במרכז המסך
-        self.screen_y = y  # תמיד יהיה במרכז המסך
+        # מיקום ומימדים
+        self.x = x  # מיקום אמיתי בעולם
+        self.y = y  # מיקום אמיתי בעולם
+        self.screen_x = x  # תמיד במרכז המסך
+        self.screen_y = y  # תמיד במרכז המסך
         self.width = width
         self.height = height
         
-        # Movement parameters
-        self.direction = 0.0  # -1.0 (left) to 1.0 (right)
-        self.speed = 1.0      # 0.0 to 1.0
-        self.max_speed = 8.0  # Maximum speed in pixels per second
-        self.boost_multiplier = 1.5  # Speed multiplier when boosting
-        self.brake_deceleration = 0.4  # ערך האטה כשבולמים
-        self.min_speed = 1.0  # מהירות מינימלית בפיקסלים לפריים
+        # פרמטרי תנועה
+        self.direction = 0.0  # -1.0 (שמאל) עד 1.0 (ימין)
+        self.speed = 1.0      # 0.0 עד 1.0
+        self.max_speed = 8.0  # מהירות מקסימלית בפיקסלים לפריים
+        self.boost_multiplier = 1.5
+        self.brake_deceleration = 0.4
+        self.min_speed = 1.0
         
-        # Anti-spin steering parameters - more aggressive values
-        self.steering_sensitivity = 1.5   # Reduced from 2.5 to 1.5
-        self.max_steering_angle = 20      # Reduced from 35 to 20 degrees
-        self.steering_return_factor = 0.1 # Increased from 0.05 to 0.1
-        self.max_turn_rate = 45           # Maximum degrees per second the car can turn
-        self.steering_deadzone = 0.1      # Ignore very small steering inputs
+        # === פרמטרי פנייה משופרים ===
+        self.steering_sensitivity = 2.0      # רגישות הגה (מוגברת)
+        self.max_steering_angle = 30         # זווית הגה מקסימלית
+        self.steering_return_factor = 0.08   # החזרה למרכז (מוחלשת)
+        self.max_turn_rate = 60              # מעלות לשנייה מקסימליות
+        self.steering_deadzone = 0.05        # אזור מת של ההגה (מוקטן)
         
-        # Anti-spin detection
-        self.rotation_history = []        # Track rotation changes to detect spinning
-        self.rotation_history_max = 20    # Number of frames to track
-        self.spinning_threshold = 540     # Total degrees of rotation before anti-spin kicks in
-        self.last_rotation = 0            # Last frame's rotation
+        # === פיזיקת פנייה חדשה ===
+        self.lateral_velocity = 0.0          # מהירות צידית
+        self.lateral_acceleration = 0.0      # תאוצה צידית
+        self.centrifugal_force = 0.0         # כוח צנטריפוגלי
+        self.drift_factor = 0.15             # גורם החלקה בפנייה
+        self.lateral_friction = 0.85         # חיכוך צידי
         
-        # World boundaries
-        self.world_width = 2000  # רוחב העולם הווירטואלי
-        self.world_height = 2000  # גובה העולם הווירטואלי
-        self.screen_width = screen_width  # רוחב המסך
-        self.screen_height = screen_height  # גובה המסך
+        # === היסט צידי מהכביש ===
+        self.road_offset = 0.0               # היסט מקו האמצע של הכביש
+        self.max_road_offset = 150           # מרחק מקסימלי מהכביש
+        self.offset_acceleration = 0.0       # תאוצת היסט
         
-        # Collision state
+        # גבולות עולם
+        self.world_width = 2000
+        self.world_height = 2000
+        self.screen_width = screen_width
+        self.screen_height = screen_height
+        
+        # מצבי התנגשות
         self.collision_cooldown = 0
         self.collision_flash = False
         self.last_collision_time = 0
         self.is_colliding = False
         
-        # Special states
+        # מצבים מיוחדים
         self.boost_active = False
         self.braking = False
         
-        # Appearance
-        self.color = (50, 50, 200)  # Blue car
+        # מראה
+        self.color = (50, 50, 200)
         self.show_indicators = True
         
-        # Physics properties
-        self.mass = 1000  # kg
-        self.rotation = 0  # degrees
-        self.target_rotation = 0  # Target rotation angle based on steering
+        # תכונות פיזיקליות
+        self.mass = 1000
+        self.rotation = 0
+        self.target_rotation = 0
         
-        # Collision detection
+        # זיהוי התנגשויות
         self.collision_points = []
         self.update_collision_points()
         
-        # Additional properties
+        # תכונות נוספות
         self.health = 100
         self.score = 0
         
-        # History for trail effect
+        # היסטוריה לאפקט שובל
         self.position_history = []
         self.max_history = 20
+        
+        print("✅ מכונית אותחלה עם פיזיקת פנייה משופרת")
     
     def update(self, controls, dt):
         """
-        עדכון מצב המכונית על סמך הבקרות
-        
-        Args:
-            controls: מילון עם פקודות בקרה
-            dt: פרק זמן בשניות
+        עדכון מצב המכונית עם פיזיקת פנייה משופרת
         """
-        # Static counter variable for all Car instances
+        # מונה סטטי לדיבוג
         if not hasattr(Car, '_debug_counter'):
             Car._debug_counter = 0
-            Car._debug_enabled = True  # Enable debug by default
+            Car._debug_enabled = True
             Car._last_debug_time = time.time()
         
-        # Increment counter and only log occasionally
         Car._debug_counter += 1
         current_time = time.time()
-        if Car._debug_enabled and current_time - Car._last_debug_time > 2.0:  # Log every 2 seconds
+        if Car._debug_enabled and current_time - Car._last_debug_time > 3.0:
             Car._last_debug_time = current_time
             Car._debug_counter = 0
-            # Only print part of the controls to reduce output size
             brief_controls = {
                 'steering': controls.get('steering', 0),
                 'throttle': controls.get('throttle', 0),
@@ -117,107 +110,117 @@ class Car:
                 'boost': controls.get('boost', False),
                 'gesture_name': controls.get('gesture_name', 'Unknown')
             }
-            print(f"🚗 Car receiving controls: {brief_controls}")
-            print(f"🚗 Current car state: pos=({self.x:.1f},{self.y:.1f}), speed={self.speed:.2f}, rotation={self.rotation:.1f}°")
+            print(f"🚗 מכונית מקבלת בקרות: {brief_controls}")
+            print(f"🚗 מצב נוכחי: מיקום=({self.x:.1f},{self.y:.1f}), מהירות={self.speed:.2f}, סיבוב={self.rotation:.1f}°, היסט_כביש={self.road_offset:.1f}")
         
-        # חילוץ בקרות עם בדיקת שגיאות נאותה
         try:
-            # הערכים צריכים להיות בטווח הנכון כבר בשלב זה - אם לא, נבדוק אותם שוב
+            # חילוץ בקרות
             steering = float(controls.get('steering', 0.0))
             throttle = float(controls.get('throttle', 0.0))
             braking = bool(controls.get('braking', False))
             boost = bool(controls.get('boost', False))
             
-            # בדיקה נוספת שהערכים בטווח הנכון
+            # נירמול ערכים
             steering = max(-1.0, min(1.0, steering))
             throttle = max(0.0, min(1.0, throttle))
             
-            # Apply steering deadzone - ignore small values
+            # יישום אזור מת
             if abs(steering) < self.steering_deadzone:
                 steering = 0.0
             
-            # עדכון המכונית
             self.direction = steering
             
-            # עדכון מהירות בהתאם למצערת
+            # עדכון מהירות
             speed_change_rate = 0.1 if throttle > self.speed else 0.2
             self.speed = self.speed + (throttle - self.speed) * speed_change_rate
             
             # טיפול בבלימה
             if braking:
                 self.speed = max(0.0, self.speed - self.brake_deceleration * dt)
-                self.braking = True  # עדכון מצב הבלימה של הרכב
+                self.braking = True
             else:
-                # הצג אורות בלימה גם כשהמכונית יוצאת ממצב תנועה לעצירה
                 self.braking = (self.speed < 0.05 and throttle < 0.1)
             
-            # חישוב תנועה בפועל
+            # חישוב תנועה
             movement_speed = self.max_speed * self.speed
             if boost:
                 movement_speed *= self.boost_multiplier
             
-            # ===== ENHANCED: More aggressive anti-spin physics =====
-            
-            # Store rotation from last frame
+            # === פיזיקת פנייה משופרת ===
             previous_rotation = self.rotation
             
-            # Apply steering only if moving (more aggressive speed dependency)
             if self.speed > 0.05:
-                # Calculate steering effect with much stronger speed-based reduction
+                # חישוב אפקט הגה עם רגישות מוגברת
                 steering_effect = self.direction * self.steering_sensitivity
                 
-                # Scale steering effect down dramatically at high speeds
-                speed_factor = max(0.2, 1.0 - (self.speed * 1.5))  # More aggressive scaling
+                # פקטור מהירות - פחות השפעה של מהירות על רגישות ההגה
+                speed_factor = max(0.4, 1.0 - (self.speed * 0.8))
                 steering_effect *= speed_factor
                 
-                # Calculate maximum rotation change based on speed and our max_turn_rate
+                # חישוב שינוי זווית מקסימלי
                 max_angle_change = self.max_steering_angle * self.speed
-                max_rate_limited_change = self.max_turn_rate * dt  # Limit by degrees/second
+                max_rate_limited_change = self.max_turn_rate * dt
                 
-                # Use the smaller of the two limits
                 max_allowed_change = min(max_angle_change, max_rate_limited_change)
                 
-                # Apply the limited steering effect
+                # יישום שינוי סיבוב
                 rotation_change = min(max_allowed_change, 
                                      max(-max_allowed_change, 
                                          steering_effect * max_allowed_change))
                 
-                # Apply rotation change
                 self.rotation += rotation_change
                 
-                # ===== NEW: Detect and correct continuous spinning =====
+                # === חישוב כוח צנטריפוגלי והיסט צידי ===
+                if abs(rotation_change) > 0.1:  # רק בפנייה
+                    # כוח צנטריפוגלי פרופורציונלי למהירות ולזווית הפנייה
+                    self.centrifugal_force = abs(rotation_change) * self.speed * 2.5
+                    
+                    # תאוצה צידית - המכונית "נדחפת" החוצה בפנייה
+                    direction_multiplier = 1 if rotation_change > 0 else -1
+                    self.lateral_acceleration = self.centrifugal_force * direction_multiplier * 0.8
+                    
+                    # עדכון מהירות צידית
+                    self.lateral_velocity += self.lateral_acceleration * dt
+                    
+                    # הגבלת מהירות צידית מקסימלית
+                    max_lateral_velocity = self.speed * 3.0
+                    self.lateral_velocity = max(-max_lateral_velocity, 
+                                               min(max_lateral_velocity, self.lateral_velocity))
+                else:
+                    # אין פנייה - החזרה הדרגתית למרכז
+                    self.centrifugal_force = 0.0
+                    self.lateral_acceleration = 0.0
                 
-                # Track rotation history to detect spinning
+                # החלת חיכוך צידי - מעט הפחתה של המהירות הצידית
+                self.lateral_velocity *= self.lateral_friction
+                
+                # עדכון היסט מהכביש
+                self.road_offset += self.lateral_velocity * dt
+                
+                # === החזרה הדרגתית למרכז הכביש (מוחלשת) ===
+                if abs(self.direction) < 0.6:  # רק כשלא פונים בחדות
+                    center_return_force = -self.road_offset * 0.3 * dt  # כוח חזרה חלש יותר
+                    self.road_offset += center_return_force
+                
+                # הגבלת היסט מקסימלי
+                self.road_offset = max(-self.max_road_offset, 
+                                     min(self.max_road_offset, self.road_offset))
+                
+                # טיפול בהיסטוריית סיבוב למניעת ספינינג
+                self.rotation_history = getattr(self, 'rotation_history', [])
                 self.rotation_history.append(self.rotation)
-                if len(self.rotation_history) > self.rotation_history_max:
+                if len(self.rotation_history) > 20:
                     self.rotation_history.pop(0)
                 
-                # Calculate total rotation in history
-                if len(self.rotation_history) > 5:  # Need at least a few frames
-                    # Detect continuous rotation in one direction
-                    rot_diff = (self.rotation - self.last_rotation + 180) % 360 - 180
-                    
-                    # If we've been turning in the same direction for too long, apply correction
-                    if abs(rot_diff) > 0.1:  # Non-zero rotation
-                        # Strong correction if steering is still at maximum but we've turned a lot
-                        if abs(steering) > 0.9 and abs(self.rotation - self.target_rotation) > 90:
-                            # Force a strong return to one of 8 cardinal directions
-                            target_angle = round(self.rotation / 45) * 45
-                            correction = (target_angle - self.rotation) * 0.2  # Strong correction
-                            self.rotation += correction * dt * 5  # Apply correction 5x stronger
-                
-                # Apply natural return to center when steering is not at maximum
-                if abs(self.direction) < 0.8:  # Increased threshold for return to center
-                    # Find the closest rotation that's a multiple of 45 degrees
+                # החזרה למרכז כשלא פונים
+                if abs(self.direction) < 0.3:
                     self.target_rotation = round(self.rotation / 45) * 45
-                    # Gradually rotate toward that target - stronger return to center
                     angle_diff = (self.target_rotation - self.rotation) * self.steering_return_factor
-                    self.rotation += angle_diff * dt * 2  # Apply 2x stronger return to center
+                    self.rotation += angle_diff * dt
                 
-                # Store current rotation for next frame
                 self.last_rotation = self.rotation
             
-            # Keep rotation in 0-360 range
+            # שמירה על סיבוב בטווח 0-360
             self.rotation %= 360
             
             # חישוב וקטור תנועה
@@ -226,14 +229,13 @@ class Car:
             dx = math.sin(rad) * distance
             dy = -math.cos(rad) * distance
             
-            # עדכון מיקום אמיתי בעולם (לא על המסך)
+            # עדכון מיקום אמיתי בעולם
             new_x = self.x + dx
             new_y = self.y + dy
             
-            # בדיקת גבולות העולם הווירטואלי
+            # בדיקת גבולות עולם
             hit_boundary = False
             
-            # בדיקת גבולות אופקיים
             if new_x < 0:
                 new_x = 0
                 hit_boundary = True
@@ -241,7 +243,6 @@ class Car:
                 new_x = self.world_width
                 hit_boundary = True
                 
-            # בדיקת גבולות אנכיים
             if new_y < 0:
                 new_y = 0
                 hit_boundary = True
@@ -249,42 +250,42 @@ class Car:
                 new_y = self.world_height
                 hit_boundary = True
             
-            # אם פגענו בגבול, האט את המכונית
             if hit_boundary:
-                self.speed *= 0.4  # האטה משמעותית בפגיעה בגבול
+                self.speed *= 0.4
+                self.lateral_velocity *= 0.5  # הפחתת מהירות צידית בפגיעה בגבול
                 
-                # אפקט קפיצה קטן מהקיר
                 bounce_factor = -0.2
                 if new_x == 0 or new_x == self.world_width:
                     self.x += dx * bounce_factor
                 if new_y == 0 or new_y == self.world_height:
                     self.y += dy * bounce_factor
             
-            # עדכון המיקום בעולם
+            # עדכון מיקום
             self.x = new_x
             self.y = new_y
             
             # עדכון מצב התנגשות
             if self.collision_cooldown > 0:
                 self.collision_cooldown -= dt
-                # הבהוב בזמן התנגשות
                 self.collision_flash = int(self.collision_cooldown * 10) % 2 == 0
             else:
                 self.collision_flash = False
                 self.is_colliding = False
             
-            # במשחק העדכני המכונית תישאר במרכז המסך
+            # המכונית תישאר במרכז המסך עם היסט צידי
             screen_center_x = self.screen_width // 2
-            screen_center_y = self.screen_height - 100 
-            self.screen_x = screen_center_x
+            screen_center_y = self.screen_height - 100
+            
+            # === יישום ההיסט הצידי על מיקום המסך ===
+            self.screen_x = screen_center_x + self.road_offset * 0.6  # 60% מההיסט למסך
             self.screen_y = screen_center_y
             
             # עדכון נקודות התנגשות
             self.update_collision_points()
             
-            # שמירת מיקום להיסטוריה (לאפקט שובל)
+            # שמירת מיקום להיסטוריה
             if distance > 0:
-                self.position_history.append((self.x, self.y))  # שמירת מיקום אמיתי בעולם
+                self.position_history.append((self.x, self.y))
                 if len(self.position_history) > self.max_history:
                     self.position_history.pop(0)
         
@@ -292,167 +293,118 @@ class Car:
             print(f"שגיאה בעדכון המכונית: {e}")
             import traceback
             traceback.print_exc()
-            
-    def update_physics(self, controls):
-        """עדכון פיזיקת המכונית"""
-        throttle = controls.get('throttle', self.min_speed)  # במקום 0
-        steering = controls.get('steering', 0)
-        brake = controls.get('brake', False)
-        
-        # וודא שמהירות לא יורדת מתחת למינימום
-        if throttle < self.min_speed and not brake:
-            throttle = self.min_speed
-        
-        # עדכן מהירות בהתבסס על מצערת
-        if brake:
-            self.speed *= 0.9  # בלימה
-            if self.speed < self.min_speed:
-                self.speed = self.min_speed  # לא עוצר לחלוטין
-        else:
-            target_speed = throttle * self.max_speed
-            
-            if target_speed > self.speed:
-                # האצה
-                self.speed += 0.05
-            elif target_speed < self.speed:
-                # האטה
-                self.speed -= 0.03
-            
-            # וודא שמהירות נשארת בטווח המותר
-            self.speed = max(self.min_speed, min(self.max_speed, self.speed))
-        
-        # עדכן כיוון בהתבסס על הגה
-        if abs(steering) > 0.01:
-            # הגה מושפע ממהירות - ככל שמהר יותר, פחות רגיש
-            steering_factor = 1.0 - (self.speed / self.max_speed) * 0.3
-            self.direction += steering * steering_factor * 3
-        
-        # עדכן מיקום
-        self.x += math.cos(math.radians(self.direction)) * self.speed
-        self.y += math.sin(math.radians(self.direction)) * self.speed
-        
-        # שמור על המכונית בגבולות המסך
-        self.x = max(50, min(self.screen_width - 50, self.x))
-        self.y = max(50, min(self.screen_height - 50, self.y))
-
+    
     def draw(self, screen, offset_x=0, offset_y=0):
         """
-        Draw the car on the screen
-        
-        Args:
-            screen: Pygame surface to draw on
-            offset_x, offset_y: World offset (for scrolling)
+        ציור המכונית על המסך עם היסט צידי
         """
         try:
-            # בגרסה זו המכונית תמיד במרכז, ולכן נחשב את המיקום שלה על המסך
+            # חישוב מיקום המסך עם היסט צידי
             screen_center_x = self.screen_width // 2
             screen_center_y = self.screen_height // 2
             
-            # Draw trail effect if moving
+            # המכונית מוצגת במיקום שמשקף את ההיסט מהכביש
+            display_x = screen_center_x + self.road_offset * 0.4  # 40% מההיסט מוצג
+            display_y = screen_center_y
+            
+            # ציור אפקט שובל אם זזה
             if self.position_history and self.speed > 0.1:
-                # Draw trail
                 for i, (pos_x, pos_y) in enumerate(self.position_history):
-                    # Calculate screen position based on world position
-                    screen_x = screen_center_x - (self.x - pos_x)
-                    screen_y = screen_center_y - (self.y - pos_y)
-                    # Make trail more transparent as it gets older
+                    # חישוב מיקום מסך על סמך מיקום עולם
+                    trail_screen_x = display_x - (self.x - pos_x)
+                    trail_screen_y = display_y - (self.y - pos_y)
+                    
                     alpha = int(255 * (i / len(self.position_history)))
                     trail_size = max(3, int(self.width * 0.3 * (i / len(self.position_history))))
                     pygame.draw.circle(
                         screen,
-                        (*self.color[:3], alpha),  # Use car color with calculated alpha
-                        (int(screen_x), int(screen_y)),
+                        (*self.color[:3], alpha),
+                        (int(trail_screen_x), int(trail_screen_y)),
                         trail_size
                     )
             
-            # Create a rotated car surface
+            # יצירת משטח מכונית מסובב
             car_surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
             
-            # Choose color based on state
+            # בחירת צבע לפי מצב
             color = self.color
             if self.collision_flash:
-                # צבע אדום בזמן התנגשות עם מכשול
                 color = (255, 0, 0)
             elif self.boost_active:
-                color = (0, 150, 255)  # Bluish boost color
+                color = (0, 150, 255)
             elif self.braking:
-                color = (200, 50, 50)  # Reddish brake color
+                color = (200, 50, 50)
             
-            # Draw car body - החזרת הצבע המקורי
+            # ציור גוף המכונית
             pygame.draw.rect(
                 car_surface, 
-                color,  # שימוש בצבע המקורי במקום צבע מגנטה לבדיקה
+                color,
                 (0, 0, self.width, self.height),
-                0,  # Fill rectangle
-                10  # Rounded corners
+                0, 10
             )
             
-            # Draw windshield
+            # ציור שמשה קדמית
             windshield_width = self.width * 0.7
             windshield_height = self.height * 0.3
             pygame.draw.rect(
                 car_surface,
-                (150, 220, 255),  # Light blue windshield
+                (150, 220, 255),
                 (
                     (self.width - windshield_width) / 2,
                     self.height * 0.15,
                     windshield_width,
                     windshield_height
                 ),
-                0,  # Fill rectangle
-                5   # Slightly rounded corners
+                0, 5
             )
             
-            # Draw headlights
+            # ציור פנסים קדמיים
             light_size = self.width // 5
-            # Left headlight
             pygame.draw.circle(
                 car_surface,
-                (255, 255, 200),  # Yellowish light
+                (255, 255, 200),
                 (self.width // 4, light_size),
                 light_size // 2
             )
-            # Right headlight
             pygame.draw.circle(
                 car_surface,
-                (255, 255, 200),  # Yellowish light
+                (255, 255, 200),
                 (self.width - self.width // 4, light_size),
                 light_size // 2
             )
             
-            # Draw brake lights if braking or stopped
+            # ציור אורות בלימה
             if self.braking:
-                # Left brake light - גדול יותר ובולט יותר
+                # אור שמאלי מוגבר
                 pygame.draw.circle(
                     car_surface,
-                    (255, 30, 30),  # אדום עמוק יותר
+                    (255, 30, 30),
                     (self.width // 4, self.height - light_size),
-                    light_size // 2 + 2  # גדול יותר ב-2 פיקסלים
+                    light_size // 2 + 2
                 )
-                # אפקט זוהר מסביב לאור השמאלי
+                # אפקט זוהר
                 pygame.draw.circle(
                     car_surface,
-                    (255, 100, 100, 150),  # אדום שקוף יותר
+                    (255, 100, 100, 150),
                     (self.width // 4, self.height - light_size),
-                    light_size // 2 + 5  # גדול יותר לאפקט זוהר
+                    light_size // 2 + 5
                 )
                 
-                # Right brake light - גדול יותר ובולט יותר
+                # אור ימני מוגבר
                 pygame.draw.circle(
                     car_surface,
-                    (255, 30, 30),  # אדום עמוק יותר
+                    (255, 30, 30),
                     (self.width - self.width // 4, self.height - light_size),
-                    light_size // 2 + 2  # גדול יותר ב-2 פיקסלים
+                    light_size // 2 + 2
                 )
-                # אפקט זוהר מסביב לאור הימני
                 pygame.draw.circle(
                     car_surface,
-                    (255, 100, 100, 150),  # אדום שקוף יותר
+                    (255, 100, 100, 150),
                     (self.width - self.width // 4, self.height - light_size),
-                    light_size // 2 + 5  # גדול יותר לאפקט זוהר
+                    light_size // 2 + 5
                 )
             
-            # Draw boost effect if active
+            # ציור אפקט בוסט
             if self.boost_active:
                 flame_points = [
                     (self.width // 2, self.height),
@@ -461,7 +413,6 @@ class Car:
                 ]
                 pygame.draw.polygon(car_surface, (255, 165, 0), flame_points)
                 
-                # Add inner flame
                 inner_flame_points = [
                     (self.width // 2, self.height),
                     (self.width // 2 - self.width // 8, self.height + self.height // 4),
@@ -469,87 +420,96 @@ class Car:
                 ]
                 pygame.draw.polygon(car_surface, (255, 255, 0), inner_flame_points)
             
-            # Rotate the car surface
+            # סיבוב משטח המכונית
             rotated_car = pygame.transform.rotate(car_surface, -self.rotation)
             
-            # Get the rect of the rotated car and position it
-            rotated_rect = rotated_car.get_rect(center=(screen_center_x, screen_center_y))
+            # מיקום המכונית המסובבת
+            rotated_rect = rotated_car.get_rect(center=(display_x, display_y))
             
-            # Draw the rotated car
+            # ציור המכונית המסובבת
             screen.blit(rotated_car, rotated_rect)
             
-            # Draw debug indicators if enabled
+            # ציור אינדיקטורים לדיבוג
             if self.show_indicators:
-                # Direction indicator
+                # אינדיקטור כיוון
                 indicator_length = 50
                 dx = math.sin(math.radians(self.rotation)) * indicator_length
                 dy = -math.cos(math.radians(self.rotation)) * indicator_length
                 pygame.draw.line(
                     screen,
                     (0, 255, 0),
-                    (screen_center_x, screen_center_y),
-                    (screen_center_x + dx, screen_center_y + dy),
+                    (display_x, display_y),
+                    (display_x + dx, display_y + dy),
                     2
                 )
                 
-                # Speed indicator
+                # אינדיקטור מהירות
                 pygame.draw.rect(
                     screen,
                     (0, 255, 0) if not self.boost_active else (255, 165, 0),
                     (
-                        screen_center_x - self.width//2 - 20,
-                        screen_center_y - self.height//2,
+                        display_x - self.width//2 - 20,
+                        display_y - self.height//2,
                         10,
                         self.height * self.speed
                     )
                 )
+                
+                # === אינדיקטור היסט צידי חדש ===
+                # קו שמראה את ההיסט מקו האמצע של הכביש
+                road_center_x = screen_center_x
+                pygame.draw.line(
+                    screen,
+                    (255, 255, 0),  # צהוב
+                    (road_center_x, display_y - 30),
+                    (display_x, display_y - 30),
+                    3
+                )
+                
+                # נקודה שמסמנת את מרכז הכביש
+                pygame.draw.circle(
+                    screen,
+                    (255, 255, 0),
+                    (road_center_x, display_y - 30),
+                    5
+                )
+                
         except Exception as e:
-            print(f"❌ Error drawing car: {e}")
+            print(f"❌ שגיאה בציור המכונית: {e}")
             import traceback
             traceback.print_exc()
     
     def update_collision_points(self):
-        """Update collision detection points around the car"""
-        # Calculate points based on car rotation
+        """עדכון נקודות זיהוי התנגשויות"""
         rad = math.radians(self.rotation)
         sin_rot = math.sin(rad)
         cos_rot = math.cos(rad)
         
-        # Define collision points relative to car center
         half_width = self.width // 2
         half_height = self.height // 2
         
         points = [
-            (0, -half_height),  # Front
-            (-half_width, -half_height),  # Front left
-            (half_width, -half_height),  # Front right
-            (0, half_height),  # Rear
-            (-half_width, half_height),  # Rear left
-            (half_width, half_height),  # Rear right
-            (0, 0)  # Center
+            (0, -half_height),  # חזית
+            (-half_width, -half_height),  # חזית שמאל
+            (half_width, -half_height),  # חזית ימין
+            (0, half_height),  # אחור
+            (-half_width, half_height),  # אחור שמאל
+            (half_width, half_height),  # אחור ימין
+            (0, 0)  # מרכז
         ]
         
-        # Rotate points and add car position
+        # סיבוב נקודות והוספת מיקום המכונית
         self.collision_points = []
         for px, py in points:
-            # Rotate point
+            # סיבוב נקודה
             rx = px * cos_rot - py * sin_rot
             ry = px * sin_rot + py * cos_rot
             
-            # Add car position
+            # הוספת מיקום המכונית
             self.collision_points.append((self.x + rx, self.y + ry))
     
     def check_collision(self, obstacle):
-        """
-        Check for collision with an obstacle
-        
-        Args:
-            obstacle: Dictionary with obstacle position and size
-            
-        Returns:
-            Boolean indicating if a collision occurred
-        """
-        # Create obstacle rectangle
+        """בדיקת התנגשות עם מכשול"""
         obstacle_rect = pygame.Rect(
             obstacle['x'] - obstacle['width']//2,
             obstacle['y'] - obstacle['height']//2,
@@ -557,7 +517,6 @@ class Car:
             obstacle['height']
         )
         
-        # Check if any collision point is inside obstacle
         for point in self.collision_points:
             if obstacle_rect.collidepoint(point):
                 return True
@@ -565,120 +524,113 @@ class Car:
         return False
     
     def handle_obstacle_collision(self, obstacle_type=None):
-        """
-        מטפל בהתנגשות עם מכשול
-        
-        Args:
-            obstacle_type: סוג המכשול (אופציונלי)
-        """
-        # אם יש כבר התנגשות פעילה, לא נתייחס לזו החדשה
+        """טיפול בהתנגשות עם מכשול"""
         if self.collision_cooldown > 0:
             return
         
-        # קביעת משך ההתנגשות והשפעתה לפי סוג המכשול
+        # קביעת השפעת ההתנגשות
         if obstacle_type == "rock":
-            self.collision_cooldown = 1.0  # שנייה
-            self.speed *= 0.2  # האטה משמעותית
+            self.collision_cooldown = 1.0
+            self.speed *= 0.2
             damage = 20
         elif obstacle_type == "tree":
-            self.collision_cooldown = 1.5  # שנייה וחצי
-            self.speed *= 0.1  # כמעט עצירה מוחלטת
+            self.collision_cooldown = 1.5
+            self.speed *= 0.1
             damage = 30
         elif obstacle_type == "cone":
-            self.collision_cooldown = 0.5  # חצי שנייה
-            self.speed *= 0.5  # האטה קלה
+            self.collision_cooldown = 0.5
+            self.speed *= 0.5
             damage = 5
         elif obstacle_type == "puddle":
-            self.collision_cooldown = 0.8  # 0.8 שניות
-            # בשלולית המכונית תחליק (כיוון אקראי מעט)
+            self.collision_cooldown = 0.8
+            # בשלולית - המכונית תחליק (זווית אקראית)
             slip_angle = random.uniform(-20, 20)
             self.rotation += slip_angle
-            damage = 0  # אין נזק בשלולית
+            # הוספת מהירות צידית אקראית
+            self.lateral_velocity += random.uniform(-2, 2)
+            damage = 0
         else:
-            self.collision_cooldown = 0.7  # ברירת מחדל
+            self.collision_cooldown = 0.7
             self.speed *= 0.3
             damage = 10
         
-        # עדכון נזק למכונית
+        # עדכון נזק
         self.take_damage(damage)
         
-        # סימון המכונית כמתנגשת
+        # סימון התנגשות
         self.is_colliding = True
         self.last_collision_time = time.time()
     
     def take_damage(self, amount):
-        """
-        Reduce car health by the given amount
-        
-        Args:
-            amount: Amount of damage to inflict
-            
-        Returns:
-            Boolean indicating if the car is destroyed
-        """
+        """הפחתת בריאות המכונית"""
         self.health -= amount
         self.health = max(0, self.health)
         return self.health <= 0
     
     def repair(self, amount):
-        """
-        Repair the car by the given amount
-        
-        Args:
-            amount: Amount of health to restore
-        """
+        """תיקון המכונית"""
         self.health += amount
         self.health = min(100, self.health)
     
     def add_score(self, points):
-        """
-        Add points to the car's score
-        
-        Args:
-            points: Number of points to add
-        """
+        """הוספת נקודות"""
         self.score += points
         
     def clear_trail(self):
-        """
-        Clear the position history/trail of the car
-        
-        This can be useful when resetting the game state
-        or when teleporting the car to a new position
-        """
+        """ניקוי שובל המכונית"""
         self.position_history = []
         
     def reset_state(self):
-        """
-        Reset the car to default state
-        
-        Useful when starting a new game or after a crash
-        """
+        """איפוס מצב המכונית"""
         self.speed = 0.0
         self.direction = 0.0
         self.health = 100
         self.boost_active = False
         self.braking = False
+        self.road_offset = 0.0  # איפוס היסט הכביש
+        self.lateral_velocity = 0.0  # איפוס מהירות צידית
         self.clear_trail()
     
     def set_world_dimensions(self, width, height):
-        """
-        קביעת ממדי העולם הוירטואלי
-        
-        Args:
-            width: רוחב העולם
-            height: גובה העולם
-        """
+        """קביעת ממדי העולם"""
         self.world_width = width
         self.world_height = height
         
     def set_screen_dimensions(self, width, height):
-        """
-        Set the screen dimensions for boundary checking
-        
-        Args:
-            width: Screen width
-            height: Screen height
-        """
+        """קביעת ממדי המסך"""
         self.screen_width = width
         self.screen_height = height
+    
+    def get_road_position_info(self):
+        """מידע על מיקום המכונית ביחס לכביש"""
+        return {
+            'road_offset': self.road_offset,
+            'lateral_velocity': self.lateral_velocity,
+            'centrifugal_force': self.centrifugal_force,
+            'max_offset': self.max_road_offset,
+            'offset_percentage': (self.road_offset / self.max_road_offset) * 100
+        }
+
+# דוגמה לשימוש עם מידע על מיקום הכביש
+def example_usage():
+    """דוגמה לשימוש במחלקה המשופרת"""
+    car = Car(400, 300)
+    
+    # דמיון של לולאת משחק
+    controls = {
+        'steering': 0.8,  # פנייה חדה ימינה
+        'throttle': 0.7,  # מהירות בינונית
+        'braking': False,
+        'boost': False
+    }
+    
+    # עדכון המכונית
+    car.update(controls, 0.016)  # 60 FPS
+    
+    # קבלת מידע על מיקום
+    road_info = car.get_road_position_info()
+    print(f"היסט מהכביש: {road_info['road_offset']:.1f} פיקסלים")
+    print(f"אחוז היסט: {road_info['offset_percentage']:.1f}%")
+
+if __name__ == "__main__":
+    example_usage()
