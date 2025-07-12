@@ -1411,7 +1411,7 @@ class Game:
             if self._car.check_collision(obstacle_rect):
                 self._obstacles.remove(obstacle)
                 print("💥 Turtle collision detected! Obstacle removed.")
-                self._score = max(0, self._score - 50)
+                self._score = max(0, self._score - 25)
                 break
 
     def _process_keyboard_input(self, keys):
