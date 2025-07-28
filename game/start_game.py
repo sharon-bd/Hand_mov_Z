@@ -25,9 +25,9 @@ except ImportError:
     MEDIAPIPE_AVAILABLE = False
     print("⚠️ MediaPipe not found - hand detection will be disabled")
 
-# Configuration constants
-WINDOW_WIDTH = 800
-WINDOW_HEIGHT = 600
+# Configuration constants - Full screen mode
+WINDOW_WIDTH = 0  # Will be set to screen width
+WINDOW_HEIGHT = 0  # Will be set to screen height
 FPS = 60
 CAPTION = "Hand Gesture Car Control"
 CAMERA_WIDTH = 640
@@ -670,13 +670,19 @@ class Button:
 
 class Car:
     """Car class with camera follow system"""
-    def __init__(self, x, y):
+    def __init__(self, x, y, screen_width=None, screen_height=None):
         self.world_x = x
         self.world_y = y
         
+        # Use provided screen dimensions or fallback to globals
+        if screen_width is None:
+            screen_width = WINDOW_WIDTH if WINDOW_WIDTH > 0 else 1920
+        if screen_height is None:
+            screen_height = WINDOW_HEIGHT if WINDOW_HEIGHT > 0 else 1080
+        
         # Screen position - car always in center with lateral offset
-        self.screen_x = WINDOW_WIDTH // 2
-        self.screen_y = WINDOW_HEIGHT - 150  # Slightly lower for better perspective
+        self.screen_x = screen_width // 2
+        self.screen_y = screen_height - 150  # Slightly lower for better perspective
         
         self.width = 40
         self.height = 80
@@ -917,23 +923,32 @@ class Obstacle:
         print(f"🐢 Turtle created at world position ({x}, {y})")
     
     def update(self, dt, car_world_x, car_world_y, car_rotation):
-        """Update obstacle position relative to car movement and rotation"""
-        # The obstacle stays in the same world position
-        # But we need to calculate its screen position relative to the car
-        pass
+        """Update obstacle position - move forward if it has speed"""
+        # If obstacle has speed, move it forward (toward car)
+        if self.speed > 0:
+            # Move obstacle toward the car (positive Y direction in world coordinates)
+            self.world_y += self.speed * dt
+            
+        # Screen position will be calculated in get_screen_position()
     
-    def get_screen_position(self, car_world_x, car_world_y, car_rotation):
+    def get_screen_position(self, car_world_x, car_world_y, car_rotation, screen_width=None, screen_height=None):
         """Calculate screen position - turtle stays fixed in its road lane"""
         # Calculate ONLY forward/backward movement relative to car
         relative_y = self.world_y - car_world_y
         
+        # Use provided screen dimensions or fallback to globals
+        if screen_width is None:
+            screen_width = WINDOW_WIDTH if WINDOW_WIDTH > 0 else 1920
+        if screen_height is None:
+            screen_height = WINDOW_HEIGHT if WINDOW_HEIGHT > 0 else 1080
+        
         # Turtle stays in its FIXED road lane position
         # Uses the road_offset_x that was set when turtle was created
-        road_center_x = WINDOW_WIDTH // 2
+        road_center_x = screen_width // 2
         
         # Turtle maintains its exact lane position on the road
         self.screen_x = road_center_x + self.road_offset_x
-        self.screen_y = WINDOW_HEIGHT - 150 + relative_y
+        self.screen_y = screen_height - 150 + relative_y
         
         return self.screen_x, self.screen_y
     
@@ -981,14 +996,20 @@ class Obstacle:
         pygame.draw.circle(screen, leg_color, (self.screen_x - self.width // 4, self.screen_y + self.height // 2 + 5), 5)
         pygame.draw.circle(screen, leg_color, (self.screen_x + self.width // 4, self.screen_y + self.height // 2 + 5), 5)
 
-    def draw(self, screen, car_world_x, car_world_y, car_rotation):
+    def draw(self, screen, car_world_x, car_world_y, car_rotation, screen_width=None, screen_height=None):
         """Draw obstacle at screen position relative to car - rotation ignored for fixed road position"""
+        # Use provided screen dimensions or fallback to globals
+        if screen_width is None:
+            screen_width = WINDOW_WIDTH if WINDOW_WIDTH > 0 else 1920
+        if screen_height is None:
+            screen_height = WINDOW_HEIGHT if WINDOW_HEIGHT > 0 else 1080
+            
         # Calculate screen position but ignore car rotation for fixed road obstacles
-        self.get_screen_position(car_world_x, car_world_y, 0)  # Pass 0 rotation to keep turtles fixed
+        self.get_screen_position(car_world_x, car_world_y, 0, screen_width, screen_height)  # Pass 0 rotation to keep turtles fixed
         
         # Only draw if obstacle is visible on screen
-        if (-100 <= self.screen_x <= WINDOW_WIDTH + 100 and 
-            -100 <= self.screen_y <= WINDOW_HEIGHT + 100):
+        if (-100 <= self.screen_x <= screen_width + 100 and 
+            -100 <= self.screen_y <= screen_height + 100):
             
             color = RED if self.hit else self.color
             self._draw_turtle(screen, color)
@@ -1001,10 +1022,21 @@ class Game:
         """Initialize the game"""
         pygame.init()
         
-        self.screen_width = WINDOW_WIDTH
-        self.screen_height = WINDOW_HEIGHT
-        self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
+        # Get full screen dimensions
+        info = pygame.display.Info()
+        self.screen_width = info.current_w
+        self.screen_height = info.current_h
+        
+        # Update global constants for full screen
+        global WINDOW_WIDTH, WINDOW_HEIGHT
+        WINDOW_WIDTH = self.screen_width
+        WINDOW_HEIGHT = self.screen_height
+        
+        # Create full screen display
+        self.screen = pygame.display.set_mode((self.screen_width, self.screen_height), pygame.FULLSCREEN)
         pygame.display.set_caption(CAPTION)
+        
+        print(f"✅ Full screen mode: {self.screen_width}x{self.screen_height}")
         
         # Game settings
         self.mode = mode
@@ -1036,7 +1068,7 @@ class Game:
         self._last_position = None
         
         # Car setup - start at road center
-        self._car = Car(0, 0)
+        self._car = Car(0, 0, self.screen_width, self.screen_height)
         
         # Camera system - smooth camera follow
         self.camera_x = 0
@@ -1234,33 +1266,53 @@ class Game:
             return
 
         if current_time >= self._next_obstacle_time:
+            # Create obstacles based on difficulty level
+            road_width = 200  # Road width
+            spawn_distance = 400  # Distance ahead of car
+            
+            # Place obstacle at a random position across the road width
+            road_lateral_position = random.randint(-road_width // 2, road_width // 2)
+            
+            # Create obstacle ahead of car
+            obstacle_world_x = self._car.world_x + road_lateral_position
+            obstacle_world_y = self._car.world_y - spawn_distance  # Always ahead of car
+            
             if self.mode == "easy":
-                # Create turtles at fixed positions on the road
-                road_width = 200  # Road width
-                spawn_distance = 400  # Distance ahead of car
-                
-                # Place turtle at a random position across the road width
-                road_lateral_position = random.randint(-road_width // 2, road_width // 2)
-                
-                # Create turtle ahead of car
-                turtle_world_x = self._car.world_x + road_lateral_position
-                turtle_world_y = self._car.world_y - spawn_distance  # Always ahead of car
-                
+                # Easy: Stationary turtles only
                 obstacle_type = "turtle"
                 obstacle_speed = 0  # Stationary turtles
-                print(f"🐢 Spawning turtle at fixed road position - lateral offset: {road_lateral_position}")
+                next_spawn_delay = random.uniform(3.0, 6.0)  # Slower spawn rate
+                print(f"🐢 Easy: Spawning stationary turtle - lateral offset: {road_lateral_position}")
                 
-                obstacle = Obstacle(turtle_world_x, turtle_world_y, obstacle_speed, obstacle_type)
-                # Set the road offset so turtle stays in lane
-                obstacle.road_offset_x = road_lateral_position
-                self._obstacles.append(obstacle)
-
-                next_spawn_delay = random.uniform(3.0, 6.0)
-                print(f"🐢 Next turtle in {next_spawn_delay:.1f} seconds")
-                self._next_obstacle_time = current_time + next_spawn_delay
-            else:
-                print(f"🚫 No obstacles in {self.mode} mode")
-                self._next_obstacle_time = current_time + 10.0
+            elif self.mode == "normal":
+                # Normal: Mix of stationary and slow-moving obstacles
+                obstacle_type = "turtle" 
+                obstacle_speed = self.settings["obstacle_speed"] * 0.5  # Slower movement
+                next_spawn_delay = random.uniform(2.5, 5.0)
+                print(f"🐢 Normal: Spawning turtle - lateral offset: {road_lateral_position}, speed: {obstacle_speed}")
+                
+            elif self.mode == "hard":
+                # Hard: Faster obstacles, more frequent
+                obstacle_type = "turtle"
+                obstacle_speed = self.settings["obstacle_speed"]
+                next_spawn_delay = random.uniform(1.5, 3.5)
+                print(f"🐢 Hard: Spawning fast turtle - lateral offset: {road_lateral_position}, speed: {obstacle_speed}")
+                
+            elif self.mode == "time_trial":
+                # Time Trial: Maximum challenge
+                obstacle_type = "turtle"
+                obstacle_speed = self.settings["obstacle_speed"] * 1.2  # Extra fast
+                next_spawn_delay = random.uniform(1.0, 2.5)  # Very frequent
+                print(f"🐢 Time Trial: Spawning ultra-fast turtle - lateral offset: {road_lateral_position}, speed: {obstacle_speed}")
+            
+            # Create the obstacle
+            obstacle = Obstacle(obstacle_world_x, obstacle_world_y, obstacle_speed, obstacle_type)
+            # Set the road offset so obstacle stays in lane
+            obstacle.road_offset_x = road_lateral_position
+            self._obstacles.append(obstacle)
+            
+            print(f"� Next {self.mode} obstacle in {next_spawn_delay:.1f} seconds")
+            self._next_obstacle_time = current_time + next_spawn_delay
 
         # Update obstacles
         for obstacle in self._obstacles[:]:
@@ -1405,7 +1457,7 @@ class Game:
         """Check for collisions"""
         for obstacle in self._obstacles[:]:
             # Calculate obstacle screen position without car rotation effect
-            obstacle.get_screen_position(self._car.world_x, self._car.world_y, 0)  # Fixed road position
+            obstacle.get_screen_position(self._car.world_x, self._car.world_y, 0, self.screen_width, self.screen_height)  # Fixed road position
             obstacle_rect = obstacle.get_collision_rect()
             
             if self._car.check_collision(obstacle_rect):
@@ -1559,7 +1611,7 @@ class Game:
         self._distance_traveled = 0
         self._obstacles.clear()
         self._next_obstacle_time = 0
-        self._car = Car(0, 0)
+        self._car = Car(0, 0, self.screen_width, self.screen_height)
         self._car._last_steering = 0.0  # Reset steering momentum
         self._car.lateral_offset = 0.0  # Reset to road center
         self.camera_x = 0
@@ -1637,7 +1689,10 @@ class Game:
             "• ESC - Menu/Pause",
             "• P - Pause",
             "• M - Mute",
-            "• H - Help"
+            "• H - Help",
+            "",
+            "🖥️ FULL SCREEN MODE ACTIVE",
+            "Press ESC to exit full screen or quit game"
         ]
         
         y_start = 350
@@ -1678,7 +1733,7 @@ class Game:
             self.screen.blit(desc_text, desc_rect)
         
         # Back instruction
-        back_text = self._font.render("Press ESC to go back", True, WHITE)
+        back_text = self._font.render("Press ESC to go back | Full Screen Mode", True, WHITE)
         back_rect = back_text.get_rect(center=(self.screen_width // 2, self.screen_height - 50))
         self.screen.blit(back_text, back_rect)
 
@@ -1861,6 +1916,9 @@ class Game:
             "• H = Toggle Help",
             "• D = Debug Mode",
             "",
+            "🖥️ FULL SCREEN MODE ACTIVE",
+            "Press ESC to exit full screen",
+            "",
             "Press H to close help"
         ]
         
@@ -1948,7 +2006,7 @@ class Game:
                 self.draw_built_in_road()
             
             for obstacle in self._obstacles:
-                obstacle.draw(self.screen, self._car.world_x, self._car.world_y, self._car.rotation)
+                obstacle.draw(self.screen, self._car.world_x, self._car.world_y, self._car.rotation, self.screen_width, self.screen_height)
             
             self._car.draw(self.screen)
             self._draw_ui()
