@@ -2086,12 +2086,12 @@ class Game:
             "Press ESC to exit full screen or quit game"
         ]
         
-        y_start = 350
+        y_start = 320  # Start higher up
         for i, instruction in enumerate(instructions):
             color = ACCENT if instruction.startswith("•") else WHITE
-            font = pygame.font.Font(None, 24) if instruction.startswith("•") else pygame.font.Font(None, 28)
+            font = pygame.font.Font(None, 20) if instruction.startswith("•") else pygame.font.Font(None, 22)  # Smaller fonts
             text = font.render(instruction, True, color)
-            self.screen.blit(text, (50, y_start + i * 25))
+            self.screen.blit(text, (50, y_start + i * 20))  # Smaller line spacing
 
     def _draw_mode_selection_menu(self):
         """Draw the mode selection menu"""
@@ -2104,11 +2104,11 @@ class Game:
         
         # Mode descriptions
         mode_descriptions = {
-            "practice": "No obstacles, no time limit - Perfect for learning",
-            "easy": "Few turtles, 4 minutes - Good for beginners", 
-            "normal": "Standard difficulty, 3 minutes - Balanced challenge",
-            "hard": "More obstacles, 2 minutes - For experts",
-            "time_trial": "Maximum challenge, 1 minute - Speed run!"
+            "practice": "(No obstacles, no time limit - Perfect for learning)",
+            "easy": "(Few turtles, 4 minutes - Good for beginners)", 
+            "normal": "(Standard difficulty, 3 minutes - Balanced challenge)",
+            "hard": "(More obstacles, 2 minutes - For experts)",
+            "time_trial": "(Maximum challenge, 1 minute - Speed run!)"
         }
         
         # Draw mode buttons with descriptions
@@ -2123,9 +2123,10 @@ class Game:
             desc_rect = desc_text.get_rect(center=(button.rect.centerx, button.rect.bottom + 15))
             self.screen.blit(desc_text, desc_rect)
         
-        # Back instruction
-        back_text = self._font.render("Press ESC to go back | Full Screen Mode", True, WHITE)
-        back_rect = back_text.get_rect(center=(self.screen_width // 2, self.screen_height - 50))
+        # Back instruction - positioned on the side
+        back_font = pygame.font.Font(None, 24)  # Smaller font
+        back_text = back_font.render("Press ESC to go back", True, WHITE)
+        back_rect = back_text.get_rect(midleft=(50, self.screen_height - 100))  # Left side, higher up
         self.screen.blit(back_text, back_rect)
 
     def _show_start_game_menu(self):
