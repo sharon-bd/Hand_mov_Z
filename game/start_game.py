@@ -625,22 +625,352 @@ class GestureRecognizer:
 
 
 class SoundManager:
-    """Audio management"""
+    """Audio management with procedural engine sounds"""
     def __init__(self):
         self.muted = False
+        self.engine_channel = None
+        self.current_engine_sound = None
+        self.last_speed = 0.0
+        self.sound_update_time = 0.0
+        
+        # Initialize pygame mixer for sound
+        try:
+            # Make sure pygame is initialized first
+            if not pygame.get_init():
+                pygame.init()
+            
+            # Initialize mixer with better settings for Windows
+            pygame.mixer.pre_init(frequency=22050, size=-16, channels=2, buffer=1024)
+            pygame.mixer.init()
+            
+            # Set volume to a reasonable level
+            pygame.mixer.set_num_channels(8)  # Allow multiple sounds
+            
+            print("✅ Sound system initialized successfully")
+            print(f"   Mixer settings: {pygame.mixer.get_init()}")
+            
+            # Test the sound system
+            self.test_sound_system()
+            
+        except Exception as e:
+            print(f"⚠️ Sound system initialization failed: {e}")
+            import traceback
+            traceback.print_exc()
+            self.muted = True
     
     def toggle_mute(self):
+        """Toggle mute state"""
         self.muted = not self.muted
+        if self.muted:
+            pygame.mixer.stop()
+            print("🔇 Sound muted")
+        else:
+            print("🔊 Sound unmuted")
         return self.muted
     
-    def play(self, sound_name):
-        pass
+    def generate_engine_sound(self, speed, duration=0.2):
+        """Generate procedural engine sound based on speed"""
+        if self.muted:
+            return None
+            
+        try:
+            import numpy as np
+            
+            # Calculate engine parameters based on speed
+            base_freq = 80 + (speed * 200)  # Base frequency: 80-280 Hz
+            sample_rate = 22050
+            samples = int(sample_rate * duration)
+            
+            # Create time array
+            t = np.linspace(0, duration, samples, False)
+            
+            # Generate engine sound with multiple harmonics
+            wave = np.zeros(samples)
+            
+            # Add fundamental frequency (engine base note)
+            wave += 0.4 * np.sin(2 * np.pi * base_freq * t)
+            
+            # Add second harmonic (engine character)
+            wave += 0.3 * np.sin(2 * np.pi * base_freq * 2 * t)
+            
+            # Add third harmonic (engine richness)
+            wave += 0.2 * np.sin(2 * np.pi * base_freq * 3 * t)
+            
+            # Add engine roughness (for realism)
+            roughness_freq = 20 + (speed * 30)
+            wave += 0.1 * np.sin(2 * np.pi * roughness_freq * t)
+            
+            # Add subtle noise for realism
+            noise = np.random.normal(0, 0.05, samples)
+            wave += noise
+            
+            # Apply volume envelope to prevent clicking
+            fade_samples = int(0.01 * sample_rate)  # 10ms fade
+            if fade_samples > 0:
+                wave[:fade_samples] *= np.linspace(0, 1, fade_samples)
+                wave[-fade_samples:] *= np.linspace(1, 0, fade_samples)
+            
+            # Normalize and convert to 16-bit
+            wave = np.clip(wave, -1, 1)
+            volume = 0.2 + (speed * 0.3)  # Volume increases with speed (reduced volume)
+            wave = (wave * volume * 32767).astype(np.int16)
+            
+            # Convert to stereo - ensure C-contiguous for pygame
+            stereo_wave = np.column_stack([wave, wave])
+            stereo_wave = np.ascontiguousarray(stereo_wave, dtype=np.int16)
+            
+            # Create pygame sound
+            sound = pygame.sndarray.make_sound(stereo_wave)
+            sound.set_volume(0.6)  # Set volume on the sound object
+            return sound
+            
+        except ImportError:
+            # Fallback if numpy is not available
+            print("⚠️ NumPy not available - using simple beep sounds")
+            return self._simple_engine_sound(speed, duration)
+        except Exception as e:
+            print(f"⚠️ Error generating engine sound: {e}")
+            return None
     
+    def _simple_engine_sound(self, speed, duration=0.2):
+        """Simple engine sound fallback without numpy"""
+        if self.muted:
+            return None
+            
+        try:
+            import math
+            
+            sample_rate = 22050
+            samples = int(sample_rate * duration)
+            
+            # Generate simple sine wave
+            freq = 100 + (speed * 150)
+            wave_array = []
+            
+            for i in range(samples):
+                time = float(i) / sample_rate
+                value = int(0.2 * 32767 * math.sin(2 * math.pi * freq * time))  # Reduced volume
+                wave_array.append([value, value])  # Stereo
+            
+            # Convert to numpy array for pygame compatibility
+            try:
+                import numpy as np
+                wave_array = np.array(wave_array, dtype=np.int16)
+                wave_array = np.ascontiguousarray(wave_array)
+            except ImportError:
+                pass  # Use regular list if numpy not available
+            
+            sound = pygame.sndarray.make_sound(wave_array)
+            sound.set_volume(0.5)  # Set volume on the sound object
+            return sound
+            
+        except Exception as e:
+            print(f"⚠️ Error generating simple engine sound: {e}")
+            return None
+    
+    def update_engine_sound(self, speed, dt):
+        """Update engine sound based on current speed"""
+        if self.muted:
+            return
+            
+        current_time = time.time()
+        
+        # Update sound every 100ms or when speed changes significantly
+        speed_change = abs(speed - self.last_speed)
+        time_since_update = current_time - self.sound_update_time
+        
+        if time_since_update > 0.1 or speed_change > 0.1:
+            self.last_speed = speed
+            self.sound_update_time = current_time
+            
+            # Stop current engine sound
+            if self.engine_channel and self.engine_channel.get_busy():
+                self.engine_channel.stop()
+            
+            # Generate and play new engine sound if car is moving
+            if speed > 0.05:  # Only play sound if car is actually moving
+                engine_sound = self.generate_engine_sound(speed, 0.15)
+                if engine_sound:
+                    try:
+                        # Stop any existing engine sound first
+                        if self.engine_channel and self.engine_channel.get_busy():
+                            self.engine_channel.stop()
+                            
+                        self.engine_channel = pygame.mixer.find_channel()
+                        if self.engine_channel:
+                            self.engine_channel.play(engine_sound, loops=-1)  # Loop the sound
+                            print(f"🔊 Engine sound playing at speed {speed:.2f}")
+                        else:
+                            channel = engine_sound.play(loops=-1)  # Fixed: use sound.play() instead of pygame.mixer.Sound.play()
+                            if channel:
+                                print(f"🔊 Engine sound playing (fallback) at speed {speed:.2f}")
+                            else:
+                                print(f"❌ No channel available for engine sound")
+                    except Exception as e:
+                        print(f"⚠️ Error playing engine sound: {e}")
+                else:
+                    print(f"❌ Failed to generate engine sound for speed {speed:.2f}")
+            else:
+                # Stop engine sound when car stops
+                if self.engine_channel and self.engine_channel.get_busy():
+                    self.engine_channel.stop()
+                    print("🔇 Engine sound stopped (car not moving)")
+    
+    def play(self, sound_name):
+        """Play specific sound effect"""
+        if self.muted:
+            return
+            
+        try:
+            if sound_name == "collision":
+                print("🔊 Playing collision sound...")
+                # Generate collision sound
+                crash_sound = self._generate_crash_sound()
+                if crash_sound:
+                    channel = crash_sound.play()  # Fixed: use sound.play() instead of pygame.mixer.Sound.play()
+                    if channel:
+                        print("✅ Collision sound played successfully")
+                    else:
+                        print("❌ Failed to play collision sound - no channel")
+                else:
+                    print("❌ Failed to generate collision sound")
+            elif sound_name == "boost":
+                print("🔊 Playing boost sound...")
+                # Generate boost sound
+                boost_sound = self._generate_boost_sound()
+                if boost_sound:
+                    channel = boost_sound.play()  # Fixed: use sound.play() instead of pygame.mixer.Sound.play()
+                    if channel:
+                        print("✅ Boost sound played successfully")
+                    else:
+                        print("❌ Failed to play boost sound - no channel")
+                else:
+                    print("❌ Failed to generate boost sound")
+        except Exception as e:
+            print(f"⚠️ Error playing sound {sound_name}: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def _generate_crash_sound(self):
+        """Generate crash sound effect"""
+        try:
+            import numpy as np
+            
+            duration = 0.3
+            sample_rate = 22050
+            samples = int(sample_rate * duration)
+            
+            # Generate crash noise
+            noise = np.random.normal(0, 0.8, samples)
+            
+            # Apply envelope for crash effect
+            envelope = np.exp(-np.linspace(0, 5, samples))
+            wave = noise * envelope
+            
+            # Convert to 16-bit stereo - ensure C-contiguous
+            wave = np.clip(wave, -1, 1)
+            wave = (wave * 0.4 * 32767).astype(np.int16)  # Reduced volume
+            stereo_wave = np.column_stack([wave, wave])
+            stereo_wave = np.ascontiguousarray(stereo_wave, dtype=np.int16)
+            
+            crash_sound = pygame.sndarray.make_sound(stereo_wave)
+            crash_sound.set_volume(0.7)
+            return crash_sound
+            crash_sound.set_volume(0.7)  # Set volume on sound object
+            return crash_sound
+        except Exception as e:
+            print(f"⚠️ Error generating crash sound: {e}")
+            return None
+    
+    def _generate_boost_sound(self):
+        """Generate boost sound effect"""
+        try:
+            import numpy as np
+            
+            duration = 0.5
+            sample_rate = 22050
+            samples = int(sample_rate * duration)
+            t = np.linspace(0, duration, samples, False)
+            
+            # Rising frequency for boost effect
+            freq = 200 + 400 * t / duration
+            wave = 0.4 * np.sin(2 * np.pi * freq * t)
+            
+            # Apply envelope
+            envelope = np.exp(-t * 2)
+            wave *= envelope
+            
+            # Convert to 16-bit stereo - ensure C-contiguous
+            wave = np.clip(wave, -1, 1)
+            wave = (wave * 0.3 * 32767).astype(np.int16)  # Reduced volume
+            stereo_wave = np.column_stack([wave, wave])
+            stereo_wave = np.ascontiguousarray(stereo_wave, dtype=np.int16)
+            
+            boost_sound = pygame.sndarray.make_sound(stereo_wave)
+            boost_sound.set_volume(0.6)  # Set volume on sound object
+            return boost_sound
+        except Exception as e:
+            print(f"⚠️ Error generating boost sound: {e}")
+            return None
+    
+    def test_sound_system(self):
+        """Test if sound system is working"""
+        if self.muted:
+            print("🔇 Sound system is muted")
+            return False
+            
+        try:
+            print("🔊 Testing sound system...")
+            
+            # Test simple beep
+            import math
+            duration = 0.5
+            sample_rate = 22050
+            frequency = 440
+            samples = int(sample_rate * duration)
+            
+            wave_array = []
+            for i in range(samples):
+                time_point = float(i) / sample_rate
+                value = int(0.3 * 32767 * math.sin(2 * math.pi * frequency * time_point))
+                wave_array.append([value, value])
+            
+            # Convert to numpy array for pygame compatibility
+            try:
+                import numpy as np
+                wave_array = np.array(wave_array, dtype=np.int16)
+                wave_array = np.ascontiguousarray(wave_array)
+            except ImportError:
+                pass  # Use regular list if numpy not available
+            
+            test_sound = pygame.sndarray.make_sound(wave_array)
+            test_sound.set_volume(0.5)  # Set volume to 50%
+            channel = test_sound.play()
+            
+            if channel:
+                print("✅ Sound system working - test beep played")
+                return True
+            else:
+                print("❌ Sound system not working - no channel available")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Sound system test failed: {e}")
+            return False
+
     def create_engine(self):
+        """Legacy method for compatibility"""
         pass
     
     def cleanup(self):
-        pass
+        """Clean up sound resources"""
+        try:
+            if self.engine_channel:
+                self.engine_channel.stop()
+            pygame.mixer.quit()
+            print("✅ Sound system cleaned up")
+        except Exception as e:
+            print(f"⚠️ Error cleaning up sound: {e}")
 
 
 class Button:
@@ -670,9 +1000,10 @@ class Button:
 
 class Car:
     """Car class with camera follow system"""
-    def __init__(self, x, y, screen_width=None, screen_height=None):
+    def __init__(self, x, y, screen_width=None, screen_height=None, sound_manager=None):
         self.world_x = x
         self.world_y = y
+        self.sound_manager = sound_manager  # Reference to sound manager
         
         # Use provided screen dimensions or fallback to globals
         if screen_width is None:
@@ -691,6 +1022,7 @@ class Car:
         self.throttle = 0.5
         self.braking = False
         self.boosting = False
+        self.previous_boosting = False  # Track previous boost state for sound effects
         self.hand_stopping = False  # Track if car is stopping due to hand gesture
         self.rotation = 0.0
         self.max_speed = 200
@@ -714,7 +1046,16 @@ class Car:
             new_steering = controls.get('steering', 0.0)
             self.throttle = controls.get('throttle', 0.5)
             self.braking = controls.get('braking', False)
-            self.boosting = controls.get('boost', False)
+            
+            # Check for boost state change
+            new_boosting = controls.get('boost', False)
+            if new_boosting and not self.previous_boosting:
+                # Boost just started - play boost sound
+                if self.sound_manager:
+                    self.sound_manager.play("boost")
+            self.previous_boosting = self.boosting
+            self.boosting = new_boosting
+            
             self.steering = new_steering
             
             # Check if car is slowing down due to hand gesture (STOP command)
@@ -1067,8 +1408,11 @@ class Game:
         self._distance_traveled = 0
         self._last_position = None
         
+        # Sound - Initialize before car creation
+        self._sound_manager = SoundManager()
+        
         # Car setup - start at road center
-        self._car = Car(0, 0, self.screen_width, self.screen_height)
+        self._car = Car(0, 0, self.screen_width, self.screen_height, self._sound_manager)
         
         # Camera system - smooth camera follow
         self.camera_x = 0
@@ -1107,12 +1451,11 @@ class Game:
         self._frame = None
         self._last_gesture_result = None
         
-        # Sound
-        self._sound_manager = SoundManager()
-        
         # UI buttons
         self.pause_button = Button(10, self.screen_height - 50, 80, 30, "Pause", PRIMARY, WHITE, self.toggle_pause)
-        self.mute_button = Button(100, self.screen_height - 50, 80, 30, "Mute", SECONDARY, WHITE, self.toggle_mute)
+        # Mute button starts with current mute status
+        mute_text = "Unmute" if self._sound_manager.muted else "Mute"
+        self.mute_button = Button(100, self.screen_height - 50, 80, 30, mute_text, SECONDARY, WHITE, self.toggle_mute)
         
         # Menu system
         self._show_main_menu = True
@@ -1421,6 +1764,9 @@ class Game:
                 keyboard_controls = self._process_keyboard_input(keys)
                 self._car.update(keyboard_controls, dt)
             
+            # Update engine sound based on car speed
+            self._sound_manager.update_engine_sound(self._car.speed, dt)
+            
             self.update_camera()
             
             if self._moving_road:
@@ -1446,6 +1792,9 @@ class Game:
     def toggle_mute(self):
         """Toggle mute state"""
         muted = self._sound_manager.toggle_mute()
+        # Update button text
+        if hasattr(self, 'mute_button'):
+            self.mute_button.text = "Unmute" if muted else "Mute"
         print(f"Sound {'muted' if muted else 'unmuted'}")
         return muted
 
@@ -1464,6 +1813,8 @@ class Game:
                 self._obstacles.remove(obstacle)
                 print("💥 Turtle collision detected! Obstacle removed.")
                 self._score = max(0, self._score - 25)
+                # Play collision sound
+                self._sound_manager.play("collision")
                 break
 
     def _process_keyboard_input(self, keys):
@@ -1611,7 +1962,7 @@ class Game:
         self._distance_traveled = 0
         self._obstacles.clear()
         self._next_obstacle_time = 0
-        self._car = Car(0, 0, self.screen_width, self.screen_height)
+        self._car = Car(0, 0, self.screen_width, self.screen_height, self._sound_manager)
         self._car._last_steering = 0.0  # Reset steering momentum
         self._car.lateral_offset = 0.0  # Reset to road center
         self.camera_x = 0
@@ -1691,7 +2042,13 @@ class Game:
             "• M - Mute",
             "• H - Help",
             "",
-            "🖥️ FULL SCREEN MODE ACTIVE",
+            "� Dynamic Sound System:",
+            "• Engine sound changes with car speed",
+            "• Boost activation sound effect", 
+            "• Collision crash sound effect",
+            "• Press M to toggle mute/unmute",
+            "",
+            "�🖥️ FULL SCREEN MODE ACTIVE",
             "Press ESC to exit full screen or quit game"
         ]
         
@@ -1808,8 +2165,9 @@ class Game:
                     confidence_text = pygame.font.Font(None, 18).render(f"Confidence: {confidence:.1f}", True, WHITE)
                     self.screen.blit(confidence_text, (10, self.screen_height - 100))
             
-            # Controls reminder
-            controls_text = pygame.font.Font(None, 18).render("ESC: Menu | P: Pause | M: Mute | H: Help", True, WHITE)
+            # Controls reminder with sound status
+            sound_status = "🔇 MUTED" if self._sound_manager.muted else "🔊 SOUND ON"
+            controls_text = pygame.font.Font(None, 18).render(f"ESC: Menu | P: Pause | M: Mute | H: Help | {sound_status}", True, WHITE)
             self.screen.blit(controls_text, (10, self.screen_height - 80))
             
             # Draw buttons
@@ -1916,7 +2274,14 @@ class Game:
             "• H = Toggle Help",
             "• D = Debug Mode",
             "",
-            "🖥️ FULL SCREEN MODE ACTIVE",
+            "� DYNAMIC SOUND SYSTEM:",
+            "• Engine sound pitch increases with speed",
+            "• Realistic procedural engine audio",
+            "• Boost activation sound effects",
+            "• Collision crash sound effects",
+            "• M key toggles mute/unmute",
+            "",
+            "�🖥️ FULL SCREEN MODE ACTIVE",
             "Press ESC to exit full screen",
             "",
             "Press H to close help"
