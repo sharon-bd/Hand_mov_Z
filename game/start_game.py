@@ -1456,6 +1456,8 @@ class Game:
         # Mute button starts with current mute status
         mute_text = "Unmute" if self._sound_manager.muted else "Mute"
         self.mute_button = Button(100, self.screen_height - 50, 80, 30, mute_text, SECONDARY, WHITE, self.toggle_mute)
+        # Exit button for quitting the game
+        self.exit_button = Button(190, self.screen_height - 50, 80, 30, "Exit", ERROR, WHITE, self.quit_game)
         
         # Menu system
         self._show_main_menu = True
@@ -1798,6 +1800,11 @@ class Game:
         print(f"Sound {'muted' if muted else 'unmuted'}")
         return muted
 
+    def quit_game(self):
+        """Quit the game immediately"""
+        print("🚪 Exit button pressed - quitting game")
+        self.running = False
+
     def handle_input(self):
         """Handle keyboard input"""
         return pygame.key.get_pressed()
@@ -1921,6 +1928,8 @@ class Game:
                         elif event.key == pygame.K_d and not self._show_main_menu and not self._show_mode_selection:
                             self._debug_mode = not self._debug_mode
                             print(f"Debug mode: {'ON' if self._debug_mode else 'OFF'}")
+                        elif event.key == pygame.K_q and not self._show_main_menu and not self._show_mode_selection:
+                            self.quit_game()
                     elif event.type == pygame.MOUSEBUTTONDOWN:
                         if event.button == 1:
                             if self._show_main_menu and hasattr(self, 'start_button_rect'):
@@ -1934,6 +1943,8 @@ class Game:
                                     self.toggle_pause()
                                 elif hasattr(self, 'mute_button') and self.mute_button.rect.collidepoint(event.pos):
                                     self.toggle_mute()
+                                elif hasattr(self, 'exit_button') and self.exit_button.rect.collidepoint(event.pos):
+                                    self.quit_game()
                 
                 self.update(dt)
                 self.draw()
@@ -2041,6 +2052,8 @@ class Game:
             "• P - Pause",
             "• M - Mute",
             "• H - Help",
+            "• Q - Quit Game",
+            "• Exit Button - Quit Game",
             "",
             "� Dynamic Sound System:",
             "• Engine sound changes with car speed",
@@ -2167,7 +2180,7 @@ class Game:
             
             # Controls reminder with sound status
             sound_status = "🔇 MUTED" if self._sound_manager.muted else "🔊 SOUND ON"
-            controls_text = pygame.font.Font(None, 18).render(f"ESC: Menu | P: Pause | M: Mute | H: Help | {sound_status}", True, WHITE)
+            controls_text = pygame.font.Font(None, 18).render(f"ESC: Menu | P: Pause | M: Mute | H: Help | Exit: Quit | {sound_status}", True, WHITE)
             self.screen.blit(controls_text, (10, self.screen_height - 80))
             
             # Draw buttons
@@ -2175,6 +2188,8 @@ class Game:
                 self.pause_button.draw(self.screen)
             if hasattr(self, 'mute_button'):
                 self.mute_button.draw(self.screen)
+            if hasattr(self, 'exit_button'):
+                self.exit_button.draw(self.screen)
         
         except Exception as e:
             print(f"⚠️ Error drawing UI: {e}")
@@ -2273,6 +2288,8 @@ class Game:
             "• M = Mute/Unmute",
             "• H = Toggle Help",
             "• D = Debug Mode",
+            "• Q = Quit Game",
+            "• Exit Button = Quit Game",
             "",
             "� DYNAMIC SOUND SYSTEM:",
             "• Engine sound pitch increases with speed",
