@@ -1456,8 +1456,8 @@ class Game:
         # Mute button starts with current mute status
         mute_text = "Unmute" if self._sound_manager.muted else "Mute"
         self.mute_button = Button(100, self.screen_height - 50, 80, 30, mute_text, SECONDARY, WHITE, self.toggle_mute)
-        # Exit button for quitting the game
-        self.exit_button = Button(190, self.screen_height - 50, 80, 30, "Exit", ERROR, WHITE, self.quit_game)
+        # Exit button
+        self.exit_button = Button(190, self.screen_height - 50, 80, 30, "Exit", ERROR, WHITE, self.exit_game)
         
         # Menu system
         self._show_main_menu = True
@@ -1787,22 +1787,47 @@ class Game:
             self._last_position = (self._car.world_x, self._car.world_y)
 
     def toggle_pause(self):
-        """Toggle pause state"""
+        """Toggle pause state and automatically mute/unmute sound"""
         self._paused = not self._paused
-        print(f"Game {'paused' if self._paused else 'resumed'}")
+        
+        # Store the original mute state when pausing for the first time
+        if not hasattr(self, '_pre_pause_mute_state'):
+            self._pre_pause_mute_state = self._sound_manager.muted
+        
+        if self._paused:
+            # Store current mute state and mute sound when pausing
+            self._pre_pause_mute_state = self._sound_manager.muted
+            if not self._sound_manager.muted:
+                self._sound_manager.toggle_mute()
+            print("Game paused - Sound muted")
+        else:
+            # Restore original mute state when resuming
+            if self._sound_manager.muted != self._pre_pause_mute_state:
+                self._sound_manager.toggle_mute()
+            print("Game resumed - Sound restored")
+        
+        # Update mute button text to reflect current state
+        if hasattr(self, 'mute_button'):
+            mute_text = "Unmute" if self._sound_manager.muted else "Mute"
+            self.mute_button.text = mute_text
 
     def toggle_mute(self):
         """Toggle mute state"""
         muted = self._sound_manager.toggle_mute()
+        
+        # If we're paused and user manually changes mute state, update the stored state
+        if self._paused and hasattr(self, '_pre_pause_mute_state'):
+            self._pre_pause_mute_state = muted
+        
         # Update button text
         if hasattr(self, 'mute_button'):
             self.mute_button.text = "Unmute" if muted else "Mute"
         print(f"Sound {'muted' if muted else 'unmuted'}")
         return muted
 
-    def quit_game(self):
-        """Quit the game immediately"""
-        print("🚪 Exit button pressed - quitting game")
+    def exit_game(self):
+        """Exit the game"""
+        print("Exiting game...")
         self.running = False
 
     def handle_input(self):
@@ -1928,8 +1953,6 @@ class Game:
                         elif event.key == pygame.K_d and not self._show_main_menu and not self._show_mode_selection:
                             self._debug_mode = not self._debug_mode
                             print(f"Debug mode: {'ON' if self._debug_mode else 'OFF'}")
-                        elif event.key == pygame.K_q and not self._show_main_menu and not self._show_mode_selection:
-                            self.quit_game()
                     elif event.type == pygame.MOUSEBUTTONDOWN:
                         if event.button == 1:
                             if self._show_main_menu and hasattr(self, 'start_button_rect'):
@@ -1944,7 +1967,7 @@ class Game:
                                 elif hasattr(self, 'mute_button') and self.mute_button.rect.collidepoint(event.pos):
                                     self.toggle_mute()
                                 elif hasattr(self, 'exit_button') and self.exit_button.rect.collidepoint(event.pos):
-                                    self.quit_game()
+                                    self.exit_game()
                 
                 self.update(dt)
                 self.draw()
@@ -2049,11 +2072,9 @@ class Game:
             "• Space - Brake",
             "• Shift - Boost",
             "• ESC - Menu/Pause",
-            "• P - Pause",
+            "• P - Pause (auto-mutes sound)",
             "• M - Mute",
             "• H - Help",
-            "• Q - Quit Game",
-            "• Exit Button - Quit Game",
             "",
             "� Dynamic Sound System:",
             "• Engine sound changes with car speed",
@@ -2180,7 +2201,7 @@ class Game:
             
             # Controls reminder with sound status
             sound_status = "🔇 MUTED" if self._sound_manager.muted else "🔊 SOUND ON"
-            controls_text = pygame.font.Font(None, 18).render(f"ESC: Menu | P: Pause | M: Mute | H: Help | Exit: Quit | {sound_status}", True, WHITE)
+            controls_text = pygame.font.Font(None, 18).render(f"ESC: Menu | P: Pause+Mute | M: Mute | H: Help | Exit: Quit | {sound_status}", True, WHITE)
             self.screen.blit(controls_text, (10, self.screen_height - 80))
             
             # Draw buttons
@@ -2205,8 +2226,13 @@ class Game:
         pause_rect = pause_text.get_rect(center=(self.screen_width // 2, self.screen_height // 2 - 50))
         self.screen.blit(pause_text, pause_rect)
         
+        # Sound status during pause
+        sound_text = self._font.render("🔇 Sound Muted", True, RED)
+        sound_rect = sound_text.get_rect(center=(self.screen_width // 2, self.screen_height // 2 - 10))
+        self.screen.blit(sound_text, sound_rect)
+        
         instruction_text = self._font.render("Press P or ESC to resume", True, WHITE)
-        instruction_rect = instruction_text.get_rect(center=(self.screen_width // 2, self.screen_height // 2 + 20))
+        instruction_rect = instruction_text.get_rect(center=(self.screen_width // 2, self.screen_height // 2 + 30))
         self.screen.blit(instruction_text, instruction_rect)
 
     def _draw_game_over(self):
@@ -2284,12 +2310,10 @@ class Game:
             "",
             "GAME CONTROLS:",
             "• ESC = Menu/Pause",
-            "• P = Pause/Resume",
+            "• P = Pause/Resume (automatically mutes/unmutes sound)",
             "• M = Mute/Unmute",
             "• H = Toggle Help",
             "• D = Debug Mode",
-            "• Q = Quit Game",
-            "• Exit Button = Quit Game",
             "",
             "� DYNAMIC SOUND SYSTEM:",
             "• Engine sound pitch increases with speed",
@@ -2297,6 +2321,7 @@ class Game:
             "• Boost activation sound effects",
             "• Collision crash sound effects",
             "• M key toggles mute/unmute",
+            "• Sound automatically muted during pause",
             "",
             "�🖥️ FULL SCREEN MODE ACTIVE",
             "Press ESC to exit full screen",
