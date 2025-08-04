@@ -27,21 +27,34 @@ def main():
         except ImportError:
             print("⚠️ OpenCV not found, camera functions will be disabled")
         
-        # נסה לייבא את המשחק
+        # נסה לייבא את התפריט הראשי החדש
         try:
-            from main_game import GameLauncher
-            print("✅ Game launcher imported successfully")
+            print("🔄 Loading main menu system...")
+            from main import main as start_main_menu
+            print("✅ Main menu system imported successfully")
             
-            # הפעל את המשחק
-            print("🚀 Launching game...")
-            game_launcher = GameLauncher()
-            game_launcher.run()
+            # הפעל את התפריט הראשי
+            print("🚀 Starting main menu...")
+            start_main_menu()
             
         except ImportError as e:
-            print(f"❌ Game launcher import error: {e}")
-            # נסה להריץ את המשחק ישירות
-            from game.start_game import run_game
-            run_game("normal")
+            print(f"❌ Main menu import error: {e}")
+            print("Trying to import GameLauncher directly...")
+            try:
+                from main import GameLauncher
+                print("✅ GameLauncher imported successfully")
+                
+                # הפעל את המשחק
+                print("🚀 Launching game...")
+                game_launcher = GameLauncher()
+                game_launcher.run()
+                
+            except ImportError as e2:
+                print(f"❌ GameLauncher import error: {e2}")
+                # כאמצעי אחרון - נסה להריץ את המשחק ישירות
+                print("Trying to run game directly as last resort...")
+                from game.start_game import run_game
+                run_game("normal")
             
     except ImportError as e:
         print(f"❌ Import Error: {e}")

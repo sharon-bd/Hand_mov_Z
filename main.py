@@ -477,12 +477,11 @@ class GameLauncher:
             # Reset debug flag when leaving difficulty menu
             self._difficulty_menu_drawn = False
         else:
+            # Just set the difficulty, stay in difficulty menu to show the change
             self.selected_difficulty = option.lower()
-            self.current_menu = "main"
-            self.selected_option = 0
-            # Reset debug flag when leaving difficulty menu
-            self._difficulty_menu_drawn = False
             self.logger.info(f"Difficulty set to: {self.selected_difficulty}")
+            print(f"DEBUG: Difficulty changed to: {self.selected_difficulty}")
+            # Don't change menu, just show the updated difficulty setting
     
     def handle_settings_selection(self):
         """Handle settings menu selection"""
@@ -745,10 +744,13 @@ class GameLauncher:
                     else:
                         # Highlight current difficulty
                         if option.lower() == self.selected_difficulty:
+                            # Current difficulty - show in green with special marking
                             color = self.colors['green']
+                            display_text = f"★ {option} ★ (Current)"
                         elif i == self.selected_option:
                             # Calculate text width for proper highlight sizing
-                            text_width = self.menu_font.size(option)[0]
+                            display_text = option
+                            text_width = self.menu_font.size(display_text)[0]
                             # Draw background highlight for selected option with proper width
                             highlight_rect = pygame.Rect(WINDOW_WIDTH // 2 - text_width // 2 - 20, 200 + i * 80 - 5, text_width + 40, 50)
                             pygame.draw.rect(self.screen, (50, 50, 100), highlight_rect)
@@ -756,8 +758,9 @@ class GameLauncher:
                             color = self.colors['yellow']
                         else:
                             color = self.colors['white']
+                            display_text = option
                         
-                        text = self.menu_font.render(option, True, color)
+                        text = self.menu_font.render(display_text, True, color)
                         y = 200 + i * 80
                         self.screen.blit(text, (WINDOW_WIDTH // 2 - text.get_width() // 2, y))
                         
@@ -769,6 +772,11 @@ class GameLauncher:
                     print(f"Error drawing difficulty option {i}: {e}")
                     # Continue with next option
                     continue
+            
+            # Add helpful instructions
+            instruction_text = "Select difficulty level • Current choice marked with ★"
+            instruction_surface = self.info_font.render(instruction_text, True, self.colors['light_blue'])
+            self.screen.blit(instruction_surface, (WINDOW_WIDTH // 2 - instruction_surface.get_width() // 2, WINDOW_HEIGHT - 60))
             
             # Add control instructions
             control_text = "Use ↑↓ keys or mouse to navigate • Enter/Space or click to select • ESC to go back"
