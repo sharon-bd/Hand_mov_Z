@@ -124,13 +124,25 @@ class GameLauncher:
     
     def __init__(self):
         """Initialize the game launcher"""
+        print("DEBUG: Initializing GameLauncher...")
+        
         # Initialize pygame
         pygame.init()
         pygame.font.init()
+        pygame.display.init()
         
-        self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
-        pygame.display.set_caption("Hand Gesture Car Control - Main Menu")
-        self.clock = pygame.time.Clock()
+        print(f"DEBUG: Pygame initialized: {pygame.get_init()}")
+        print(f"DEBUG: Font initialized: {pygame.font.get_init()}")
+        print(f"DEBUG: Display initialized: {pygame.display.get_init()}")
+        
+        try:
+            self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+            pygame.display.set_caption("Hand Gesture Car Control - Main Menu")
+            self.clock = pygame.time.Clock()
+            print("DEBUG: Screen and clock initialized successfully")
+        except Exception as e:
+            print(f"ERROR: Failed to initialize display: {e}")
+            raise
         
         # Initialize debug mode
         self.debug_mode = DebugMode()
@@ -138,9 +150,14 @@ class GameLauncher:
         self.debug_mode.update_debug_info(launcher_initialized=True)
         
         # Fonts
-        self.title_font = pygame.font.Font(None, 72)
-        self.menu_font = pygame.font.Font(None, 48)
-        self.info_font = pygame.font.Font(None, 24)
+        try:
+            self.title_font = pygame.font.Font(None, 72)
+            self.menu_font = pygame.font.Font(None, 48)
+            self.info_font = pygame.font.Font(None, 24)
+            print("DEBUG: Fonts loaded successfully")
+        except Exception as e:
+            print(f"ERROR: Failed to load fonts: {e}")
+            raise
         
         # Colors
         self.colors = {
@@ -158,6 +175,12 @@ class GameLauncher:
         self.current_menu = "main"
         self.selected_option = 0
         self.running = True
+        self._cleaned_up = False  # Track cleanup state
+        
+        # Debug tracking variables
+        self._last_debug_menu = None
+        self._last_debug_option = None
+        self._difficulty_menu_drawn = False
         
         # Menu options
         self.main_menu_options = [
@@ -190,68 +213,202 @@ class GameLauncher:
         # Setup logging
         logging.basicConfig(level=logging.INFO)
         self.logger = logging.getLogger(__name__)
+        
+        print("DEBUG: GameLauncher initialization completed")
     
     def run(self):
         """Run the main menu loop"""
         self.logger.info("Starting game launcher")
         self.debug_mode.update_debug_info(launcher_running=True)
         
-        while self.running:
-            frame_start = time.time()
-            
-            self.handle_events()
-            self.update()
-            self.draw()
-            
-            # ציור מידע דיבאג על המסך
-            if self.debug_mode_enabled:
-                self.debug_mode.draw_debug_info(self.screen)
-            
-            self.clock.tick(FPS)
-            
-            # עדכון נתוני ביצועים
-            frame_time = time.time() - frame_start
-            self.debug_mode.update_performance(frame_time)
+        try:
+            while self.running:
+                frame_start = time.time()
+                
+                # Check if pygame is still active before handling events
+                if not pygame.get_init() or not pygame.display.get_init():
+                    print("DEBUG: Pygame no longer active - exiting loop")
+                    self.running = False
+                    break
+                
+                self.handle_events()
+                
+                # Only update and draw if still running
+                if self.running:
+                    self.update()
+                    self.draw()
+                
+                    # ציור מידע דיבאג על המסך
+                    if self.debug_mode_enabled and self.running:
+                        try:
+                            self.debug_mode.draw_debug_info(self.screen)
+                        except pygame.error:
+                            print("DEBUG: Cannot draw debug info - display quit")
+                            self.running = False
+                            break
+                
+                if self.running:
+                    try:
+                        self.clock.tick(FPS)
+                    except pygame.error:
+                        print("DEBUG: Clock tick failed - pygame quit")
+                        self.running = False
+                        break
+                
+                # עדכון נתוני ביצועים
+                frame_time = time.time() - frame_start
+                self.debug_mode.update_performance(frame_time)
+                
+                # הדפסה לדיבאג עבור התפריט - רק אם השתנה המצב
+                if hasattr(self, '_last_debug_menu') and hasattr(self, '_last_debug_option'):
+                    if (self._last_debug_menu != self.current_menu or 
+                        self._last_debug_option != self.selected_option):
+                        if self.current_menu != "main":
+                            print(f"DEBUG: Menu changed to: {self.current_menu}, Selected option: {self.selected_option}")
+                else:
+                    # First time - initialize tracking
+                    if self.current_menu != "main":
+                        print(f"DEBUG: Initial menu state: {self.current_menu}, Selected option: {self.selected_option}")
+                
+                # Update tracking variables
+                self._last_debug_menu = self.current_menu
+                self._last_debug_option = self.selected_option
         
-        self.cleanup()
+        except KeyboardInterrupt:
+            print("DEBUG: Keyboard interrupt received - exiting gracefully")
+            self.running = False
+        except Exception as e:
+            print(f"Error in main loop: {e}")
+            import traceback
+            traceback.print_exc()
+        finally:
+            print(f"DEBUG: Exiting main loop - running status: {self.running}")
+            self.cleanup()
     
     def handle_events(self):
         """Handle pygame events"""
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                self.debug_mode.update_debug_info(quit_requested=True)
-                self.running = False
-            
-            elif event.type == pygame.KEYDOWN:
-                # מקש F1 להחלפת מצב דיבאג
-                if event.key == pygame.K_F1:
-                    self.debug_mode_enabled = not self.debug_mode_enabled
-                    self.debug_mode.enabled = self.debug_mode_enabled
-                    self.debug_mode.toggle()
+        try:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    print("DEBUG: QUIT event received")
+                    self.debug_mode.update_debug_info(quit_requested=True)
+                    self.running = False
                 
-                elif event.key == pygame.K_ESCAPE:
-                    if self.current_menu == "main":
-                        self.debug_mode.update_debug_info(escape_quit=True)
-                        self.running = False
+                elif event.type == pygame.KEYDOWN:
+                    print(f"DEBUG: Key pressed: {pygame.key.name(event.key)}")
+                    
+                    # מקש F1 להחלפת מצב דיבאג
+                    if event.key == pygame.K_F1:
+                        self.debug_mode_enabled = not self.debug_mode_enabled
+                        self.debug_mode.enabled = self.debug_mode_enabled
+                        self.debug_mode.toggle()
+                    
+                    elif event.key == pygame.K_ESCAPE:
+                        print(f"DEBUG: ESC pressed in menu: {self.current_menu}")
+                        if self.current_menu == "main":
+                            print("DEBUG: ESC in main menu - quitting")
+                            self.debug_mode.update_debug_info(escape_quit=True)
+                            self.running = False
+                        else:
+                            print("DEBUG: ESC in submenu - going back to main")
+                            self.debug_mode.update_debug_info(menu_back=True)
+                            self.current_menu = "main"
+                            self.selected_option = 0
+                    
+                    elif event.key == pygame.K_UP:
+                        # Don't navigate in instructions screen
+                        if self.current_menu != "instructions":
+                            self.navigate_menu(-1)
+                            self.debug_mode.update_debug_info(menu_nav="up")
+                    
+                    elif event.key == pygame.K_DOWN:
+                        # Don't navigate in instructions screen
+                        if self.current_menu != "instructions":
+                            self.navigate_menu(1)
+                            self.debug_mode.update_debug_info(menu_nav="down")
+                    
+                    elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
+                        if self.current_menu == "instructions":
+                            # Any key in instructions returns to main menu
+                            self.current_menu = "main"
+                            self.selected_option = 0
+                        else:
+                            print(f"DEBUG: Enter/Space pressed - selecting option {self.selected_option}")
+                            self.debug_mode.update_debug_info(menu_select=self.selected_option)
+                            self.select_option()
+                    
                     else:
-                        self.debug_mode.update_debug_info(menu_back=True)
-                        self.current_menu = "main"
-                        self.selected_option = 0
+                        # Any other key in instructions screen returns to main menu
+                        if self.current_menu == "instructions":
+                            print("DEBUG: Key pressed in instructions - returning to main menu")
+                            self.current_menu = "main"
+                            self.selected_option = 0
                 
-                elif event.key == pygame.K_UP:
-                    self.navigate_menu(-1)
-                    self.debug_mode.update_debug_info(menu_nav="up")
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    if event.button == 1:  # Left mouse button
+                        mouse_x, mouse_y = event.pos
+                        clicked_option = self.get_menu_option_at_pos(mouse_x, mouse_y)
+                        if clicked_option != -1:
+                            print(f"DEBUG: Mouse clicked on option {clicked_option}")
+                            self.selected_option = clicked_option
+                            self.debug_mode.update_debug_info(menu_select=self.selected_option, mouse_click=True)
+                            self.select_option()
                 
-                elif event.key == pygame.K_DOWN:
-                    self.navigate_menu(1)
-                    self.debug_mode.update_debug_info(menu_nav="down")
-                
-                elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
-                    self.debug_mode.update_debug_info(menu_select=self.selected_option)
-                    self.select_option()
+                elif event.type == pygame.MOUSEMOTION:
+                    mouse_x, mouse_y = event.pos
+                    hovered_option = self.get_menu_option_at_pos(mouse_x, mouse_y)
+                    if hovered_option != -1 and hovered_option != self.selected_option:
+                        self.selected_option = hovered_option
+                        pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
+                    elif hovered_option == -1:
+                        pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
+        except pygame.error as e:
+            if "display Surface quit" in str(e) or "video system not initialized" in str(e):
+                print("DEBUG: Pygame display quit during event handling")
+                self.running = False
+            else:
+                print(f"ERROR in handle_events - pygame error: {e}")
+                self.running = False
+        except Exception as e:
+            print(f"ERROR in handle_events: {e}")
+            import traceback
+            traceback.print_exc()
+            self.running = False
     
+    def get_menu_option_at_pos(self, mouse_x, mouse_y):
+        """Get menu option at mouse position, returns -1 if none"""
+        if self.current_menu == "main":
+            options = self.main_menu_options
+            start_y = 280
+            item_spacing = 60
+        elif self.current_menu == "difficulty":
+            options = self.difficulty_options
+            start_y = 200
+            item_spacing = 80  # Different spacing for difficulty menu
+        elif self.current_menu == "settings":
+            options = self.settings_options
+            start_y = 200
+            item_spacing = 60
+        else:
+            return -1
+        
+        # Check if mouse is over any menu option
+        for i, option in enumerate(options):
+            option_y = start_y + i * item_spacing
+            option_height = 50  # Approximate height for click area
+            
+            if option_y <= mouse_y <= option_y + option_height:
+                # Check if mouse is roughly in the center horizontal area
+                if WINDOW_WIDTH // 4 <= mouse_x <= 3 * WINDOW_WIDTH // 4:
+                    return i
+        
+        return -1
+
     def navigate_menu(self, direction):
         """Navigate menu options"""
+        # Only print debug if this is actually a change caused by keyboard
+        should_debug = True
+        
         if self.current_menu == "main":
             options_count = len(self.main_menu_options)
         elif self.current_menu == "difficulty":
@@ -261,35 +418,53 @@ class GameLauncher:
         else:
             options_count = 1
         
+        old_selection = self.selected_option
         self.selected_option = (self.selected_option + direction) % options_count
+        
+        if should_debug and old_selection != self.selected_option:
+            print(f"DEBUG: navigate_menu - direction: {direction}, menu: {self.current_menu}")
+            print(f"DEBUG: Selection changed from {old_selection} to {self.selected_option} (max: {options_count-1})")
     
     def select_option(self):
         """Handle option selection"""
-        if self.current_menu == "main":
-            self.handle_main_menu_selection()
-        elif self.current_menu == "difficulty":
-            self.handle_difficulty_selection()
-        elif self.current_menu == "settings":
-            self.handle_settings_selection()
-        elif self.current_menu == "instructions":
-            self.current_menu = "main"
-            self.selected_option = 0
+        print(f"DEBUG: select_option called - Menu: {self.current_menu}, Option: {self.selected_option}")
+        
+        try:
+            if self.current_menu == "main":
+                self.handle_main_menu_selection()
+            elif self.current_menu == "difficulty":
+                self.handle_difficulty_selection()
+            elif self.current_menu == "settings":
+                self.handle_settings_selection()
+            elif self.current_menu == "instructions":
+                self.current_menu = "main"
+                self.selected_option = 0
+        except Exception as e:
+            print(f"ERROR in select_option: {e}")
+            import traceback
+            traceback.print_exc()
     
     def handle_main_menu_selection(self):
         """Handle main menu selection"""
         option = self.main_menu_options[self.selected_option]
+        print(f"DEBUG: handle_main_menu_selection - Option: {option}, Index: {self.selected_option}")
         
         if option == "Start Game":
             self.start_game()
         elif option == "Select Difficulty":
+            print("DEBUG: Switching to difficulty menu")
             self.current_menu = "difficulty"
             self.selected_option = 0
+            # Reset the debug flag for drawing
+            self._difficulty_menu_drawn = False
+            print(f"DEBUG: After switch - Menu: {self.current_menu}, Selected: {self.selected_option}")
         elif option == "Settings":
             self.current_menu = "settings"
             self.selected_option = 0
         elif option == "Instructions":
             self.current_menu = "instructions"
         elif option == "Quit":
+            print("DEBUG: Quit selected")
             self.running = False
     
     def handle_difficulty_selection(self):
@@ -299,10 +474,14 @@ class GameLauncher:
         if option == "Back":
             self.current_menu = "main"
             self.selected_option = 0
+            # Reset debug flag when leaving difficulty menu
+            self._difficulty_menu_drawn = False
         else:
             self.selected_difficulty = option.lower()
             self.current_menu = "main"
             self.selected_option = 0
+            # Reset debug flag when leaving difficulty menu
+            self._difficulty_menu_drawn = False
             self.logger.info(f"Difficulty set to: {self.selected_difficulty}")
     
     def handle_settings_selection(self):
@@ -437,18 +616,53 @@ class GameLauncher:
     
     def draw(self):
         """Draw the current screen"""
-        self.screen.fill(self.colors['black'])
-        
-        if self.current_menu == "main":
-            self.draw_main_menu()
-        elif self.current_menu == "difficulty":
-            self.draw_difficulty_menu()
-        elif self.current_menu == "settings":
-            self.draw_settings_menu()
-        elif self.current_menu == "instructions":
-            self.draw_instructions()
-        
-        pygame.display.flip()
+        try:
+            # Check if pygame display is still valid
+            if not pygame.get_init() or not pygame.display.get_init() or not self.screen:
+                print("DEBUG: Pygame display is not initialized - skipping draw")
+                self.running = False
+                return
+            
+            # Check if the display surface is still valid
+            try:
+                self.screen.get_size()  # Test if surface is valid
+            except pygame.error:
+                print("DEBUG: Display surface is invalid - stopping")
+                self.running = False
+                return
+            
+            self.screen.fill(self.colors['black'])
+            
+            if self.current_menu == "main":
+                self.draw_main_menu()
+            elif self.current_menu == "difficulty":
+                # Print debug only once when entering difficulty menu
+                if not hasattr(self, '_difficulty_menu_drawn') or not self._difficulty_menu_drawn:
+                    print(f"DEBUG: Drawing difficulty menu with {len(self.difficulty_options)} options")
+                    self._difficulty_menu_drawn = True
+                self.draw_difficulty_menu()
+            elif self.current_menu == "settings":
+                self.draw_settings_menu()
+            elif self.current_menu == "instructions":
+                self.draw_instructions()
+            else:
+                # Reset flag when leaving difficulty menu
+                if hasattr(self, '_difficulty_menu_drawn'):
+                    self._difficulty_menu_drawn = False
+            
+            pygame.display.flip()
+        except pygame.error as e:
+            if "display Surface quit" in str(e):
+                print("DEBUG: Display surface quit - stopping gracefully")
+                self.running = False
+            else:
+                print(f"ERROR in draw() - pygame error: {e}")
+                self.running = False
+        except Exception as e:
+            print(f"ERROR in draw(): {e}")
+            import traceback
+            traceback.print_exc()
+            self.running = False
     
     def draw_main_menu(self):
         """Draw the main menu"""
@@ -459,9 +673,17 @@ class GameLauncher:
         self.screen.blit(title_text, (WINDOW_WIDTH // 2 - title_text.get_width() // 2, 80))
         self.screen.blit(title_text2, (WINDOW_WIDTH // 2 - title_text2.get_width() // 2, 150))
         
-        # Menu options
+        # Menu options with hover effect
         for i, option in enumerate(self.main_menu_options):
-            color = self.colors['yellow'] if i == self.selected_option else self.colors['white']
+            if i == self.selected_option:
+                # Draw background highlight for selected option
+                highlight_rect = pygame.Rect(WINDOW_WIDTH // 2 - 120, 280 + i * 60 - 5, 240, 50)
+                pygame.draw.rect(self.screen, (50, 50, 100), highlight_rect)
+                pygame.draw.rect(self.screen, self.colors['yellow'], highlight_rect, 2)
+                color = self.colors['yellow']
+            else:
+                color = self.colors['white']
+            
             text = self.menu_font.render(option, True, color)
             y = 280 + i * 60
             self.screen.blit(text, (WINDOW_WIDTH // 2 - text.get_width() // 2, y))
@@ -476,43 +698,78 @@ class GameLauncher:
         file_exists = os.path.exists(game_file_path)
         file_status = f"Game file: {'Found' if file_exists else 'Missing'} at game/start_game.py"
         file_surface = self.info_font.render(file_status, True, self.colors['green'] if file_exists else self.colors['red'])
-        self.screen.blit(file_surface, (10, WINDOW_HEIGHT - 50))
+        self.screen.blit(file_surface, (10, WINDOW_HEIGHT - 70))
+        
+        # Add control instructions
+        control_text = "Use ↑↓ keys or mouse to navigate • Enter/Space or click to select"
+        control_surface = self.info_font.render(control_text, True, self.colors['gray'])
+        self.screen.blit(control_surface, (WINDOW_WIDTH // 2 - control_surface.get_width() // 2, WINDOW_HEIGHT - 30))
     
     def draw_difficulty_menu(self):
         """Draw the difficulty selection menu"""
-        title_text = self.menu_font.render("Select Difficulty", True, self.colors['white'])
-        self.screen.blit(title_text, (WINDOW_WIDTH // 2 - title_text.get_width() // 2, 100))
-        
-        # Difficulty descriptions
-        descriptions = {
-            "Easy": "Longer time, fewer obstacles",
-            "Normal": "Balanced gameplay",
-            "Hard": "Shorter time, more obstacles"
-        }
-        
-        for i, option in enumerate(self.difficulty_options):
-            if option == "Back":
-                color = self.colors['yellow'] if i == self.selected_option else self.colors['white']
-                text = self.menu_font.render(option, True, color)
-                y = 200 + i * 80
-                self.screen.blit(text, (WINDOW_WIDTH // 2 - text.get_width() // 2, y))
-            else:
-                # Highlight current difficulty
-                if option.lower() == self.selected_difficulty:
-                    color = self.colors['green']
-                elif i == self.selected_option:
-                    color = self.colors['yellow']
-                else:
-                    color = self.colors['white']
-                
-                text = self.menu_font.render(option, True, color)
-                y = 200 + i * 80
-                self.screen.blit(text, (WINDOW_WIDTH // 2 - text.get_width() // 2, y))
-                
-                # Description
-                if option in descriptions:
-                    desc_text = self.info_font.render(descriptions[option], True, self.colors['gray'])
-                    self.screen.blit(desc_text, (WINDOW_WIDTH // 2 - desc_text.get_width() // 2, y + 35))
+        try:
+            title_text = self.menu_font.render("Select Difficulty", True, self.colors['white'])
+            self.screen.blit(title_text, (WINDOW_WIDTH // 2 - title_text.get_width() // 2, 100))
+            
+            # Difficulty descriptions
+            descriptions = {
+                "Easy": "Longer time, fewer obstacles",
+                "Normal": "Balanced gameplay",
+                "Hard": "Shorter time, more obstacles"
+            }
+            
+            for i, option in enumerate(self.difficulty_options):
+                try:
+                    if option == "Back":
+                        if i == self.selected_option:
+                            # Draw background highlight
+                            highlight_rect = pygame.Rect(WINDOW_WIDTH // 2 - 60, 200 + i * 80 - 5, 120, 50)
+                            pygame.draw.rect(self.screen, (50, 50, 100), highlight_rect)
+                            pygame.draw.rect(self.screen, self.colors['yellow'], highlight_rect, 2)
+                            color = self.colors['yellow']
+                        else:
+                            color = self.colors['white']
+                        text = self.menu_font.render(option, True, color)
+                        y = 200 + i * 80
+                        self.screen.blit(text, (WINDOW_WIDTH // 2 - text.get_width() // 2, y))
+                    else:
+                        # Highlight current difficulty
+                        if option.lower() == self.selected_difficulty:
+                            color = self.colors['green']
+                        elif i == self.selected_option:
+                            # Draw background highlight for selected option
+                            highlight_rect = pygame.Rect(WINDOW_WIDTH // 2 - 100, 200 + i * 80 - 5, 200, 50)
+                            pygame.draw.rect(self.screen, (50, 50, 100), highlight_rect)
+                            pygame.draw.rect(self.screen, self.colors['yellow'], highlight_rect, 2)
+                            color = self.colors['yellow']
+                        else:
+                            color = self.colors['white']
+                        
+                        text = self.menu_font.render(option, True, color)
+                        y = 200 + i * 80
+                        self.screen.blit(text, (WINDOW_WIDTH // 2 - text.get_width() // 2, y))
+                        
+                        # Description
+                        if option in descriptions:
+                            desc_text = self.info_font.render(descriptions[option], True, self.colors['gray'])
+                            self.screen.blit(desc_text, (WINDOW_WIDTH // 2 - desc_text.get_width() // 2, y + 35))
+                except Exception as e:
+                    print(f"Error drawing difficulty option {i}: {e}")
+                    # Continue with next option
+                    continue
+            
+            # Add control instructions
+            control_text = "Use ↑↓ keys or mouse to navigate • Enter/Space or click to select • ESC to go back"
+            control_surface = self.info_font.render(control_text, True, self.colors['gray'])
+            self.screen.blit(control_surface, (WINDOW_WIDTH // 2 - control_surface.get_width() // 2, WINDOW_HEIGHT - 30))
+            
+        except Exception as e:
+            print(f"ERROR in draw_difficulty_menu: {e}")
+            import traceback
+            traceback.print_exc()
+            # Return to main menu if there's an error
+            self.current_menu = "main"
+            self.selected_option = 0
     
     def draw_settings_menu(self):
         """Draw the settings menu - WITH DEBUG STATUS"""
@@ -520,7 +777,14 @@ class GameLauncher:
         self.screen.blit(title_text, (WINDOW_WIDTH // 2 - title_text.get_width() // 2, 100))
         
         for i, option in enumerate(self.settings_options):
-            color = self.colors['yellow'] if i == self.selected_option else self.colors['white']
+            if i == self.selected_option:
+                # Draw background highlight
+                highlight_rect = pygame.Rect(WINDOW_WIDTH // 2 - 150, 200 + i * 60 - 5, 300, 50)
+                pygame.draw.rect(self.screen, (50, 50, 100), highlight_rect)
+                pygame.draw.rect(self.screen, self.colors['yellow'], highlight_rect, 2)
+                color = self.colors['yellow']
+            else:
+                color = self.colors['white']
             
             # Add status indicators
             if option == "Toggle Camera":
@@ -540,26 +804,34 @@ class GameLauncher:
         if self.debug_mode_enabled:
             debug_info = self.info_font.render("Press F1 to toggle debug mode", True, self.colors['gray'])
             self.screen.blit(debug_info, (10, WINDOW_HEIGHT - 70))
+        
+        # Add control instructions
+        control_text = "Use ↑↓ keys or mouse to navigate • Enter/Space or click to select • ESC to go back"
+        control_surface = self.info_font.render(control_text, True, self.colors['gray'])
+        self.screen.blit(control_surface, (WINDOW_WIDTH // 2 - control_surface.get_width() // 2, WINDOW_HEIGHT - 30))
 
     def draw_instructions(self):
         """Draw the instructions screen - WITH DEBUG KEYS"""
         title_text = self.menu_font.render("Instructions", True, self.colors['white'])
-        self.screen.blit(title_text, (WINDOW_WIDTH // 2 - title_text.get_width() // 2, 50))
+        self.screen.blit(title_text, (WINDOW_WIDTH // 2 - title_text.get_width() // 2, 20))
         
-        instructions = [
+        # Split instructions into two columns
+        left_column = [
             "Hand Gestures:",
             "• Open Palm - Stop/Neutral",
-            "• Fist - Brake",
+            "• Fist - Brake", 
             "• Thumbs Up - Boost",
             "• Move Hand Left/Right - Steer",
             "• Move Hand Up/Down - Throttle",
             "",
-            "Keyboard Controls (Fallback):",
+            "Keyboard Controls:",
             "• Arrow Keys / WASD - Movement",
             "• Space - Boost",
             "• ESC - Pause/Quit",
-            "• F1 - Toggle Debug Mode",
-            "",
+            "• F1 - Toggle Debug Mode"
+        ]
+        
+        right_column = [
             "Debug Features:",
             "• Real-time performance monitoring",
             "• Game state visualization", 
@@ -567,32 +839,72 @@ class GameLauncher:
             "",
             "Game Objective:",
             "• Avoid obstacles",
-            "• Survive as long as possible",
+            "• Survive as long as possible", 
             "• Score points by distance traveled",
             "",
-            "Press any key to return to menu"
+            "Tips:",
+            "• Use hand gestures for natural control",
+            "• Press F1 to see debug information"
         ]
         
-        y = 90
-        for line in instructions:
-            if line.startswith("Debug Features:"):
-                color = self.colors['green']
-            elif line.startswith("• F1"):
-                color = self.colors['yellow'] 
-            elif line.startswith("•"):
+        # Draw left column
+        y = 60
+        line_height = 20  # Smaller line height
+        left_x = 50
+        
+        for line in left_column:
+            if line.startswith("Hand Gestures:") or line.startswith("Keyboard Controls:"):
                 color = self.colors['light_blue']
-            else:
+                font = self.info_font  # Use smaller font for headers
+            elif line.startswith("• F1"):
+                color = self.colors['yellow']
+                font = self.info_font
+            elif line.startswith("•"):
                 color = self.colors['white']
-            text = self.info_font.render(line, True, color)
-            self.screen.blit(text, (50, y))
-            y += 22
+                font = self.info_font
+            else:
+                color = self.colors['gray']
+                font = self.info_font
+            
+            if line.strip():  # Don't render empty lines
+                text = font.render(line, True, color)
+                self.screen.blit(text, (left_x, y))
+            y += line_height
+        
+        # Draw right column
+        y = 60
+        right_x = WINDOW_WIDTH // 2 + 20  # Move closer to center
+        
+        for line in right_column:
+            if line.startswith("Debug Features:") or line.startswith("Game Objective:") or line.startswith("Tips:"):
+                color = self.colors['green']
+                font = self.info_font  # Use smaller font for headers
+            elif line.startswith("•"):
+                color = self.colors['white']
+                font = self.info_font
+            else:
+                color = self.colors['gray']
+                font = self.info_font
+            
+            if line.strip():  # Don't render empty lines
+                text = font.render(line, True, color)
+                self.screen.blit(text, (right_x, y))
+            y += line_height
+        
+        # Add "Press any key" instruction at the bottom
+        return_text = "Press any key to return to menu"
+        return_surface = self.info_font.render(return_text, True, self.colors['yellow'])  # Use smaller font
+        self.screen.blit(return_surface, (WINDOW_WIDTH // 2 - return_surface.get_width() // 2, WINDOW_HEIGHT - 30))
     
     def show_game_result(self, score):
         """Show game result"""
         self.logger.info(f"Game ended with score: {score}")
         
+        # Handle None score safely
+        display_score = int(score) if score is not None else 0
+        
         # Simple message instead of complex overlay
-        print(f"🎉 Game Over! Final Score: {int(score)}")
+        print(f"🎉 Game Over! Final Score: {display_score}")
         print("Press any key to continue...")
         return  # Skip the problematic pygame rendering
         
@@ -607,7 +919,7 @@ class GameLauncher:
         
         result_font = pygame.font.Font(None, 36)
         result_text = result_font.render(f"Game Over!", True, (255, 255, 255))
-        score_text = result_font.render(f"Final Score: {int(score)}", True, (255, 215, 0))
+        score_text = result_font.render(f"Final Score: {display_score}", True, (255, 215, 0))
         continue_text = self.info_font.render("Press any key to continue...", True, (200, 200, 200))
         
         overlay.blit(result_text, (200 - result_text.get_width() // 2, 50))
@@ -722,10 +1034,29 @@ class GameLauncher:
     
     def cleanup(self):
         """Clean up resources"""
+        print("DEBUG: cleanup() called")
+        
+        # Prevent multiple cleanup calls
+        if hasattr(self, '_cleaned_up') and self._cleaned_up:
+            print("DEBUG: cleanup() already called - skipping")
+            return
+        
         self.logger.info("Cleaning up game launcher")
         try:
-            pygame.quit()
+            # Mark as cleaned up before doing anything
+            self._cleaned_up = True
+            
+            # Stop the running flag
+            self.running = False
+            
+            # Quit pygame if it's still active
+            if pygame.get_init():
+                pygame.quit()
+                print("DEBUG: pygame.quit() completed")
+            else:
+                print("DEBUG: pygame already quit")
         except Exception as e:
+            print(f"ERROR: Error during cleanup: {e}")
             self.logger.error(f"Error during cleanup: {e}")
 
     def main_game_loop(self):
@@ -793,6 +1124,7 @@ class GameLauncher:
 
 def main():
     """Main function"""
+    launcher = None
     try:
         print("🎮 Hand Gesture Car Control System - SYNCHRONIZED VERSION")
         print("=" * 60)
@@ -806,19 +1138,29 @@ def main():
         game_file = os.path.join(current_dir, 'game', 'start_game.py')
         print(f"Game file exists: {os.path.exists(game_file)} at {game_file}")
         
+        print("DEBUG: Creating GameLauncher...")
         launcher = GameLauncher()
+        print("DEBUG: Starting launcher.run()...")
         launcher.run()
+        print("DEBUG: launcher.run() completed")
         
+    except KeyboardInterrupt:
+        print("DEBUG: Keyboard interrupt in main - exiting gracefully")
     except Exception as e:
         print(f"Error in game: {e}")
         import traceback
         traceback.print_exc()
     finally:
         try:
-            if 'launcher' in locals():
+            if launcher is not None and not getattr(launcher, '_cleaned_up', False):
+                print("DEBUG: Calling launcher.cleanup() from main")
                 launcher.cleanup()
-        except:
-            pass
+            else:
+                print("DEBUG: Launcher already cleaned up or None")
+        except Exception as e:
+            print(f"Error in cleanup: {e}")
+        
+        print("DEBUG: Main function completed")
 
 if __name__ == "__main__":
     main()

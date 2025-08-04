@@ -1749,7 +1749,7 @@ class Game:
         
         if self._elapsed_time >= self._game_duration and not self._game_completed:
             self._game_completed = True
-            print(f"Game completed! Final score: {int(self._score)}")
+            print(f"Game completed! Final score: {int(self._score or 0)}")
         
         # Process input
         gestures = self.process_camera_input()
@@ -2143,12 +2143,12 @@ class Game:
         """Draw the game UI"""
         try:
             # Score
-            score_text = f"Score: {int(self._score)}"
+            score_text = f"Score: {int(self._score or 0)}"
             score_surface = self._font.render(score_text, True, WHITE)
             self.screen.blit(score_surface, (10, 10))
             
             # Distance
-            distance_text = f"Distance: {int(self._distance_traveled)}m"
+            distance_text = f"Distance: {int(self._distance_traveled or 0)}m"
             distance_surface = self._font.render(distance_text, True, WHITE)
             self.screen.blit(distance_surface, (10, 50))
             
@@ -2252,17 +2252,17 @@ class Game:
         self.screen.blit(title_text, title_rect)
         
         # Final score
-        score_text = self._font.render(f"Final Score: {int(self._score)}", True, WHITE)
+        score_text = self._font.render(f"Final Score: {int(self._score or 0)}", True, WHITE)
         score_rect = score_text.get_rect(center=(self.screen_width // 2, self.screen_height // 2 - 50))
         self.screen.blit(score_text, score_rect)
         
         # Distance
-        distance_text = self._font.render(f"Distance Traveled: {int(self._distance_traveled)}m", True, WHITE)
+        distance_text = self._font.render(f"Distance Traveled: {int(self._distance_traveled or 0)}m", True, WHITE)
         distance_rect = distance_text.get_rect(center=(self.screen_width // 2, self.screen_height // 2 - 20))
         self.screen.blit(distance_text, distance_rect)
         
         # Time survived
-        time_text = self._font.render(f"Time Survived: {int(self._elapsed_time)}s", True, WHITE)
+        time_text = self._font.render(f"Time Survived: {int(self._elapsed_time or 0)}s", True, WHITE)
         time_rect = time_text.get_rect(center=(self.screen_width // 2, self.screen_height // 2 + 10))
         self.screen.blit(time_text, time_rect)
         
@@ -2524,10 +2524,13 @@ def run_game(mode="normal", config=None):
     try:
         game = Game(mode=mode, config=config)
         game.run()
+        # Return the final score
+        return getattr(game, '_score', 0)
     except Exception as e:
         print(f"❌ Error running game: {e}")
         import traceback
         traceback.print_exc()
+        return 0  # Return 0 score on error
 
 
 # Export for import
