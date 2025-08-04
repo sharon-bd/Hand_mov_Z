@@ -676,8 +676,10 @@ class GameLauncher:
         # Menu options with hover effect
         for i, option in enumerate(self.main_menu_options):
             if i == self.selected_option:
-                # Draw background highlight for selected option
-                highlight_rect = pygame.Rect(WINDOW_WIDTH // 2 - 120, 280 + i * 60 - 5, 240, 50)
+                # Calculate text width for proper highlight sizing
+                text_width = self.menu_font.size(option)[0]
+                # Draw background highlight for selected option with proper width
+                highlight_rect = pygame.Rect(WINDOW_WIDTH // 2 - text_width // 2 - 20, 280 + i * 60 - 5, text_width + 40, 50)
                 pygame.draw.rect(self.screen, (50, 50, 100), highlight_rect)
                 pygame.draw.rect(self.screen, self.colors['yellow'], highlight_rect, 2)
                 color = self.colors['yellow']
@@ -688,22 +690,28 @@ class GameLauncher:
             y = 280 + i * 60
             self.screen.blit(text, (WINDOW_WIDTH // 2 - text.get_width() // 2, y))
         
-        # Status info
+        # Status info - positioned higher to avoid overlap
         status_text = f"Difficulty: {self.selected_difficulty.capitalize()} | Camera: {'On' if self.camera_enabled else 'Off'}"
         status_surface = self.info_font.render(status_text, True, self.colors['gray'])
-        self.screen.blit(status_surface, (10, WINDOW_HEIGHT - 30))
+        self.screen.blit(status_surface, (10, WINDOW_HEIGHT - 60))  # Moved up
         
-        # Add file path info at bottom
+        # Add file path info at bottom - positioned higher
         game_file_path = os.path.join(current_dir, 'game', 'start_game.py')
         file_exists = os.path.exists(game_file_path)
         file_status = f"Game file: {'Found' if file_exists else 'Missing'} at game/start_game.py"
         file_surface = self.info_font.render(file_status, True, self.colors['green'] if file_exists else self.colors['red'])
-        self.screen.blit(file_surface, (10, WINDOW_HEIGHT - 70))
+        self.screen.blit(file_surface, (10, WINDOW_HEIGHT - 90))  # Moved up
         
-        # Add control instructions
-        control_text = "Use ↑↓ keys or mouse to navigate • Enter/Space or click to select"
-        control_surface = self.info_font.render(control_text, True, self.colors['gray'])
-        self.screen.blit(control_surface, (WINDOW_WIDTH // 2 - control_surface.get_width() // 2, WINDOW_HEIGHT - 30))
+        # Add control instructions - split into two lines for better readability
+        control_line1 = "Use ↑↓ keys or mouse to navigate"
+        control_line2 = "Enter/Space or click to select"
+        
+        control_surface1 = self.info_font.render(control_line1, True, self.colors['gray'])
+        control_surface2 = self.info_font.render(control_line2, True, self.colors['gray'])
+        
+        # Center both lines
+        self.screen.blit(control_surface1, (WINDOW_WIDTH // 2 - control_surface1.get_width() // 2, WINDOW_HEIGHT - 40))
+        self.screen.blit(control_surface2, (WINDOW_WIDTH // 2 - control_surface2.get_width() // 2, WINDOW_HEIGHT - 20))
     
     def draw_difficulty_menu(self):
         """Draw the difficulty selection menu"""
@@ -722,8 +730,10 @@ class GameLauncher:
                 try:
                     if option == "Back":
                         if i == self.selected_option:
-                            # Draw background highlight
-                            highlight_rect = pygame.Rect(WINDOW_WIDTH // 2 - 60, 200 + i * 80 - 5, 120, 50)
+                            # Calculate text width for proper highlight sizing
+                            text_width = self.menu_font.size(option)[0]
+                            # Draw background highlight with proper width
+                            highlight_rect = pygame.Rect(WINDOW_WIDTH // 2 - text_width // 2 - 20, 200 + i * 80 - 5, text_width + 40, 50)
                             pygame.draw.rect(self.screen, (50, 50, 100), highlight_rect)
                             pygame.draw.rect(self.screen, self.colors['yellow'], highlight_rect, 2)
                             color = self.colors['yellow']
@@ -737,8 +747,10 @@ class GameLauncher:
                         if option.lower() == self.selected_difficulty:
                             color = self.colors['green']
                         elif i == self.selected_option:
-                            # Draw background highlight for selected option
-                            highlight_rect = pygame.Rect(WINDOW_WIDTH // 2 - 100, 200 + i * 80 - 5, 200, 50)
+                            # Calculate text width for proper highlight sizing
+                            text_width = self.menu_font.size(option)[0]
+                            # Draw background highlight for selected option with proper width
+                            highlight_rect = pygame.Rect(WINDOW_WIDTH // 2 - text_width // 2 - 20, 200 + i * 80 - 5, text_width + 40, 50)
                             pygame.draw.rect(self.screen, (50, 50, 100), highlight_rect)
                             pygame.draw.rect(self.screen, self.colors['yellow'], highlight_rect, 2)
                             color = self.colors['yellow']
@@ -777,15 +789,6 @@ class GameLauncher:
         self.screen.blit(title_text, (WINDOW_WIDTH // 2 - title_text.get_width() // 2, 100))
         
         for i, option in enumerate(self.settings_options):
-            if i == self.selected_option:
-                # Draw background highlight
-                highlight_rect = pygame.Rect(WINDOW_WIDTH // 2 - 150, 200 + i * 60 - 5, 300, 50)
-                pygame.draw.rect(self.screen, (50, 50, 100), highlight_rect)
-                pygame.draw.rect(self.screen, self.colors['yellow'], highlight_rect, 2)
-                color = self.colors['yellow']
-            else:
-                color = self.colors['white']
-            
             # Add status indicators
             if option == "Toggle Camera":
                 status = "ON" if self.camera_enabled else "OFF"
@@ -795,6 +798,17 @@ class GameLauncher:
                 display_text = f"{option}: {status}"
             else:
                 display_text = option
+            
+            if i == self.selected_option:
+                # Calculate text width for proper highlight sizing
+                text_width = self.menu_font.size(display_text)[0]
+                # Draw background highlight with proper width
+                highlight_rect = pygame.Rect(WINDOW_WIDTH // 2 - text_width // 2 - 20, 200 + i * 60 - 5, text_width + 40, 50)
+                pygame.draw.rect(self.screen, (50, 50, 100), highlight_rect)
+                pygame.draw.rect(self.screen, self.colors['yellow'], highlight_rect, 2)
+                color = self.colors['yellow']
+            else:
+                color = self.colors['white']
             
             text = self.menu_font.render(display_text, True, color)
             y = 200 + i * 60
