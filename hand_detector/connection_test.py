@@ -14,7 +14,7 @@ import argparse
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import hand gesture detection module and any relevant car module
-from hand_detector.gestures import HandGestureDetector
+from hand_detector.simple_detector import SimpleHandGestureDetector
 
 def parse_args():
     """Parse command line arguments for window size"""
@@ -33,7 +33,7 @@ def test_hand_gesture_controls():
     print("====================================")
     
     # Create hand gesture detector
-    detector = HandGestureDetector()
+    detector = SimpleHandGestureDetector()
     
     # Open camera
     cap = cv2.VideoCapture(0)
@@ -72,7 +72,7 @@ def test_hand_gesture_controls():
         
         # Detect gestures and convert to control values
         start_time = time.time()
-        controls, processed_frame = detector.detect_gestures(frame)
+        controls, processed_frame, data_panel = detector.detect_gestures(frame)
         processing_time = time.time() - start_time
         
         # Calculate FPS once

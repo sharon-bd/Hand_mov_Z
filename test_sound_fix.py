@@ -7,6 +7,8 @@ import sys
 import os
 import pygame
 import time
+import numpy as np
+import math
 
 # Add the current directory to Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -30,19 +32,18 @@ def test_basic_pygame_sound():
         # Test generating and playing a simple sound
         print("🔊 Generating test sound...")
         
-        import math
         duration = 2.0
         sample_rate = 22050
         frequency = 440  # A note
         samples = int(sample_rate * duration)
         
-        # Create sine wave
-        wave_array = []
+        # Create sine wave using numpy
+        wave_array = np.zeros((samples, 2), dtype=np.int16)
         for i in range(samples):
             time_point = float(i) / sample_rate
             amplitude = 0.3
             value = int(amplitude * 32767 * math.sin(2 * math.pi * frequency * time_point))
-            wave_array.append([value, value])  # Stereo
+            wave_array[i] = [value, value]  # Stereo
         
         # Create pygame sound
         sound = pygame.sndarray.make_sound(wave_array)
@@ -76,8 +77,9 @@ def test_game_sound_manager():
     
     try:
         # Import from the game folder
-        sys.path.insert(0, os.path.join(current_dir, 'game'))
-        from start_game import SoundManager
+        game_path = os.path.join(current_dir, 'game')
+        sys.path.insert(0, game_path)
+        from game.start_game import SoundManager
         
         print("✅ Successfully imported SoundManager")
         
