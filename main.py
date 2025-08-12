@@ -612,6 +612,12 @@ class GameLauncher:
         """Update game state"""
         pass
     
+    def _update_fps(self):
+        """Update FPS counter for debug display"""
+        if hasattr(self, 'debug_mode') and self.debug_mode:
+            frame_time = self.clock.get_time() / 1000.0  # Convert to seconds
+            self.debug_mode.update_performance(frame_time)
+    
     def draw(self):
         """Draw the current screen"""
         try:
