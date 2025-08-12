@@ -94,7 +94,7 @@ class MovingRoadGenerator:
                 'type': element_type
             })
         
-        # הוספת אובייקטים צבעוניים להמחשת תזוזה
+        # Add colorful objects to visualize movement
         for i in range(20):
             self.road_elements.append({
                 'x': self.screen_width / 2 - self.road_width / 2 - 60 + random.randint(-20, 20),
@@ -233,10 +233,10 @@ class MovingRoadGenerator:
 
     def draw(self, screen, world_offset_x=0, world_offset_y=0):
         """
-        ציור המסלול הנע על המסך
+        Draw the moving road on screen
         
         Args:
-            screen: משטח Pygame לציור
+            screen: Pygame surface for drawing
             world_offset_x: היסט בעולם בכיוון x
             world_offset_y: היסט בעולם בכיוון y
         """

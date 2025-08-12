@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 """
-מחולל כביש נע משופר - תומך בהיסט צידי של המכונית
+Enhanced moving road generator - supports lateral car offset
 
-מודול זה מממש רקע כביש נע עם סימוני נתיב בלבד.
+This module implements a moving road background with lane markings only.
 """
 
 import pygame
@@ -10,62 +10,62 @@ import math
 import random
 
 class MovingRoadGenerator:
-    """מחולל כביש נע עם תמיכה בהיסט צידי של המכונית"""
+    """Moving road generator with support for car lateral offset"""
     
     def __init__(self, screen_width, screen_height):
         """
-        אתחול מחולל הכביש הנע
+        Initialize the moving road generator
         
         Args:
-            screen_width: רוחב מסך המשחק
-            screen_height: גובה מסך המשחק
+            screen_width: Game screen width
+            screen_height: Game screen height
         """
         self.screen_width = screen_width
         self.screen_height = screen_height
         
-        # פרמטרי כביש
+        # Road parameters
         self.road_width = 300
         self.lane_width = 10
         self.lane_length = 50
         self.lane_gap = 20
         
-        # צבעים
+        # Colors
         self.road_color = (80, 80, 80)
         self.lane_color = (240, 240, 240)
         self.grass_color = (0, 100, 0)
         
-        # מצב גלילה
+        # Scroll state
         self.scroll_y = 0
         self.scroll_x = 0
         self.speed = 0.0
         
-        # === תמיכה בהיסט צידי חדש ===
-        self.car_road_offset = 0.0      # היסט המכונית מקו האמצע
-        self.road_visual_offset = 0.0   # היסט ויזואלי של הכביש
-        self.offset_smoothing = 0.15    # החלקת תנועת הכביש
+        # === New lateral offset support ===
+        self.car_road_offset = 0.0      # Car offset from centerline
+        self.road_visual_offset = 0.0   # Visual offset of the road
+        self.offset_smoothing = 0.15    # Road movement smoothing
         
-        print("✅ MovingRoadGenerator אותחל עם תמיכה בהיסט צידי")
+        print("✅ MovingRoadGenerator initialized with lateral offset support")
     
     def set_car_road_offset(self, offset):
         """
-        קביעת היסט המכונית מקו האמצע של הכביש
+        Set car offset from road centerline
         
         Args:
-            offset: היסט בפיקסלים (-150 עד +150)
+            offset: Offset in pixels (-150 to +150)
         """
         self.car_road_offset = offset
     
     def update(self, rotation, speed, dt, car_road_offset=None):
         """
-        עדכון מצב הכביש הנע עם תמיכה בהיסט צידי
+        Update moving road state with lateral offset support
         
         Args:
-            rotation: סיבוב המכונית במעלות
-            speed: מהירות מנורמלת של המכונית (0.0 עד 1.0)
-            dt: דלתא זמן בשניות
-            car_road_offset: היסט המכונית מקו האמצע (אופציונלי)
+            rotation: Car rotation in degrees
+            speed: Normalized car speed (0.0 to 1.0)
+            dt: Delta time in seconds
+            car_road_offset: Car offset from centerline (optional)
         """
-        # שמירת מהירות נוכחית
+        # Save current speed
         self.speed = speed
         
         # עדכון היסט המכונית אם סופק

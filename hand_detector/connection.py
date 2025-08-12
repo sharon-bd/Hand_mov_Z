@@ -10,7 +10,7 @@ import numpy as np
 import random
 
 class HandCarConnectionManager:
-    """מנהל חיבור בין מחוות היד למכונית"""
+    """Connection manager between hand gestures and car control"""
     
     def __init__(self, camera_index=0):
         """

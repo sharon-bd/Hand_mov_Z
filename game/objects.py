@@ -523,9 +523,9 @@ class ScoreManager:
             pass  # Silently fail if we can't save
 
     def update_obstacles(self):
-        """עדכון מכשולים - יותר קל לביצוע"""
+        """Update obstacles with simplified logic"""
         
-        # הוסף מכשולים בתדירות נמוכה יותר
+        # Add obstacles at lower frequency
         if random.random() < 0.01:  # במקום 0.02 - פחות מכשולים
             self.add_obstacle()
         

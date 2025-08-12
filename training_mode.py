@@ -837,22 +837,22 @@ class TrainingMode:
         self.screen.blit(camera_text, (20, 180))
 
     def cleanup(self):
-        """ניקוי משאבים לפני יציאה"""
-        print("ניקוי משאבים...")
+        """Clean up resources before exit"""
+        print("Cleaning up resources...")
 
-        # עצירת חוט המצלמה
+        # Stop camera thread
         if self.camera_thread is not None:
             self.camera_thread.stop()
 
-        # שחרור גלאי תנועות היד אם נדרש
+        # Release hand detector if needed
         if self.hand_detector and hasattr(self.hand_detector, 'release'):
             try:
                 self.hand_detector.release()
             except Exception as e:
-                print(f"שגיאה בשחרור גלאי תנועות היד: {e}")
+                print(f"Error releasing hand gesture detector: {e}")
 
-        # סגירת כל חלונות OpenCV
+        # Close all OpenCV windows
         cv2.destroyAllWindows()
 
-        # הערה: אין לסגור את pygame, כיוון שה-GameLauncher עשוי עדיין להשתמש בו
-        print("ניקוי הושלם.")
+        # Note: Don't close pygame as the GameLauncher might still be using it
+        print("Cleanup completed.")

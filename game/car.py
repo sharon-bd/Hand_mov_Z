@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-שיפור פיזיקת המכונית - המכונית מתרחקת ממרכז הכביש בזמן פנייה
+Enhanced car physics - car moves away from road center when turning
 """
 
 import math
@@ -10,89 +10,89 @@ import random
 
 class Car:
     """
-    מחלקת מכונית עם פיזיקה מתקדמת של פנייה
+    Car class with advanced turning physics
     """
     
     def __init__(self, x, y, width=40, height=80, screen_width=800, screen_height=600):
-        # מיקום ומימדים
-        self.x = x  # מיקום אמיתי בעולם
-        self.y = y  # מיקום אמיתי בעולם
-        self.screen_x = x  # תמיד במרכז המסך
-        self.screen_y = y  # תמיד במרכז המסך
+        # Position and dimensions
+        self.x = x  # Real world position
+        self.y = y  # Real world position
+        self.screen_x = x  # Always at center of screen
+        self.screen_y = y  # Always at center of screen
         self.width = width
         self.height = height
         
-        # פרמטרי תנועה
-        self.direction = 0.0  # -1.0 (שמאל) עד 1.0 (ימין)
-        self.speed = 1.0      # 0.0 עד 1.0
-        self.max_speed = 8.0  # מהירות מקסימלית בפיקסלים לפריים
+        # Movement parameters
+        self.direction = 0.0  # -1.0 (left) to 1.0 (right)
+        self.speed = 1.0      # 0.0 to 1.0
+        self.max_speed = 8.0  # Maximum speed in pixels per frame
         self.boost_multiplier = 1.5
         self.brake_deceleration = 0.4
         self.min_speed = 1.0
         
-        # === פרמטרי פנייה משופרים ===
-        self.steering_sensitivity = 2.0      # רגישות הגה (מוגברת)
-        self.max_steering_angle = 30         # זווית הגה מקסימלית
-        self.steering_return_factor = 0.08   # החזרה למרכז (מוחלשת)
-        self.max_turn_rate = 60              # מעלות לשנייה מקסימליות
-        self.steering_deadzone = 0.05        # אזור מת של ההגה (מוקטן)
+        # === Enhanced steering parameters ===
+        self.steering_sensitivity = 2.0      # Steering sensitivity (increased)
+        self.max_steering_angle = 30         # Maximum steering angle
+        self.steering_return_factor = 0.08   # Return to center (weakened)
+        self.max_turn_rate = 60              # Maximum degrees per second
+        self.steering_deadzone = 0.05        # Steering deadzone (reduced)
         
-        # === פיזיקת פנייה חדשה ===
-        self.lateral_velocity = 0.0          # מהירות צידית
-        self.lateral_acceleration = 0.0      # תאוצה צידית
-        self.centrifugal_force = 0.0         # כוח צנטריפוגלי
-        self.drift_factor = 0.15             # גורם החלקה בפנייה
-        self.lateral_friction = 0.85         # חיכוך צידי
+        # === New turning physics ===
+        self.lateral_velocity = 0.0          # Lateral velocity
+        self.lateral_acceleration = 0.0      # Lateral acceleration
+        self.centrifugal_force = 0.0         # Centrifugal force
+        self.drift_factor = 0.15             # Turning drift factor
+        self.lateral_friction = 0.85         # Lateral friction
         
-        # === היסט צידי מהכביש ===
-        self.road_offset = 0.0               # היסט מקו האמצע של הכביש
-        self.max_road_offset = 150           # מרחק מקסימלי מהכביש
-        self.offset_acceleration = 0.0       # תאוצת היסט
+        # === Lateral offset from road ===
+        self.road_offset = 0.0               # Offset from road centerline
+        self.max_road_offset = 150           # Maximum distance from road
+        self.offset_acceleration = 0.0       # Offset acceleration
         
-        # גבולות עולם
+        # World boundaries
         self.world_width = 2000
         self.world_height = 2000
         self.screen_width = screen_width
         self.screen_height = screen_height
         
-        # מצבי התנגשות
+        # Collision states
         self.collision_cooldown = 0
         self.collision_flash = False
         self.last_collision_time = 0
         self.is_colliding = False
         
-        # מצבים מיוחדים
+        # Special states
         self.boost_active = False
         self.braking = False
         
-        # מראה
+        # Appearance
         self.color = (50, 50, 200)
         self.show_indicators = True
         
-        # תכונות פיזיקליות
+        # Physical properties
         self.mass = 1000
         self.rotation = 0
         self.target_rotation = 0
         
-        # זיהוי התנגשויות
+        # Collision detection
         self.collision_points = []
         self.update_collision_points()
         
-        # תכונות נוספות
+        # Additional properties
         self.health = 100
         self.score = 0
         
-        # היסטוריה לאפקט שובל
+        # History for trail effect
         self.position_history = []
         self.max_history = 20
         
-        print("✅ מכונית אותחלה עם פיזיקת פנייה משופרת")
+        print("✅ Car initialized with enhanced turning physics")
     
     def update(self, controls, dt):
         """
-        עדכון מצב המכונית עם פיזיקת פנייה משופרת
+        Update car state with enhanced turning physics
         """
-        # מונה סטטי לדיבוג
+        # Static counter for debugging
         if not hasattr(Car, '_debug_counter'):
             Car._debug_counter = 0
             Car._debug_enabled = True

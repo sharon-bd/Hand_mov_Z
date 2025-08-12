@@ -16,42 +16,42 @@ def main():
     print("🎮 Starting Hand Gesture Car Control Game...")
     
     try:
-        # וודא שהמודולים הנדרשים קיימים
+        # Ensure required modules are available
         import pygame
         print("✅ Pygame imported successfully")
         
-        # נסה לייבא את המודולים נדרשים אחרים
+        # Try to import other required modules
         try:
             import cv2
             print("✅ OpenCV imported successfully")
         except ImportError:
             print("⚠️ OpenCV not found, camera functions will be disabled")
         
-        # נסה לייבא את התפריט הראשי החדש
+        # Try to import the main menu system
         try:
             print("🔄 Loading main menu system...")
             from main import main as start_main_menu
             print("✅ Main menu system imported successfully")
             
-            # הפעל את התפריט הראשי
+            # Start the main menu
             print("🚀 Starting main menu...")
             start_main_menu()
             
-        except ImportError as e:
-            print(f"❌ Main menu import error: {e}")
-            print("Trying to import GameLauncher directly...")
-            try:
+            except ImportError as e:
+                print(f"❌ Main menu import error: {e}")
+                print("Trying to import GameLauncher directly...")
+                try:
                 from main import GameLauncher
                 print("✅ GameLauncher imported successfully")
                 
-                # הפעל את המשחק
+                # Run the game
                 print("🚀 Launching game...")
                 game_launcher = GameLauncher()
                 game_launcher.run()
                 
             except ImportError as e2:
                 print(f"❌ GameLauncher import error: {e2}")
-                # כאמצעי אחרון - נסה להריץ את המשחק ישירות
+                # As last resort - try to run the game directly
                 print("Trying to run game directly as last resort...")
                 from game.start_game import run_game
                 run_game("normal")
