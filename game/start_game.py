@@ -1459,10 +1459,10 @@ class Game:
         # Exit button
         self.exit_button = Button(190, self.screen_height - 50, 80, 30, "Exit", ERROR, WHITE, self.exit_game)
         
-        # Menu system
-        self._show_main_menu = True
+        # Menu system - Start game directly if mode is provided
+        self._show_main_menu = False  # Don't show main menu when mode is pre-selected
         self._show_mode_selection = False
-        self._selected_mode = None
+        self._selected_mode = mode  # Use the provided mode
         
         self._create_mode_selection_buttons()
         
@@ -1923,6 +1923,24 @@ class Game:
         
         print(f"✅ Starting game in {self.mode} mode with camera follow")
         
+        # Display difficulty settings for user
+        mode_descriptions = {
+            "practice": "🔰 PRACTICE MODE: No obstacles, no time limit - Learn the controls!",
+            "easy": "🟢 EASY MODE: 4 minutes, slow obstacles, stationary turtles",
+            "normal": "🟡 NORMAL MODE: 3 minutes, medium obstacles",
+            "hard": "🔴 HARD MODE: 2 minutes, fast obstacles, high frequency",
+            "time_trial": "⚡ TIME TRIAL: 1 minute, maximum challenge!"
+        }
+        
+        print(f"🎯 {mode_descriptions.get(self.mode, 'Unknown mode')}")
+        print(f"⏱️ Time limit: {self._game_duration} seconds")
+        print(f"🐢 Obstacle speed: {self.settings['obstacle_speed']}")
+        print(f"📊 Score multiplier: {self.settings['score_multiplier']}x")
+        print(f"🚀 Starting game immediately - no additional menu needed!")
+        
+        # Start the main game timer
+        self._start_time = time.time()
+        
         try:
             while self.running:
                 current_time = time.time()
@@ -1943,7 +1961,8 @@ class Game:
                                 self._back_to_main_menu()
                                 self._reset_game_state()
                             else:
-                                self.toggle_pause()
+                                # ESC במשחק פועל כמו כפתור EXIT
+                                self.exit_game()
                         elif event.key == pygame.K_p and not self._show_main_menu and not self._show_mode_selection:
                             self.toggle_pause()
                         elif event.key == pygame.K_m and not self._show_main_menu and not self._show_mode_selection:

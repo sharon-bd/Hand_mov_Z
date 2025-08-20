@@ -37,10 +37,10 @@ def main():
             print("🚀 Starting main menu...")
             start_main_menu()
             
-            except ImportError as e:
-                print(f"❌ Main menu import error: {e}")
-                print("Trying to import GameLauncher directly...")
-                try:
+        except ImportError as e:
+            print(f"❌ Main menu import error: {e}")
+            print("Trying to import GameLauncher directly...")
+            try:
                 from main import GameLauncher
                 print("✅ GameLauncher imported successfully")
                 
