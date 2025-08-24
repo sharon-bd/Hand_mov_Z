@@ -192,9 +192,11 @@ class GameLauncher:
         ]
         
         self.difficulty_options = [
+            "Practice",
             "Easy",
             "Normal", 
             "Hard",
+            "Time Trial",
             "Back"
         ]
         
@@ -264,10 +266,16 @@ class GameLauncher:
                         self._last_debug_option != self.selected_option):
                         if self.current_menu != "main":
                             print(f"DEBUG: Menu changed to: {self.current_menu}, Selected option: {self.selected_option}")
+                        # Update last debug values to prevent infinite loop
+                        self._last_debug_menu = self.current_menu
+                        self._last_debug_option = self.selected_option
                 else:
                     # First time initialization
                     if self.current_menu != "main":
                         print(f"DEBUG: Initial menu state: {self.current_menu}, Selected option: {self.selected_option}")
+                    # Initialize last debug values
+                    self._last_debug_menu = self.current_menu
+                    self._last_debug_option = self.selected_option
                 
                 # Update frame performance data
                 frame_time = time.time() - frame_start
@@ -476,8 +484,17 @@ class GameLauncher:
             # Reset debug flag when leaving difficulty menu
             self._difficulty_menu_drawn = False
         else:
+            # Convert display names to internal mode names
+            difficulty_mapping = {
+                "Practice": "practice",
+                "Easy": "easy", 
+                "Normal": "normal",
+                "Hard": "hard",
+                "Time Trial": "time_trial"
+            }
+            
             # Set the difficulty, stay in difficulty menu to show the change
-            self.selected_difficulty = option.lower()
+            self.selected_difficulty = difficulty_mapping.get(option, option.lower())
             self.logger.info(f"Difficulty set to: {self.selected_difficulty}")
             print(f"DEBUG: Difficulty changed to: {self.selected_difficulty}")
             # Don't change menu, just show the updated difficulty setting

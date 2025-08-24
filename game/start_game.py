@@ -1399,9 +1399,9 @@ class Game:
         # Game timing
         self._start_time = 0
         self._elapsed_time = 0
-        self._game_duration = self.settings["time_limit"]
-        self._time_remaining = self._game_duration
-        self.time_left = self._game_duration
+        self._game_duration = self.settings["time_limit"] if self.settings["time_limit"] > 0 else float('inf')
+        self._time_remaining = self._game_duration if self._game_duration != float('inf') else 0
+        self.time_left = self._time_remaining
         
         # Score and distance
         self._score = 0
@@ -1747,7 +1747,10 @@ class Game:
                 logger.info("Game over: Time's up")
                 return
         
-        if self._elapsed_time >= self._game_duration and not self._game_completed:
+        # Only check game duration if there's a time limit (not in practice mode)
+        if (self.settings["time_limit"] > 0 and 
+            self._elapsed_time >= self._game_duration and 
+            not self._game_completed):
             self._game_completed = True
             print(f"Game completed! Final score: {int(self._score or 0)}")
         
@@ -2008,9 +2011,9 @@ class Game:
         self._start_time = 0
         self._elapsed_time = 0
         current_mode_settings = GAME_MODES.get(self.mode, GAME_MODES["normal"])
-        self._game_duration = current_mode_settings["time_limit"]
-        self._time_remaining = self._game_duration
-        self.time_left = self._game_duration
+        self._game_duration = current_mode_settings["time_limit"] if current_mode_settings["time_limit"] > 0 else float('inf')
+        self._time_remaining = self._game_duration if self._game_duration != float('inf') else 0
+        self.time_left = self._time_remaining
         self._score = 0
         self._distance_traveled = 0
         self._obstacles.clear()
