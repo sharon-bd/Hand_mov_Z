@@ -740,11 +740,13 @@ class GameLauncher:
             title_text = self.menu_font.render("Select Difficulty", True, self.colors['white'])
             self.screen.blit(title_text, (WINDOW_WIDTH // 2 - title_text.get_width() // 2, 100))
             
-            # Difficulty descriptions
+            # Difficulty descriptions - shortened to prevent overlap
             descriptions = {
-                "Easy": "Longer time, fewer obstacles",
-                "Normal": "Balanced gameplay",
-                "Hard": "Shorter time, more obstacles"
+                "Practice": "No obstacles, no time limit",
+                "Easy": "4 minutes, slow obstacles",
+                "Normal": "3 minutes, balanced gameplay", 
+                "Hard": "2 minutes, fast obstacles",
+                "Time Trial": "1 minute, maximum challenge"
             }
             
             for i, option in enumerate(self.difficulty_options):
@@ -754,27 +756,27 @@ class GameLauncher:
                             # Calculate text width for proper highlight sizing
                             text_width = self.menu_font.size(option)[0]
                             # Draw background highlight with proper width
-                            highlight_rect = pygame.Rect(WINDOW_WIDTH // 2 - text_width // 2 - 20, 200 + i * 80 - 5, text_width + 40, 50)
+                            highlight_rect = pygame.Rect(WINDOW_WIDTH // 2 - text_width // 2 - 20, 200 + i * 140 - 5, text_width + 40, 50)
                             pygame.draw.rect(self.screen, (50, 50, 100), highlight_rect)
                             pygame.draw.rect(self.screen, self.colors['yellow'], highlight_rect, 2)
                             color = self.colors['yellow']
                         else:
                             color = self.colors['white']
                         text = self.menu_font.render(option, True, color)
-                        y = 200 + i * 80
+                        y = 200 + i * 140  # Increased spacing to match other options
                         self.screen.blit(text, (WINDOW_WIDTH // 2 - text.get_width() // 2, y))
                     else:
                         # Highlight current difficulty
                         if option.lower() == self.selected_difficulty:
-                            # Current difficulty - show in green with special marking
+                            # Current difficulty - show in green without extra symbols
                             color = self.colors['green']
-                            display_text = f"★ {option} ★ (Current)"
+                            display_text = f"{option} (Current)"
                         elif i == self.selected_option:
                             # Calculate text width for proper highlight sizing
                             display_text = option
                             text_width = self.menu_font.size(display_text)[0]
                             # Draw background highlight for selected option with proper width
-                            highlight_rect = pygame.Rect(WINDOW_WIDTH // 2 - text_width // 2 - 20, 200 + i * 80 - 5, text_width + 40, 50)
+                            highlight_rect = pygame.Rect(WINDOW_WIDTH // 2 - text_width // 2 - 20, 200 + i * 140 - 5, text_width + 40, 50)
                             pygame.draw.rect(self.screen, (50, 50, 100), highlight_rect)
                             pygame.draw.rect(self.screen, self.colors['yellow'], highlight_rect, 2)
                             color = self.colors['yellow']
@@ -783,7 +785,7 @@ class GameLauncher:
                             display_text = option
                         
                         text = self.menu_font.render(display_text, True, color)
-                        y = 200 + i * 80
+                        y = 200 + i * 140  # Increased spacing to 140 to ensure no overlap
                         self.screen.blit(text, (WINDOW_WIDTH // 2 - text.get_width() // 2, y))
                         
                         # Description
@@ -796,7 +798,7 @@ class GameLauncher:
                     continue
             
             # Add helpful instructions
-            instruction_text = "Select difficulty level • Current choice marked with ★"
+            instruction_text = "Select difficulty level • Current choice shown in green"
             instruction_surface = self.info_font.render(instruction_text, True, self.colors['light_blue'])
             self.screen.blit(instruction_surface, (WINDOW_WIDTH // 2 - instruction_surface.get_width() // 2, WINDOW_HEIGHT - 60))
             
