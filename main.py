@@ -308,7 +308,7 @@ class GameLauncher:
                     if event.key == pygame.K_F1:
                         self.debug_mode_enabled = not self.debug_mode_enabled
                         self.debug_mode.enabled = self.debug_mode_enabled
-                        self.debug_mode.toggle()
+                        print(f"Debug mode: {'ON' if self.debug_mode_enabled else 'OFF'}")
                     
                     elif event.key == pygame.K_ESCAPE:
                         print(f"DEBUG: ESC pressed in menu: {self.current_menu}")
