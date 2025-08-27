@@ -390,8 +390,8 @@ class GameLauncher:
             item_spacing = 60
         elif self.current_menu == "difficulty":
             options = self.difficulty_options
-            start_y = 200
-            item_spacing = 80  # Different spacing for difficulty menu
+            start_y = 90  # Updated to match new menu position
+            item_spacing = 60  # Updated to match new spacing
         elif self.current_menu == "settings":
             options = self.settings_options
             start_y = 200
@@ -738,15 +738,15 @@ class GameLauncher:
         """Draw the difficulty selection menu"""
         try:
             title_text = self.menu_font.render("Select Difficulty", True, self.colors['white'])
-            self.screen.blit(title_text, (WINDOW_WIDTH // 2 - title_text.get_width() // 2, 100))
+            self.screen.blit(title_text, (WINDOW_WIDTH // 2 - title_text.get_width() // 2, 50))
             
             # Difficulty descriptions - shortened to prevent overlap
             descriptions = {
-                "Practice": "No obstacles, no time limit",
-                "Easy": "4 minutes, slow obstacles",
-                "Normal": "3 minutes, balanced gameplay", 
-                "Hard": "2 minutes, fast obstacles",
-                "Time Trial": "1 minute, maximum challenge"
+                "Practice": "No time limit",
+                "Easy": "4 min, slow",
+                "Normal": "3 min, balanced", 
+                "Hard": "2 min, fast",
+                "Time Trial": "1 min, challenge"
             }
             
             for i, option in enumerate(self.difficulty_options):
@@ -756,14 +756,14 @@ class GameLauncher:
                             # Calculate text width for proper highlight sizing
                             text_width = self.menu_font.size(option)[0]
                             # Draw background highlight with proper width
-                            highlight_rect = pygame.Rect(WINDOW_WIDTH // 2 - text_width // 2 - 20, 200 + i * 140 - 5, text_width + 40, 50)
+                            highlight_rect = pygame.Rect(WINDOW_WIDTH // 2 - text_width // 2 - 20, 90 + i * 60 - 5, text_width + 40, 35)
                             pygame.draw.rect(self.screen, (50, 50, 100), highlight_rect)
                             pygame.draw.rect(self.screen, self.colors['yellow'], highlight_rect, 2)
                             color = self.colors['yellow']
                         else:
                             color = self.colors['white']
                         text = self.menu_font.render(option, True, color)
-                        y = 200 + i * 140  # Increased spacing to match other options
+                        y = 90 + i * 60  # Reduced spacing to 60 pixels - no descriptions needed
                         self.screen.blit(text, (WINDOW_WIDTH // 2 - text.get_width() // 2, y))
                     else:
                         # Highlight current difficulty
@@ -776,7 +776,7 @@ class GameLauncher:
                             display_text = option
                             text_width = self.menu_font.size(display_text)[0]
                             # Draw background highlight for selected option with proper width
-                            highlight_rect = pygame.Rect(WINDOW_WIDTH // 2 - text_width // 2 - 20, 200 + i * 140 - 5, text_width + 40, 50)
+                            highlight_rect = pygame.Rect(WINDOW_WIDTH // 2 - text_width // 2 - 20, 90 + i * 60 - 5, text_width + 40, 35)
                             pygame.draw.rect(self.screen, (50, 50, 100), highlight_rect)
                             pygame.draw.rect(self.screen, self.colors['yellow'], highlight_rect, 2)
                             color = self.colors['yellow']
@@ -785,13 +785,10 @@ class GameLauncher:
                             display_text = option
                         
                         text = self.menu_font.render(display_text, True, color)
-                        y = 200 + i * 140  # Increased spacing to 140 to ensure no overlap
+                        y = 90 + i * 60  # Reduced spacing to 60 pixels - no descriptions needed
                         self.screen.blit(text, (WINDOW_WIDTH // 2 - text.get_width() // 2, y))
                         
-                        # Description
-                        if option in descriptions:
-                            desc_text = self.info_font.render(descriptions[option], True, self.colors['gray'])
-                            self.screen.blit(desc_text, (WINDOW_WIDTH // 2 - desc_text.get_width() // 2, y + 35))
+                        # Removed descriptions to save space and prevent overlap
                 except Exception as e:
                     print(f"Error drawing difficulty option {i}: {e}")
                     # Continue with next option
