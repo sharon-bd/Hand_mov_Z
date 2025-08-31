@@ -1,191 +1,191 @@
-# 🎮 מערכת בקרת רכב באמצעות מחוות יד - Hand Gesture Control
+# 🎮 Hand Gesture Vehicle Control System - Hand Gesture Control
 
-## 📁 מבנה הפרויקט
+## 📁 Project Structure
 ```
 Hand_mov_Z/
-├── 📝 debug_logs/           # יומני דיבאג
-├── 🌐 env/                 # סביבה וירטואלית (Python packages)
-├── 🔊 sounds/              # קבצי צליל (אופציונלי - נוצר צלילים פרוצדורליים אם לא קיימים)
+├── 📝 debug_logs/           # Debug logs
+├── 🌐 env/                 # Virtual environment (Python packages)
+├── 🔊 sounds/              # Sound files (optional - creates procedural sounds if not present)
 │
-├── 🚀 main.py              # נקודת כניסה ראשית (כולל תפריט)
-├── 🏃 run.py               # נקודת כניסה חלופית
-├── 🏋️ training_mode.py     # מצב אימון
-├── 📋 requirements.txt     # רשימת תלויות
-├── ⚙️ config.py            # הגדרות מערכת
-├── 🐛 debug_config.py      # הגדרות דיבאג
-└── 🧪 test_game_sound.py   # בדיקת מערכת הקול
+├── 🚀 main.py              # Main entry point (includes menu)
+├── 🏃 run.py               # Alternative entry point
+├── 🏋️ training_mode.py     # Training mode
+├── 📋 requirements.txt     # Dependencies list
+├── ⚙️ config.py            # System configuration
+├── 🐛 debug_config.py      # Debug configuration
+└── 🧪 test_game_sound.py   # Sound system test
 ```
 
-## 📋 תיאור הפרויקט
-פרויקט סופי של קורס Full Stack Python - מערכת חדשנית המאפשרת שליטה על משחק מכוניות באמצעות מחוות יד בזמן אמת. המערכת משתמשת במצלמת רשת לזיהוי תנועות היד ומתרגמת אותן לפקודות שליטה על המכונית במשחק.
+## 📋 Project Description
+Final project for Full Stack Python course - An innovative system that allows controlling a car game using real-time hand gestures. The system uses a webcam to detect hand movements and translates them into car control commands in the game.
 
-## 🎯 מטרת הפרויקט
-יצירת ממשק משתמש טבעי ואינטואיטיבי למשחקי מחשב, תוך שימוש בטכנולוגיות ראייה ממוחשבת ולמידת מכונה, כחלק מפרויקט הגמר בקורס Full Stack Python.
+## 🎯 Project Goal
+Creating a natural and intuitive user interface for computer games, using computer vision and machine learning technologies, as part of the graduation project in the Full Stack Python course.
 
-## 🛠️ טכנולוגיות
+## 🛠️ Technologies
 
 ### Backend & Core Logic
-- **Python 3.8+** - שפת התכנות הראשית (מומלץ 3.8-3.12)
-- **OpenCV** - עיבוד תמונה וקריאת וידאו מהמצלמה
-- **MediaPipe** - זיהוי וטרקינג של כף היד ונקודות ציון
-- **NumPy** - חישובים מתמטיים ועיבוד מערכים
+- **Python 3.8+** - Main programming language (recommended 3.8-3.12)
+- **OpenCV** - Image processing and video capture from camera
+- **MediaPipe** - Hand detection and tracking of landmarks
+- **NumPy** - Mathematical calculations and array processing
 
 ### Frontend & UI
-- **Pygame** - מנוע המשחק וממשק המשתמש
-- **OpenCV UI** - חלונות נוספים להצגת נתונים
+- **Pygame** - Game engine and user interface
+- **OpenCV UI** - Additional windows for data display
 
-### תכונות Full Stack Python
-- **ארכיטקטורת מודולרית** - הפרדה בין לוגיקה, תצוגה ובקרה
-- **Multi-threading** - עיבוד מקבילי למצלמה ומשחק
-- **Real-time Processing** - עיבוד נתונים בזמן אמת
-- **Modular Design** - מבנה מודולרי עם חבילות נפרדות
+### Full Stack Python Features
+- **Modular Architecture** - Separation between logic, view, and control
+- **Multi-threading** - Parallel processing for camera and game
+- **Real-time Processing** - Real-time data processing
+- **Modular Design** - Modular structure with separate packages
 
-## 📂 מבנה הפרויקט
+## 📂 Project Structure
 ```
 Hand_mov_Z/
 │
-├── 🎮 game/                      # מודול המשחק הראשי
+├── 🎮 game/                      # Main game module
 │   ├── __init__.py
-│   ├── start_game.py            # לוגיקת המשחק הראשית
-│   ├── car.py                   # מחלקת המכונית עם פיזיקה מתקדמת
-│   ├── moving_road.py           # מערכת כביש נע דינמי
-│   ├── audio_manager.py         # מנהל סאונד פרוצדורלי
-│   ├── camera_manager.py        # ניהול מצלמות
-│   ├── obstacle.py              # מכשולים במשחק
-│   ├── objects.py               # אובייקטים נוספים במשחק
-│   ├── physics.py               # מנוע פיזיקה
-│   ├── renderer.py              # מנוע רינדור
-│   └── road_generator.py        # מחולל כבישים
+│   ├── start_game.py            # Main game logic
+│   ├── car.py                   # Car class with advanced physics
+│   ├── moving_road.py           # Dynamic moving road system
+│   ├── audio_manager.py         # Procedural sound manager
+│   ├── camera_manager.py        # Camera management
+│   ├── obstacle.py              # Game obstacles
+│   ├── objects.py               # Additional game objects
+│   ├── physics.py               # Physics engine
+│   ├── renderer.py              # Rendering engine
+│   └── road_generator.py        # Road generator
 │
-├── 🤚 hand_detector/             # מודול זיהוי מחוות
+├── 🤚 hand_detector/             # Gesture detection module
 │   ├── __init__.py
-│   ├── connection.py            # חיבור בין מחוות לשליטה
-│   ├── connection_test.py       # בדיקת תקשורת מחוות-שליטה
-│   ├── improved_hand_gesture_detector.py  # גרסה משופרת
-│   ├── simple_detector.py       # גלאי מחוות פשוט
-│   ├── simple_hand_gesture_detector.py   # גרסה פשוטה
-│   ├── tracking.py              # מעקב אחר תנועת היד
-│   ├── main.py                  # הפעלה עצמאית של המודול
-│   └── run.py                   # הפעלה מהירה של המודול
+│   ├── connection.py            # Connection between gestures and control
+│   ├── connection_test.py       # Gesture-control communication test
+│   ├── improved_hand_gesture_detector.py  # Improved version
+│   ├── simple_detector.py       # Simple gesture detector
+│   ├── simple_hand_gesture_detector.py   # Simple version
+│   ├── tracking.py              # Hand movement tracking
+│   ├── main.py                  # Standalone module execution
+│   └── run.py                   # Quick module execution
 │
-├── 📝 debug_logs/               # יומני דיבאג
+├── 📝 debug_logs/               # Debug logs
 │
-├── 🚀 main.py                    # נקודת הכניסה הראשית עם תפריט
-├── 🏃 run.py                     # נקודת כניסה חלופית
-├── 🏋️ training_mode.py          # מצב אימון
-├── 📋 requirements.txt          # רשימת תלויות
-├── ⚙️ config.py                 # הגדרות המערכת
-├── 🐛 debug_config.py           # הגדרות דיבאג
-└── 🧪 test_game_sound.py        # בדיקת מערכת הקול
+├── 🚀 main.py                    # Main entry point with menu
+├── 🏃 run.py                     # Alternative entry point
+├── 🏋️ training_mode.py          # Training mode
+├── 📋 requirements.txt          # Dependencies list
+├── ⚙️ config.py                 # System configuration
+├── 🐛 debug_config.py           # Debug configuration
+└── 🧪 test_game_sound.py        # Sound system test
 ```
 
-## 🚀 דרכי הפעלה
+## 🚀 Launch Methods
 
-המערכת מציעה שתי דרכי הפעלה שונות:
+The system offers two different launch methods:
 
-### 📋 `python main.py` - הפעלה עם תפריט מלא
+### 📋 `python main.py` - Launch with full menu
 ```bash
 python main.py
 ```
-**מה זה עושה:**
-- פותח תפריט ראשי אינטראקטיבי
-- מאפשר בחירת רמת קושי (Easy/Normal/Hard)
-- הגדרות מצלמה ודיבאג
-- הוראות שימוש מפורטות
-- **מומלץ למשתמשים חדשים**
+**What it does:**
+- Opens interactive main menu
+- Allows difficulty selection (Easy/Normal/Hard)
+- Camera and debug settings
+- Detailed usage instructions
+- **Recommended for new users**
 
-### ⚡ `python run.py` - הפעלה מהירה
+### ⚡ `python run.py` - Quick launch
 ```bash
 python run.py
 ```
-**מה זה עושה:**
-- מאתחל את המערכת ישירות
-- מבצע בדיקות תלויות אוטומטיות
-- מפעיל את התפריט הראשי (כמו main.py)
-- **מומלץ למפתחים ומשתמשים מתקדמים**
+**What it does:**
+- Initializes the system directly
+- Performs automatic dependency checks
+- Launches the main menu (like main.py)
+- **Recommended for developers and advanced users**
 
-**ההבדל העיקרי:**
-`run.py` כולל בדיקות מערכת נוספות ומתאים למפתחים, בעוד `main.py` הוא נקודת הכניסה הסטנדרטית למשתמש הסופי.
+**Main difference:**
+`run.py` includes additional system checks and is suitable for developers, while `main.py` is the standard entry point for end users.
 
-## 🎮 מחוות יד נתמכות
+## 🎮 Supported Hand Gestures
 
-### מחוות בסיסיות
-| מחווה | פעולה | תיאור |
-|-------|--------|--------|
-| 👋 כף יד פתוחה (5 אצבעות) | עצירה/בלימה | פורשים את כל האצבעות |
-| 👍 אגודל למעלה | האצה מקסימלית | אגודל מורם, שאר האצבעות סגורות |
-  הטיית יד | היגוי | הטיה שמאלה/ימינה לפנייה |
-| ↕️ גובה היד | מהירות | למעלה = מהיר, למטה = איטי |
+### Basic Gestures
+| Gesture | Action | Description |
+|---------|--------|-------------|
+| 👋 Open palm (5 fingers) | Stop/Brake | Spread all fingers |
+| 👍 Thumbs up | Maximum acceleration | Thumb up, other fingers closed |
+| Hand tilt | Steering | Tilt left/right for turning |
+| ↕️ Hand height | Speed | Up = fast, down = slow |
 
-### מחוות מתקדמות
-- **זווית האגודל** - שליטה מדויקת בהיגוי (0° = ישר, ±90° = פנייה מלאה)
-- **מרחק אצבעות** - עוצמת הפקודה
+### Advanced Gestures
+- **Thumb angle** - Precise steering control (0° = straight, ±90° = full turn)
+- **Finger distance** - Command intensity
 
-## 🚗 פיזיקת הרכב
+## 🚗 Vehicle Physics
 
-### מערכת פיזיקה ריאליסטית
-- **תנועה כיוונית מדויקת** - הרכב נע בדיוק בכיוון שאליו הוא פונה
-- **השפעת מהירות על פנייה** - במהירות גבוהה הפניות פחות חדות
-- **כוח צנטריפוגלי** - הרכב נדחף החוצה בפניות
-- **חזרה אוטומטית למרכז** - כשנוסעים ישר, הרכב חוזר למרכז הכביש
+### Realistic Physics System
+- **Accurate directional movement** - Vehicle moves exactly in the direction it's facing
+- **Speed effect on turning** - At high speeds, turns are less sharp
+- **Centrifugal force** - Vehicle is pushed outward in turns
+- **Automatic center return** - When driving straight, vehicle returns to road center
 
-## 🎯 מצבי משחק
+## 🎯 Game Modes
 
-### 1. Practice Mode - מצב תרגול
-- ללא מכשולים
-- ללא הגבלת זמן
-- מכפיל ניקוד: x0.5
-- אידיאלי ללמידת השליטה
+### 1. Practice Mode
+- No obstacles
+- No time limit
+- Score multiplier: x0.5
+- Ideal for learning controls
 
-### 2. Easy Mode - קל
-- מכשולים מעטים ואיטיים
-- ללא הגבלת זמן
-- מכפיל ניקוד: x1.0
+### 2. Easy Mode
+- Few and slow obstacles
+- No time limit
+- Score multiplier: x1.0
 
-### 3. Normal Mode - רגיל
-- איזון סטנדרטי
-- ללא הגבלת זמן
-- מכפיל ניקוד: x1.5
+### 3. Normal Mode
+- Standard balance
+- No time limit
+- Score multiplier: x1.5
 
-### 4. Hard Mode - קשה
-- מכשולים רבים ומהירים
-- ללא הגבלת זמן
-- מכפיל ניקוד: x2.0
+### 4. Hard Mode
+- Many fast obstacles
+- No time limit
+- Score multiplier: x2.0
 
-### 5. Time Trial - מרוץ נגד הזמן
-- 2 דקות בלבד
-- מכשולים מהירים
-- מכפיל ניקוד: x2.5
+### 5. Time Trial - Race against time
+- 2 minutes only
+- Fast obstacles
+- Score multiplier: x2.5
 
-## 💻 דרישות מערכת
+## 💻 System Requirements
 
-### חומרה
-- **מצלמת רשת** (מומלץ 720p ומעלה)
-- **מעבד:** Intel i3 / AMD Ryzen 3 ומעלה (מומלץ i5/Ryzen 5)
-- **זיכרון RAM:** 4GB מינימום (מומלץ 8GB)
-- **כרטיס מסך** התומך ב-OpenGL
+### Hardware
+- **Webcam** (720p and above recommended)
+- **Processor:** Intel i3 / AMD Ryzen 3 and above (i5/Ryzen 5 recommended)
+- **RAM Memory:** 4GB minimum (8GB recommended)
+- **Graphics card** supporting OpenGL
 
-### תוכנה
-- **מערכת הפעלה:** Windows 10/11, macOS 10.14+, או Linux Ubuntu 18.04+
-- **Python** 3.8-3.12 (נבדק עם Python 3.8, 3.9, 3.10, 3.11, 3.12)
-- **pip** לניהול חבילות
-- **מצלמה** עם דרייברים מעודכנים
+### Software
+- **Operating System:** Windows 10/11, macOS 10.14+, or Linux Ubuntu 18.04+
+- **Python** 3.8-3.12 (tested with Python 3.8, 3.9, 3.10, 3.11, 3.12)
+- **pip** for package management
+- **Camera** with updated drivers
 
-## 🔧 התקנה והפעלה
+## 🔧 Installation and Setup
 
-### 1. בדיקת דרישות מערכת
+### 1. Check system requirements
 ```bash
-python --version  # ודא שגרסת Python היא 3.8+
-pip --version     # ודא ש-pip מותקן
+python --version  # Ensure Python version is 3.8+
+pip --version     # Ensure pip is installed
 ```
 
-### 2. שיבוט הפרויקט
+### 2. Clone the project
 ```bash
 git clone https://github.com/sharon-bd/Hand_mov_Z.git
 cd Hand_mov_Z
 ```
 
-### 3. יצירת סביבה וירטואלית
+### 3. Create virtual environment
 ```bash
 python -m venv env
 
@@ -196,203 +196,242 @@ env\Scripts\activate
 source env/bin/activate
 ```
 
-### 4. התקנת תלויות
+### 4. Install dependencies
 ```bash
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### 5. בדיקת המערכת
+### 5. System check
 ```bash
-# בדיקת מערכת הקול
+# Sound system test
 python test_game_sound.py
 
-# בדיקת חיבור מחוות יד (אופציונלי)
+# Hand gesture connection test (optional)
 python hand_detector/connection_test.py
 ```
 
-### 6. הפעלת המשחק
+### 6. Launch the game
 
-**הפעלה רגילה (מומלץ):**
+**Regular launch (recommended):**
 ```bash
 python main.py
 ```
 
-**הפעלה מהירה:**
+**Quick launch:**
 ```bash
 python run.py
 ```
 
-## 🎮 הוראות משחק
+## 🎮 Game Instructions
 
-### בקרות מקלדת (גיבוי)
-- **חצים / WASD** - תנועה
-- **רווח** - האצה
-- **ESC** - השהייה/יציאה
-- **P** - השהייה (משתיק סאונד אוטומטית)
-- **M** - השתקה/ביטול השתקה
-- **H** - עזרה
-- **F1** - מצב דיבאג
+### Keyboard controls (backup)
+- **Arrows / WASD** - Movement
+- **Space** - Acceleration
+- **ESC** - Pause/Exit
+- **P** - Pause (automatically mutes sound)
+- **M** - Mute/Unmute
+- **H** - Help
+- **F1** - Debug mode
 
-### טיפים למשחק
-- **כיול ראשוני** - וודאו שהיד נראית במלואה במצלמה
-- **תאורה טובה** - חשוב לתאורה אחידה ללא צללים
-- **רקע נקי** - רקע אחיד משפר את הזיהוי
-- **תנועות החלטיות** - תנועות ברורות וחדות נותנות תוצאות טובות
+### Game Tips
+- **Initial calibration** - Ensure hand is fully visible in camera
+- **Good lighting** - Important for even lighting without shadows
+- **Clean background** - Uniform background improves detection
+- **Decisive movements** - Clear and sharp movements give better results
 
-## 🔊 מערכת סאונד דינמית
+## 🔊 Dynamic Sound System
 
-### סאונד פרוצדורלי (יוצר צלילים בזמן אמת)
-המערכת **לא דורשת קבצי צליל חיצוניים** - היא יוצרת את כל הצלילים בקוד!
+### Procedural Sound (creates sounds in real-time)
+The system **does not require external sound files** - it creates all sounds in code!
 
-**איך זה עובד:**
-- אם אין קבצי .wav בתיקיית `sounds/` - המערכת יוצרת צלילים מלאכותיים
-- צלילים נוצרים באמצעות גלי סינוס וקוסינוס בתדרים שונים
-- כל צליל מותאם לפעולה הספציפית
+**How it works:**
+- If there are no .wav files in the `sounds/` folder - the system creates artificial sounds
+- Sounds are created using sine and cosine waves at different frequencies
+- Each sound is adapted to the specific action
 
-### סוגי צלילים שנוצרים:
-- **צליל מנוע** - משתנה לפי מהירות (תדר 80-200 Hz)
-- **אפקטי בוסט** - צליל עלייה בתדר (200-800 Hz)
-- **התנגשויות** - רעש לבן עם דעיכה מהירה
-- **צלילי תפריט** - טונים קצרים להקלקות
-- **מערכת 3D** - צלילים משתנים לפי מיקום במשחק
+### Types of sounds created:
+- **Engine sound** - Changes according to speed (frequency 80-200 Hz)
+- **Boost effects** - Rising frequency sound (200-800 Hz)
+- **Collisions** - White noise with fast decay
+- **Menu sounds** - Short tones for clicks
+- **3D system** - Sounds change according to position in game
 
-### יתרונות הסאונד הפרוצדורלי:
-✅ **אין תלות בקבצי חוץ** - המשחק עובד מיד ללא קבצי מדיה  
-✅ **גודל קובץ קטן** - אין צורך לשמור קבצי .wav גדולים  
-✅ **התאמה דינמית** - הצלילים משתנים לפי המצב במשחק  
-✅ **איכות עקבית** - לא תלוי באיכות הקלטות חיצוניות
+### Procedural sound advantages:
+✅ **No dependency on external files** - Game works immediately without media files  
+✅ **Small file size** - No need to store large .wav files  
+✅ **Dynamic adaptation** - Sounds change according to game state  
+✅ **Consistent quality** - Not dependent on external recording quality
 
-## 🐛 פתרון בעיות נפוצות
+## 🐛 Common Troubleshooting
 
-### שגיאות התקנה
+### Installation errors
 ```bash
-# אם יש בעיה עם MediaPipe
+# If there's a problem with MediaPipe
 pip install --upgrade mediapipe
 
-# אם יש בעיה עם OpenCV
+# If there's a problem with OpenCV
 pip install opencv-python
 
-# אם יש בעיה עם Pygame
+# If there's a problem with Pygame
 pip install pygame
 
-# התקנה מחדש של כל החבילות
+# Reinstall all packages
 pip uninstall -r requirements.txt -y
 pip install -r requirements.txt
 ```
 
-### המצלמה לא נמצאת
-- בדקו שהמצלמה מחוברת ופועלת
-- סגרו תוכנות אחרות שעלולות להשתמש במצלמה
-- נסו להריץ במצב סימולציה (ללא מצלמה)
-- בדקו הרשאות מצלמה במערכת ההפעלה
-- **Windows:** בדקו ב-Settings > Privacy > Camera
-- **Mac:** בדקו ב-System Preferences > Security & Privacy > Camera
+### Camera not found
+- Check that camera is connected and working
+- Close other programs that might be using the camera
+- Try running in simulation mode (without camera)
+- Check camera permissions in operating system
+- **Windows:** Check in Settings > Privacy > Camera
+- **Mac:** Check in System Preferences > Security & Privacy > Camera
 
-### ביצועים נמוכים
-- הורידו רזולוציית מצלמה ב-`config.py`
-- סגרו תוכנות אחרות שצורכות משאבים
-- השתמשו במצב חלון במקום מסך מלא
-- הפחיתו איכות גרפיקה במשחק
+### Low performance
+- Lower camera resolution in `config.py`
+- Close other resource-consuming programs
+- Use windowed mode instead of fullscreen
+- Reduce graphics quality in game
 
-### זיהוי מחוות לא מדויק
-- שפרו תאורה - אור טבעי או לד לבן
-- הרחיקו את היד מהמצלמה (30-60 ס"מ)
-- השתמשו ברקע אחיד ובהיר
-- ודאו שהיד במרכז המסך
-- נקו את עדשת המצלמה
+### Inaccurate gesture detection
+- Improve lighting - natural light or white LED
+- Move hand away from camera (30-60 cm)
+- Use uniform and bright background
+- Ensure hand is in center of screen
+- Clean camera lens
 
-### שגיאות Python נפוצות
+### Common Python errors
 ```bash
-# אם מופיעה שגיאה "Module not found"
-pip install [שם המודול החסר]
+# If "Module not found" error appears
+pip install [missing module name]
 
-# אם יש בעיה עם גרסת Python
+# If there's a problem with Python version
 python -m pip install --upgrade setuptools wheel
 ```
 
-## 📄 רישיון
+## 🎯 Advanced Features
 
-פרויקט זה נוצר כחלק מקורס Full Stack Python ומוגש כפרויקט גמר.
-כל הזכויות שמורות לסטודנטים של הקורס.
+### 1. Advanced Physics System
+- Centrifugal force calculations
+- Momentum in turns
+- Realistic sliding
 
-## 👨‍💻 צוות הפיתוח
+### 2. Multi-threading
+- Separate thread for camera
+- Separate thread for gesture processing
+- Safe synchronization between threads
 
-פרויקט זה פותח כחלק מקורס Full Stack Python על ידי:
+### 3. Performance Analysis
+- Real-time FPS measurement
+- Processing time monitoring
+- Dynamic optimization
+
+### 4. Advanced Debug System
+- Detailed logs
+- Performance tracking
+- Data visualization
+
+## 📊 Statistics and Tracking
+
+The system tracks:
+- Total game time
+- Cumulative score
+- Gesture accuracy
+- Response times
+- Obstacles avoided
+
+## 🎨 Design and User Experience
+
+### User Interface
+- Intuitive main menu
+- Clear visual indicators
+- Immediate gesture feedback
+- Smooth transitions between screens
+
+### Graphics
+- Smooth 60 FPS animations
+- Visual effects (boost, collision)
+- Particle system
+- Dynamic lighting
+
+## 🔄 Development Modes
+
+### Training Mode
+```bash
+python training_mode.py
+```
+- Gesture recognition model training
+- Data collection
+- System calibration
+
+### Debug Mode
+- Press **F1** in game
+- Real-time performance information
+- Gesture detection visualization
+
+## 🔍 Debug Modes and Debugging
+
+### 🎮 Game Debug Mode
+**How to activate:** Press `D` during game
+- **Location:** Bottom part of game screen
+- **Display:** White text on transparent background
+- **Information displayed:**
+  - Current game FPS
+  - Vehicle position (world and screen)
+  - Vehicle speed and steering control
+  - Rotation and movement direction
+  - Number of obstacles on screen
+  - Game state and remaining time
+
+### 📊 Additional information displayed in terminal
+During game, messages are displayed in terminal:
+- `🔊 Engine sound playing at speed X.XX` - Engine sound
+- `🤏 Gesture detected: [gesture type]` - Gesture detection
+- `🎯 Steering Debug: Angle=X°, Steering=X.XX` - Steering information
+- `🖐️ Palm Detection Debug` - Palm detection
+- `💥 Turtle collision detected!` - Collision
+- `🐢 Normal: Spawning turtle` - Obstacle creation
+
+### 🎛️ Additional keys for developers
+- **P** - Pause
+- **M** - Mute sound
+- **H** - Help
+- **ESC** - Return to menu or exit
+
+## 🔄 Recent Updates
+
+### Current Version
+- Improved compatibility for different Python versions
+- Performance improvements in gesture detection system
+- Fixed compatibility issues with different operating systems
+- Improved error system and user messages
+
+### Planned Future Features
+- Support for two-hand gesture detection
+- Local multiplayer mode
+- Save personal settings
+- Personal record tracking
+
+## 📄 License
+
+This project was created as part of the Full Stack Python course and submitted as a graduation project.
+All rights reserved to student Sharon Ben-Dror.
+
+## 👨‍💻 Development Team
+
+This project was developed as part of the Full Stack Python course by:
 **Sharon Ben-Dror** - JohnBryce Academy
 
 ---
 
-## 📞 יצירת קשר
+## 📞 Contact
 
-לשאלות, הצעות או דיווח על באגים:
-- GitHub Issues: [דווח על בעיה](https://github.com/sharon-bd/Hand_mov_Z/issues)
+For questions, suggestions, or bug reports:
+- GitHub Issues: [Report an issue](https://github.com/sharon-bd/Hand_mov_Z/issues)
 - GitHub Repository: [Hand_mov_Z](https://github.com/sharon-bd/Hand_mov_Z)
 
 ---
 
-⭐ אם אהבת את הפרויקט, אל תשכח לתת לו כוכב ב-GitHub!
-
-## 🔄 עדכונים אחרונים
-
-### גרסה נוכחית
-- תאימות משופרת לגרסאות Python שונות
-- שיפורי ביצועים במערכת זיהוי המחוות
-- פתרון בעיות תאימות עם מערכות הפעלה שונות
-- שיפור מערכת השגיאות והודעות המשתמש
-
-### תכונות עתידיות מתוכננות
-- תמיכה בזיהוי מחוות שתי ידיים
-- מצב multiplayer מקומי
-- שמירת הגדרות אישיות
-- מעקב אחר שיאים אישיים
-### 🎮 Debug Mode של המשחק
-**איך להפעיל:** לחץ `D` במהלך המשחק
-- **מיקום:** חלק תחתון של מסך המשחק
-- **תצוגה:** טקסט לבן על רקע שקוף
-- **מידע שמוצג:**
-  - FPS נוכחי של המשחק
-  - מיקום הרכב (עולם ומסך)
-  - מהירות הרכב ובקרת הגה
-  - סיבוב וכיוון תנועה
-  - מספר מכשולים במסך
-  - מצב המשחק וזמן נותר
-
-### 📊 מידע נוסף שמוצג בטרמינל
-במהלך המשחק מוצגות הודעות בטרמינל:
-- `🔊 Engine sound playing at speed X.XX` - צליל מנוע
-- `🤏 Gesture detected: [סוג מחווה]` - זיהוי מחוות
-- `🎯 Steering Debug: Angle=X°, Steering=X.XX` - מידע על ההגה
-- `🖐️ Palm Detection Debug` - זיהוי כף יד
-- `💥 Turtle collision detected!` - התנגשות
-- `🐢 Normal: Spawning turtle` - יצירת מכשולים
-
-### 🎛️ מקשים נוספים למפתחים
-- **P** - השהיה (Pause)
-- **M** - השתקת צליל (Mute)
-- **H** - עזרה (Help)
-- **ESC** - חזרה לתפריט או יציאה
-
-
-
-## 📄 רישיון
-
-פרויקט זה נוצר כחלק מקורס Full Stack Python ומוגש כפרויקט גמר.
-כל הזכויות שמורות לסטודנטים של הקורס.
-
-## 👨‍💻 צוות הפיתוח
-
-פרויקט זה פותח כחלק מקורס Full Stack Python על ידי:
-**Sharon Ben-Dror** - JohnBryce Academy
-
----
-
-## 📞 יצירת קשר
-
-לשאלות, הצעות או דיווח על באגים:
-- GitHub Issues: [דווח על בעיה](https://github.com/sharon-bd/Hand_mov_Z/issues)
-- GitHub Repository: [Hand_mov_Z](https://github.com/sharon-bd/Hand_mov_Z)
-
----
-
-⭐ אם אהבת את הפרויקט, אל תשכח לתת לו כוכב ב-GitHub!
+⭐ If you liked the project, don't forget to give it a star on GitHub!
