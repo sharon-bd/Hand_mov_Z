@@ -1964,7 +1964,7 @@ class Game:
                                 self._back_to_main_menu()
                                 self._reset_game_state()
                             else:
-                                # ESC במשחק פועל כמו כפתור EXIT
+                                # ESC in game works like EXIT button
                                 self.exit_game()
                         elif event.key == pygame.K_p and not self._show_main_menu and not self._show_mode_selection:
                             self.toggle_pause()

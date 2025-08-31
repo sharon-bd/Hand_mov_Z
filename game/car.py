@@ -110,17 +110,17 @@ class Car:
                 'boost': controls.get('boost', False),
                 'gesture_name': controls.get('gesture_name', 'Unknown')
             }
-            print(f"🚗 מכונית מקבלת בקרות: {brief_controls}")
-            print(f"🚗 מצב נוכחי: מיקום=({self.x:.1f},{self.y:.1f}), מהירות={self.speed:.2f}, סיבוב={self.rotation:.1f}°, היסט_כביש={self.road_offset:.1f}")
+            print(f"🚗 Car receiving controls: {brief_controls}")
+            print(f"🚗 Current state: position=({self.x:.1f},{self.y:.1f}), speed={self.speed:.2f}, rotation={self.rotation:.1f}°, road_offset={self.road_offset:.1f}")
         
         try:
-            # חילוץ בקרות
+            # Extract controls
             steering = float(controls.get('steering', 0.0))
             throttle = float(controls.get('throttle', 0.0))
             braking = bool(controls.get('braking', False))
             boost = bool(controls.get('boost', False))
             
-            # נירמול ערכים
+            # Normalize values
             steering = max(-1.0, min(1.0, steering))
             throttle = max(0.0, min(1.0, throttle))
             
@@ -130,89 +130,89 @@ class Car:
             
             self.direction = steering
             
-            # עדכון מהירות
+            # Update speed
             speed_change_rate = 0.1 if throttle > self.speed else 0.2
             self.speed = self.speed + (throttle - self.speed) * speed_change_rate
             
-            # טיפול בבלימה
+            # Handle braking
             if braking:
                 self.speed = max(0.0, self.speed - self.brake_deceleration * dt)
                 self.braking = True
             else:
                 self.braking = (self.speed < 0.05 and throttle < 0.1)
             
-            # חישוב תנועה
+            # Calculate movement
             movement_speed = self.max_speed * self.speed
             if boost:
                 movement_speed *= self.boost_multiplier
             
-            # === פיזיקת פנייה משופרת ===
+            # === Enhanced turning physics ===
             previous_rotation = self.rotation
             
             if self.speed > 0.05:
-                # חישוב אפקט הגה עם רגישות מוגברת
+                # Calculate steering effect with increased sensitivity
                 steering_effect = self.direction * self.steering_sensitivity
                 
-                # פקטור מהירות - פחות השפעה של מהירות על רגישות ההגה
+                # Speed factor - less speed influence on steering sensitivity
                 speed_factor = max(0.4, 1.0 - (self.speed * 0.8))
                 steering_effect *= speed_factor
                 
-                # חישוב שינוי זווית מקסימלי
+                # Calculate maximum angle change
                 max_angle_change = self.max_steering_angle * self.speed
                 max_rate_limited_change = self.max_turn_rate * dt
                 
                 max_allowed_change = min(max_angle_change, max_rate_limited_change)
                 
-                # יישום שינוי סיבוב
+                # Apply rotation change
                 rotation_change = min(max_allowed_change, 
                                      max(-max_allowed_change, 
                                          steering_effect * max_allowed_change))
                 
                 self.rotation += rotation_change
                 
-                # === חישוב כוח צנטריפוגלי והיסט צידי ===
-                if abs(rotation_change) > 0.1:  # רק בפנייה
-                    # כוח צנטריפוגלי פרופורציונלי למהירות ולזווית הפנייה
+                # === Calculate centrifugal force and lateral offset ===
+                if abs(rotation_change) > 0.1:  # Only when turning
+                    # Centrifugal force proportional to speed and turn angle
                     self.centrifugal_force = abs(rotation_change) * self.speed * 2.5
                     
-                    # תאוצה צידית - המכונית "נדחפת" החוצה בפנייה
+                    # Lateral acceleration - car gets "pushed" outward when turning
                     direction_multiplier = 1 if rotation_change > 0 else -1
                     self.lateral_acceleration = self.centrifugal_force * direction_multiplier * 0.8
                     
-                    # עדכון מהירות צידית
+                    # Update lateral velocity
                     self.lateral_velocity += self.lateral_acceleration * dt
                     
-                    # הגבלת מהירות צידית מקסימלית
+                    # Limit maximum lateral velocity
                     max_lateral_velocity = self.speed * 3.0
                     self.lateral_velocity = max(-max_lateral_velocity, 
                                                min(max_lateral_velocity, self.lateral_velocity))
                 else:
-                    # אין פנייה - החזרה הדרגתית למרכז
+                    # No turning - gradual return to center
                     self.centrifugal_force = 0.0
                     self.lateral_acceleration = 0.0
                 
-                # החלת חיכוך צידי - מעט הפחתה של המהירות הצידית
+                # Apply lateral friction - slight reduction of lateral velocity
                 self.lateral_velocity *= self.lateral_friction
                 
-                # עדכון היסט מהכביש
+                # Update road offset
                 self.road_offset += self.lateral_velocity * dt
                 
-                # === החזרה הדרגתית למרכז הכביש (מוחלשת) ===
-                if abs(self.direction) < 0.6:  # רק כשלא פונים בחדות
-                    center_return_force = -self.road_offset * 0.3 * dt  # כוח חזרה חלש יותר
+                # === Gradual return to road center (weakened) ===
+                if abs(self.direction) < 0.6:  # Only when not turning sharply
+                    center_return_force = -self.road_offset * 0.3 * dt  # Weaker return force
                     self.road_offset += center_return_force
                 
-                # הגבלת היסט מקסימלי
+                # Limit maximum offset
                 self.road_offset = max(-self.max_road_offset, 
                                      min(self.max_road_offset, self.road_offset))
                 
-                # טיפול בהיסטוריית סיבוב למניעת ספינינג
+                # Handle rotation history to prevent spinning
                 self.rotation_history = getattr(self, 'rotation_history', [])
                 self.rotation_history.append(self.rotation)
                 if len(self.rotation_history) > 20:
                     self.rotation_history.pop(0)
                 
-                # החזרה למרכז כשלא פונים
+                # Return to center when not turning
                 if abs(self.direction) < 0.3:
                     self.target_rotation = round(self.rotation / 45) * 45
                     angle_diff = (self.target_rotation - self.rotation) * self.steering_return_factor
@@ -220,10 +220,10 @@ class Car:
                 
                 self.last_rotation = self.rotation
             
-            # שמירה על סיבוב בטווח 0-360
+            # Keep rotation in 0-360 range
             self.rotation %= 360
             
-            # חישוב וקטור תנועה
+            # Calculate movement vector
             rad = math.radians(self.rotation)
             distance = movement_speed * dt
             dx = math.sin(rad) * distance
@@ -252,7 +252,7 @@ class Car:
             
             if hit_boundary:
                 self.speed *= 0.4
-                self.lateral_velocity *= 0.5  # הפחתת מהירות צידית בפגיעה בגבול
+                self.lateral_velocity *= 0.5  # Reduce lateral velocity on boundary hit
                 
                 bounce_factor = -0.2
                 if new_x == 0 or new_x == self.world_width:
@@ -260,11 +260,11 @@ class Car:
                 if new_y == 0 or new_y == self.world_height:
                     self.y += dy * bounce_factor
             
-            # עדכון מיקום
+            # Update position
             self.x = new_x
             self.y = new_y
             
-            # עדכון מצב התנגשות
+            # Update collision state
             if self.collision_cooldown > 0:
                 self.collision_cooldown -= dt
                 self.collision_flash = int(self.collision_cooldown * 10) % 2 == 0
@@ -272,25 +272,25 @@ class Car:
                 self.collision_flash = False
                 self.is_colliding = False
             
-            # המכונית תישאר במרכז המסך עם היסט צידי
+            # Car stays at screen center with lateral offset
             screen_center_x = self.screen_width // 2
             screen_center_y = self.screen_height - 100
             
-            # === יישום ההיסט הצידי על מיקום המסך ===
-            self.screen_x = screen_center_x + self.road_offset * 0.6  # 60% מההיסט למסך
+            # === Apply lateral offset to screen position ===
+            self.screen_x = screen_center_x + self.road_offset * 0.6  # 60% of offset to screen
             self.screen_y = screen_center_y
             
-            # עדכון נקודות התנגשות
+            # Update collision points
             self.update_collision_points()
             
-            # שמירת מיקום להיסטוריה
+            # Save position to history
             if distance > 0:
                 self.position_history.append((self.x, self.y))
                 if len(self.position_history) > self.max_history:
                     self.position_history.pop(0)
         
         except Exception as e:
-            print(f"שגיאה בעדכון המכונית: {e}")
+            print(f"Error updating car: {e}")
             import traceback
             traceback.print_exc()
     
@@ -475,7 +475,7 @@ class Car:
                 )
                 
         except Exception as e:
-            print(f"❌ שגיאה בציור המכונית: {e}")
+            print(f"❌ Error drawing car: {e}")
             import traceback
             traceback.print_exc()
     
@@ -629,8 +629,8 @@ def example_usage():
     
     # קבלת מידע על מיקום
     road_info = car.get_road_position_info()
-    print(f"היסט מהכביש: {road_info['road_offset']:.1f} פיקסלים")
-    print(f"אחוז היסט: {road_info['offset_percentage']:.1f}%")
+    print(f"Road offset: {road_info['road_offset']:.1f} pixels")
+    print(f"Offset percentage: {road_info['offset_percentage']:.1f}%")
 
 if __name__ == "__main__":
     example_usage()

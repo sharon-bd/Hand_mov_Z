@@ -526,30 +526,30 @@ class ScoreManager:
         """Update obstacles with simplified logic"""
         
         # Add obstacles at lower frequency
-        if random.random() < 0.01:  # במקום 0.02 - פחות מכשולים
+        if random.random() < 0.01:  # Instead of 0.02 - fewer obstacles
             self.add_obstacle()
         
-        # עדכן מיקום מכשולים
-        for obstacle in self.obstacles[:]:  # העתק רשימה למניעת שגיאות
+        # Update obstacle positions
+        for obstacle in self.obstacles[:]:  # Copy list to prevent errors
             obstacle.update()
 
-            # הסר מכשולים שיצאו מהמסך
+            # Remove obstacles that left the screen
             if (obstacle.x < -100 or obstacle.x > self.screen_width + 100 or
                 obstacle.y < -100 or obstacle.y > self.screen_height + 100):
                 self.obstacles.remove(obstacle)
 
     def add_obstacle(self):
-        """הוספת מכשול חדש - רחוק מהמכונית"""
+        """Add new obstacle - far from car"""
         
-        # וודא שהמכשול לא נוצר קרוב מדי למכונית
-        min_distance = 150  # מרחק מינימלי מהמכונית
+        # Ensure obstacle is not created too close to car
+        min_distance = 150  # Minimum distance from car
         
         attempts = 0
-        while attempts < 10:  # מקסימום 10 ניסיונות
+        while attempts < 10:  # Maximum 10 attempts
             x = random.randint(50, self.screen_width - 50)
             y = random.randint(50, self.screen_height - 50)
             
-            # בדוק מרחק מהמכונית
+            # Check distance from car
             distance_from_car = math.sqrt((x - self.car.x)**2 + (y - self.car.y)**2)
             
             if distance_from_car > min_distance:

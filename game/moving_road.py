@@ -68,25 +68,25 @@ class MovingRoadGenerator:
         # Save current speed
         self.speed = speed
         
-        # עדכון היסט המכונית אם סופק
+        # Update car offset if provided
         if car_road_offset is not None:
             self.car_road_offset = car_road_offset
         
-        # חישוב מהירות גלילה
+        # Calculate scroll speed
         base_scroll_speed = 500 * speed
         
-        # עדכון מיקום גלילה אנכי
+        # Update vertical scroll position
         self.scroll_y += base_scroll_speed * dt
         
-        # === עדכון היסט צידי של הכביש ===
-        # הכביש זז בכיוון הפוך להיסט המכונית כדי ליצור אשליה של תנועה
-        target_road_offset = -self.car_road_offset * 0.8  # 80% מההיסט
+        # === Update lateral road offset ===
+        # Road moves in opposite direction to car offset to create movement illusion
+        target_road_offset = -self.car_road_offset * 0.8  # 80% of offset
         
-        # החלקה של תנועת הכביש למראה טבעי יותר
+        # Smooth road movement for more natural appearance
         offset_diff = target_road_offset - self.road_visual_offset
         self.road_visual_offset += offset_diff * self.offset_smoothing
         
-        # עדכון גלילה אופקית מינימלית על סמך סיבוב
+        # Update minimal horizontal scroll based on rotation
         steering_factor = rotation / 90.0
         steering_factor = max(-0.2, min(0.2, steering_factor))
         
@@ -95,20 +95,20 @@ class MovingRoadGenerator:
 
     def draw(self, screen, world_offset_x=0, world_offset_y=0):
         """
-        ציור הכביש הנע עם היסט צידי
+        Draw the moving road with lateral offset
         
         Args:
-            screen: משטח Pygame לציור
-            world_offset_x: היסט נוסף בעולם בכיוון X
-            world_offset_y: היסט נוסף בעולם בכיוון Y
+            screen: Pygame surface for drawing
+            world_offset_x: Additional world offset in X direction
+            world_offset_y: Additional world offset in Y direction
         """
-        # מילוי רקע בצבע דשא
+        # Fill background with grass color
         screen.fill(self.grass_color)
         
-        # === חישוב מיקום הכביש עם היסט צידי ===
+        # === Calculate road position with lateral offset ===
         road_center_x = self.screen_width // 2 + self.road_visual_offset
         
-        # ציור משטח הכביש הראשי עם היסט
+        # Draw main road surface with offset
         road_rect = pygame.Rect(
             road_center_x - self.road_width // 2,
             0,
@@ -116,21 +116,21 @@ class MovingRoadGenerator:
             self.screen_height
         )
         
-        # וידוא שהכביש נמצא בגבולות המסך (לפחות חלקית)
+        # Ensure road is within screen bounds (at least partially)
         if road_rect.right > 0 and road_rect.left < self.screen_width:
             pygame.draw.rect(screen, self.road_color, road_rect)
         
-        # ציור קו מרכז נע עם היסט
+        # Draw moving center line with offset
         self._draw_center_line_with_offset(screen, road_center_x)
         
-        # ציור אלמנטים נוספים של הכביש
+        # Draw additional road elements
         self._draw_road_markers_with_offset(screen, road_center_x)
     
     def _draw_center_line_with_offset(self, screen, center_x):
-        """ציור קו מרכז נע עם היסט צידי"""
+        """Draw moving center line with lateral offset"""
         line_width = 6
         
-        # קו מרכז מקווקו נע
+        # Moving dashed center line
         dash_spacing = self.lane_length + self.lane_gap
         offset = int(-self.scroll_y) % dash_spacing  # כיוון הפוך לתנועת המכונית
         
@@ -140,7 +140,7 @@ class MovingRoadGenerator:
                 dash_start = max(0, y)
                 dash_end = min(self.screen_height, y + self.lane_length)
                 
-                # ציור רק אם הקו נמצא בגבולות המסך
+                # Draw only if line is within screen bounds
                 if 0 <= center_x - line_width // 2 <= self.screen_width + 50:
                     pygame.draw.rect(screen, self.lane_color,
                                    (center_x - line_width // 2, dash_start,
@@ -208,7 +208,7 @@ class MovingRoadGenerator:
         self.car_road_offset = 0.0
         self.road_visual_offset = 0.0
         
-        print("✅ MovingRoad נאופס עם תמיכה בהיסט צידי")
+        print("✅ MovingRoad reset with lateral offset support")
     
     def get_road_bounds(self):
         """קבלת גבולות הכביש לזיהוי התנגשויות"""
@@ -241,9 +241,9 @@ if __name__ == "__main__":
     speed = 0.0
     car_offset = 0.0  # היסט המכונית
     
-    print("🎮 בדיקת MovingRoad עם היסט צידי")
-    print("השתמש בחצים UP/DOWN לשליטה במהירות")
-    print("השתמש בחצים LEFT/RIGHT לשליטה בהיסט המכונית")
+    print("🎮 Testing MovingRoad with lateral offset")
+    print("Use UP/DOWN arrows to control speed")
+    print("Use LEFT/RIGHT arrows to control car offset")
     
     while running:
         dt = clock.tick(60) / 1000.0
@@ -259,7 +259,7 @@ if __name__ == "__main__":
         elif keys[pygame.K_DOWN]:
             speed = max(0.0, speed - dt)
         else:
-            speed *= 0.95  # האטה הדרגתית
+            speed *= 0.95  # Gradual deceleration
         
         # שליטה בהיסט המכונית
         if keys[pygame.K_LEFT]:
@@ -275,7 +275,7 @@ if __name__ == "__main__":
         
         # ציור מידע דיבוג
         font = pygame.font.Font(None, 36)
-        speed_text = font.render(f"מהירות: {speed:.2f}", True, (255, 255, 255))
+        speed_text = font.render(f"Speed: {speed:.2f}", True, (255, 255, 255))
         offset_text = font.render(f"היסט מכונית: {car_offset:.1f}", True, (255, 255, 255))
         
         screen.blit(speed_text, (10, 10))
@@ -293,4 +293,4 @@ if __name__ == "__main__":
         pygame.display.flip()
     
     pygame.quit()
-    print("👋 בדיקה הסתיימה")
+    print("👋 Test completed")

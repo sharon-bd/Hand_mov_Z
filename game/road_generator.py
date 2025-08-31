@@ -237,20 +237,20 @@ class MovingRoadGenerator:
         
         Args:
             screen: Pygame surface for drawing
-            world_offset_x: היסט בעולם בכיוון x
-            world_offset_y: היסט בעולם בכיוון y
+            world_offset_x: World offset in x direction
+            world_offset_y: World offset in y direction
         """
-        # מילוי הרקע בצבע דשא
+        # Fill background with grass color
         screen.fill(self.grass_color)
         
-        # יצירת משטח זמני למסלול שניתן לסובב
+        # Create temporary surface for road that can be rotated
         road_surface = pygame.Surface((self.screen_width * 3, self.screen_height * 3), pygame.SRCALPHA)
         
-        # נקודת המרכז של משטח המסלול
+        # Center point of road surface
         center_x = road_surface.get_width() // 2
         center_y = road_surface.get_height() // 2
         
-        # ציור המסלול הבסיסי
+        # Draw basic road
         road_rect = pygame.Rect(
             center_x - self.road_width // 2,
             0,
@@ -259,8 +259,8 @@ class MovingRoadGenerator:
         )
         pygame.draw.rect(road_surface, self.road_color, road_rect)
         
-        # ציור סימוני נתיבים עם התאמה לגלילה
-        for lane in range(2):  # 2 קווי נתיב ל-3 נתיבים
+        # Draw lane markings with scroll adjustment
+        for lane in range(2):  # 2 lane lines for 3 lanes
             lane_x = center_x - self.road_width // 2 + self.road_width * (lane + 1) // 3
             # Use internal scroll_y for lane markings
             y_offset = int(self.scroll_y) % (self.lane_length + self.lane_gap)
@@ -275,20 +275,20 @@ class MovingRoadGenerator:
         element_world_offset_x = int(self.scroll_x + world_offset_x * 1.5)
         element_world_offset_y = int(self.scroll_y + world_offset_y * 1.5)
         
-        # ציור אלמנטי המסלול
+        # Draw road elements
         element_offset_x = int(self.scroll_x) % road_surface.get_width()
         element_offset_y = int(self.scroll_y) % road_surface.get_height()
         
         for element in self.road_elements:
-            # המרת קואורדינטות למערכת הקואורדינטות של משטח המסלול
+            # Convert coordinates to road surface coordinate system
             base_x = center_x + (element['x'] - self.screen_width / 2)
             base_y = center_y + (element['y'] - self.screen_height / 2)
             
-            # החלת היסטי גלילה
+            # Apply scroll offsets
             element_x = (base_x - element_offset_x) % road_surface.get_width()
             element_y = (base_y - element_offset_y) % road_surface.get_height()
             
-            # ציור האלמנט בהתאם לסוג
+            # Draw element according to type
             if element['type'] == 'rock':
                 pygame.draw.circle(
                     road_surface,
@@ -431,13 +431,13 @@ class MovingRoadGenerator:
                         particle['size']
                     )
 
-        # סיבוב משטח המסלול כולו
+        # Rotate entire road surface
         rotated_road = pygame.transform.rotate(road_surface, self.rotation)
         
-        # מיקום משטח המסלול המסובב במרכז המסך
+        # Position rotated road surface at screen center
         rotated_rect = rotated_road.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
         
-        # ציור המסלול המסובב על המסך
+        # Draw rotated road on screen
         screen.blit(rotated_road, rotated_rect)
     
     def reset(self):
